@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Build output
+/build
+/.svelte-kit
+/package
+
+# Rust
+src-tauri/target/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.DS_Store
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# OS
+Thumbs.db
+
+# Internal planning docs (not part of the public repo)
+app-gestion-optimizacion-imagenes-documentos.md
+estructura-profesional-proyecto-gestion-optimizacion-imagenes-documentos.md
+pencil-wireframe-prompts.md
+*.pen
