@@ -1,4 +1,4 @@
-# ReVault
+# Revault
 
 Ultra-lightweight desktop app for image compression, conversion, analysis, and organization.
 

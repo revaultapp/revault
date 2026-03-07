@@ -24,13 +24,8 @@
 
   <div class="sidebar-inner">
     <div class="logo-row">
-      <div class="logo-icon">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path d="M2 4l6-3 6 3v8l-6 3-6-3V4z" fill="white" opacity="0.9"/>
-          <path d="M8 1v14M2 4l6 3 6-3" stroke="white" stroke-width="0.5" opacity="0.4"/>
-        </svg>
-      </div>
-      <span class="logo-text">ReVault</span>
+      <img class="logo-icon" src="/logo.png" alt="Revault" />
+      <span class="logo-text">Revault</span>
       <span class="status-dot"></span>
     </div>
 
@@ -116,10 +111,6 @@
     width: 34px;
     height: 34px;
     border-radius: var(--radius-sm);
-    background: linear-gradient(135deg, #10b981, #059669);
-    display: flex;
-    align-items: center;
-    justify-content: center;
     flex-shrink: 0;
   }
 

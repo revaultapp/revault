@@ -22,7 +22,7 @@
       </div>
       <button class="pill">
         <FolderOpen size={14} strokeWidth={2} />
-        <span>~/Pictures/ReVault</span>
+        <span>~/Pictures/Revault</span>
       </button>
     </div>
     <div class="row">
