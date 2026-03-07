@@ -1,16 +1,31 @@
 <script lang="ts">
   import { Search, Bell } from "lucide-svelte";
+  import { activePage } from "$lib/stores/nav";
+
+  const titles: Record<string, [string, string]> = {
+    dashboard: ["Good morning, Mike", "Dashboard · 3 pending actions"],
+    compress: ["Compress", "Reduce file size"],
+    convert: ["Convert", "Change image formats"],
+    analyze: ["Analyze", "Scan your storage"],
+    organize: ["Organize", "Sort and manage files"],
+    edit: ["Edit", "Batch image editing"],
+    privacy: ["Privacy", "Metadata and sensitive data"],
+    cloud: ["Cloud", "Sync and backup"],
+    settings: ["Settings", "Manage your preferences"],
+  };
+
+  let current = $derived(titles[$activePage] ?? titles.dashboard);
 </script>
 
 <header class="topbar">
   <div class="title-area">
-    <h1>Good morning, Mike</h1>
-    <p>Dashboard · 3 pending actions</p>
+    <h1>{current[0]}</h1>
+    <p>{current[1]}</p>
   </div>
 
   <div class="search-box">
     <Search size={15} strokeWidth={2} />
-    <span class="search-text">Jump to anything...</span>
+    <span>Jump to anything...</span>
     <kbd>⌘K</kbd>
   </div>
 
@@ -66,10 +81,6 @@
 
   .search-box:hover {
     background: var(--wood-border);
-  }
-
-  .search-text {
-    white-space: nowrap;
   }
 
   kbd {

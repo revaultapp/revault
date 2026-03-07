@@ -4,18 +4,17 @@
     Boxes, Sparkles, EyeOff, CloudCog,
     Settings, Database
   } from "lucide-svelte";
-
-  import type { ComponentType } from "svelte";
-
-  const navItems: { icon: ComponentType; label: string; active?: boolean; badge?: string; dot?: boolean }[] = [
-    { icon: Compass, label: "Dashboard", active: true },
-    { icon: Zap, label: "Compress" },
-    { icon: Shuffle, label: "Convert" },
-    { icon: ScanSearch, label: "Analyze", badge: "3" },
-    { icon: Boxes, label: "Organize" },
-    { icon: Sparkles, label: "Edit" },
-    { icon: EyeOff, label: "Privacy" },
-    { icon: CloudCog, label: "Cloud", dot: true },
+  import { activePage } from "$lib/stores/nav";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const navItems: { icon: any; id: string; label: string; badge?: string; dot?: boolean }[] = [
+    { icon: Compass, id: "dashboard", label: "Dashboard" },
+    { icon: Zap, id: "compress", label: "Compress" },
+    { icon: Shuffle, id: "convert", label: "Convert" },
+    { icon: ScanSearch, id: "analyze", label: "Analyze", badge: "3" },
+    { icon: Boxes, id: "organize", label: "Organize" },
+    { icon: Sparkles, id: "edit", label: "Edit" },
+    { icon: EyeOff, id: "privacy", label: "Privacy" },
+    { icon: CloudCog, id: "cloud", label: "Cloud", dot: true },
   ];
 </script>
 
@@ -36,8 +35,8 @@
 
     <nav class="nav">
       {#each navItems as item}
-        <button class="nav-item" class:active={item.active}>
-          {#if item.active}
+        <button class="nav-item" class:active={$activePage === item.id} onclick={() => activePage.set(item.id)}>
+          {#if $activePage === item.id}
             <span class="accent-bar"></span>
           {/if}
           <item.icon size={18} strokeWidth={1.8} />
@@ -62,7 +61,10 @@
 
     <div class="divider"></div>
 
-    <button class="nav-item settings">
+    <button class="nav-item settings" class:active={$activePage === 'settings'} onclick={() => activePage.set('settings')}>
+      {#if $activePage === 'settings'}
+        <span class="accent-bar"></span>
+      {/if}
       <Settings size={18} strokeWidth={1.8} />
       <span>Settings</span>
     </button>
@@ -98,7 +100,6 @@
     display: flex;
     flex-direction: column;
     padding: 24px 18px 18px;
-    gap: 0;
     overflow: hidden;
   }
 
@@ -223,12 +224,8 @@
 
   .divider {
     height: 1px;
-    margin: 8px 0;
+    margin: 12px 0;
     background: linear-gradient(90deg, transparent, #2a2a2a 30%, #2a2a2a 70%, transparent);
-  }
-
-  .settings {
-    color: #505050;
   }
 
   .saved-badge {
@@ -257,6 +254,7 @@
     gap: 10px;
     height: 44px;
     padding: 0 6px;
+    margin-top: 8px;
     border-radius: 10px;
   }
 
