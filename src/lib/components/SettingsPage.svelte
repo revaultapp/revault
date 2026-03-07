@@ -1,10 +1,10 @@
 <script lang="ts">
   import { FolderOpen, Sun, Moon, ChevronDown } from "lucide-svelte";
   import ToggleSwitch from "$lib/components/ToggleSwitch.svelte";
+  import { theme } from "$lib/stores/theme";
 
   let overwrite = $state(false);
   let autostrip = $state(true);
-  let theme = $state<"light" | "dark">("light");
 </script>
 
 <div class="sections">
@@ -38,11 +38,11 @@
         <span class="desc">Switch between light and dark mode</span>
       </div>
       <div class="segmented">
-        <button class="seg" class:active={theme === 'light'} onclick={() => theme = 'light'}>
+        <button class="seg" class:active={$theme === 'light'} onclick={() => theme.set('light')}>
           <Sun size={14} strokeWidth={2} />
           <span>Light</span>
         </button>
-        <button class="seg" class:active={theme === 'dark'} onclick={() => theme = 'dark'}>
+        <button class="seg" class:active={$theme === 'dark'} onclick={() => theme.set('dark')}>
           <Moon size={14} strokeWidth={2} />
           <span>Dark</span>
         </button>
@@ -134,7 +134,7 @@
 
   .section-header p {
     font-size: 13px;
-    color: #999;
+    color: var(--text-muted);
     margin-top: 4px;
   }
 
@@ -169,7 +169,7 @@
 
   .desc {
     font-size: 12px;
-    color: #999;
+    color: var(--text-muted);
   }
 
   .pill {
@@ -202,13 +202,13 @@
     gap: 6px;
     padding: 6px 12px;
     font-size: 12px;
-    color: #999;
+    color: var(--text-muted);
     border-radius: 8px;
     transition: all 0.15s;
   }
 
   .seg.active {
-    background: #fff;
+    background: var(--bg-card);
     color: var(--wood);
     font-weight: 600;
     box-shadow: 0 0 0 1px var(--border);
@@ -228,12 +228,12 @@
 
   .quality-unit {
     font-size: 12px;
-    color: #999;
+    color: var(--text-muted);
   }
 
   .version-val {
     font-size: 13px;
     font-weight: 500;
-    color: #999;
+    color: var(--text-muted);
   }
 </style>

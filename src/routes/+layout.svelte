@@ -30,7 +30,7 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
-    background: linear-gradient(160deg, #faf7f2 0%, #f5f0eb 50%, #faf7f2 100%);
+    background: var(--bg-main);
   }
 
   .content-wrapper {

@@ -5,8 +5,9 @@
     Settings, Database
   } from "lucide-svelte";
   import { activePage } from "$lib/stores/nav";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const navItems: { icon: any; id: string; label: string; badge?: string; dot?: boolean }[] = [
+
+  type NavItem = { icon: typeof Compass; id: string; label: string; badge?: string; dot?: boolean };
+  const navItems: NavItem[] = [
     { icon: Compass, id: "dashboard", label: "Dashboard" },
     { icon: Zap, id: "compress", label: "Compress" },
     { icon: Shuffle, id: "convert", label: "Convert" },

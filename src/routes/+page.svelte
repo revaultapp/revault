@@ -20,7 +20,6 @@
     justify-content: center;
     gap: 8px;
     min-height: 100%;
-    color: #999;
   }
 
   .placeholder p {

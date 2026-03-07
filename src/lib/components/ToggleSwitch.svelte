@@ -11,14 +11,14 @@
     width: 44px;
     height: 24px;
     border-radius: 12px;
-    background: #d1d5db;
+    background: var(--toggle-off);
     position: relative;
     transition: background 0.2s;
     flex-shrink: 0;
   }
 
   .toggle.on {
-    background: var(--accent, #10b981);
+    background: var(--accent);
   }
 
   .knob {
@@ -29,7 +29,7 @@
     height: 20px;
     border-radius: 10px;
     background: #fff;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
     transition: transform 0.2s;
   }
 

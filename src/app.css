@@ -10,8 +10,10 @@
 
   --text-primary: #1a1a1a;
   --text-secondary: #8b6f47;
+  --text-muted: #999999;
 
   --border: #e0d0bc;
+  --toggle-off: #d1d5db;
 
   --radius-sm: 8px;
   --radius-xl: 20px;
@@ -20,6 +22,23 @@
   --topbar-height: 64px;
 
   --font: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+[data-theme="dark"] {
+  --bg-main: #1a1917;
+  --bg-card: #242321;
+
+  --wood: #c9a96e;
+  --wood-medium: #a89878;
+  --wood-bg: #2e2b26;
+  --wood-border: #3d3830;
+
+  --text-primary: #e8e5e0;
+  --text-secondary: #a89878;
+  --text-muted: #777770;
+
+  --border: #3d3830;
+  --toggle-off: #4a4640;
 }
 
 *,
