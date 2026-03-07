@@ -14,6 +14,9 @@ importers:
       '@tauri-apps/plugin-opener':
         specifier: ^2
         version: 2.5.3
+      lucide-svelte:
+        specifier: ^0.577.0
+        version: 0.577.0(svelte@5.53.7)
     devDependencies:
       '@sveltejs/adapter-static':
         specifier: ^3.0.6
@@ -566,6 +569,11 @@ packages:
   locate-character@3.0.0:
     resolution: {integrity: sha512-SW13ws7BjaeJ6p7Q6CO2nchbYEc3X3J6WrmTTDto7yMPqVSZTUyY5Tjbid+Ab8gLnATtygYtiDIJGQRRn2ZOiA==}
 
+  lucide-svelte@0.577.0:
+    resolution: {integrity: sha512-0i88o57KsaHWnc80J57fY99CWzlZsSdtH5kKjLUJa7z8dum/9/AbINNLzJ7NiRFUdOgMnfAmJt8jFbW2zeC5qQ==}
+    peerDependencies:
+      svelte: ^3 || ^4 || ^5.0.0-next.42
+
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
 
@@ -1054,6 +1062,10 @@ snapshots:
   kleur@4.1.5: {}
 
   locate-character@3.0.0: {}
+
+  lucide-svelte@0.577.0(svelte@5.53.7):
+    dependencies:
+      svelte: 5.53.7
 
   magic-string@0.30.21:
     dependencies:

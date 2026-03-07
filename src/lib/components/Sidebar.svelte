@@ -1,13 +1,21 @@
 <script lang="ts">
-  const navItems: { icon: string; label: string; active?: boolean; badge?: boolean }[] = [
-    { icon: "layout-dashboard", label: "Dashboard", active: true },
-    { icon: "minimize-2", label: "Compress" },
-    { icon: "arrow-left-right", label: "Convert" },
-    { icon: "bar-chart-3", label: "Analyze", badge: true },
-    { icon: "folder-tree", label: "Organize" },
-    { icon: "paintbrush", label: "Edit" },
-    { icon: "shield", label: "Privacy" },
-    { icon: "cloud", label: "Cloud", badge: true },
+  import {
+    Compass, Zap, Shuffle, ScanSearch,
+    Boxes, Sparkles, EyeOff, CloudCog,
+    Settings, Database
+  } from "lucide-svelte";
+
+  import type { ComponentType } from "svelte";
+
+  const navItems: { icon: ComponentType; label: string; active?: boolean; badge?: string; dot?: boolean }[] = [
+    { icon: Compass, label: "Dashboard", active: true },
+    { icon: Zap, label: "Compress" },
+    { icon: Shuffle, label: "Convert" },
+    { icon: ScanSearch, label: "Analyze", badge: "3" },
+    { icon: Boxes, label: "Organize" },
+    { icon: Sparkles, label: "Edit" },
+    { icon: EyeOff, label: "Privacy" },
+    { icon: CloudCog, label: "Cloud", dot: true },
   ];
 </script>
 
@@ -29,16 +37,23 @@
     <nav class="nav">
       {#each navItems as item}
         <button class="nav-item" class:active={item.active}>
-          <i data-lucide={item.icon}></i>
+          {#if item.active}
+            <span class="accent-bar"></span>
+          {/if}
+          <item.icon size={18} strokeWidth={1.8} />
           <span>{item.label}</span>
           {#if item.badge}
-            <span class="nav-badge"></span>
+            <span class="nav-spacer"></span>
+            <span class="nav-badge">{item.badge}</span>
+          {:else if item.dot}
+            <span class="nav-spacer"></span>
+            <span class="nav-dot"></span>
           {/if}
         </button>
       {/each}
 
       <div class="saved-badge">
-        <i data-lucide="database"></i>
+        <Database size={16} strokeWidth={1.8} />
         <span>Saved: 12.4 GB</span>
       </div>
     </nav>
@@ -48,7 +63,7 @@
     <div class="divider"></div>
 
     <button class="nav-item settings">
-      <i data-lucide="settings"></i>
+      <Settings size={18} strokeWidth={1.8} />
       <span>Settings</span>
     </button>
 
@@ -56,7 +71,7 @@
       <div class="user-avatar">M</div>
       <div class="user-info">
         <span class="user-name">Mike</span>
-        <span class="user-role">ImFan</span>
+        <span class="user-role">Pro Plan</span>
       </div>
     </div>
   </div>
@@ -133,11 +148,18 @@
     height: 40px;
     padding: 0 14px;
     border-radius: var(--radius-sm);
-    color: #484848;
+    color: #505050;
     font-size: 14px;
     font-weight: 400;
     transition: background 0.15s, color 0.15s;
-    position: relative;
+  }
+
+  .nav-item :global(svg) {
+    flex-shrink: 0;
+  }
+
+  .nav-item span {
+    color: #808080;
   }
 
   .nav-item:hover {
@@ -145,25 +167,54 @@
     color: #888;
   }
 
-  .nav-item.active {
-    background: rgba(16, 185, 129, 0.09);
-    color: var(--accent);
-    box-shadow: 0 2px 16px rgba(16, 185, 129, 0.15);
-    border-radius: 10px;
+  .nav-item:hover span {
+    color: #999;
   }
 
-  .nav-item i {
-    width: 18px;
-    height: 18px;
+  .nav-item.active {
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--accent);
+    border-radius: 10px;
+    gap: 10px;
+    padding: 0 12px;
+  }
+
+  .nav-item.active span {
+    color: #e8e8e8;
+    font-weight: 600;
+  }
+
+  .accent-bar {
+    width: 3px;
+    height: 28px;
+    border-radius: 2px;
+    background: var(--accent);
     flex-shrink: 0;
   }
 
   .nav-badge {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
+    min-width: 20px;
+    height: 18px;
+    border-radius: 9px;
     background: var(--accent);
-    margin-left: auto;
+    color: #fff !important;
+    font-size: 9px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .nav-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+    background: var(--accent);
+    flex-shrink: 0;
+  }
+
+  .nav-spacer {
+    flex: 1;
   }
 
   .spacer {
@@ -177,7 +228,7 @@
   }
 
   .settings {
-    color: #484848;
+    color: #505050;
   }
 
   .saved-badge {
@@ -196,9 +247,8 @@
     margin: 4px 0;
   }
 
-  .saved-badge i {
-    width: 16px;
-    height: 16px;
+  .saved-badge :global(svg) {
+    flex-shrink: 0;
   }
 
   .user-section {
