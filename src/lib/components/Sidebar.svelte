@@ -82,12 +82,12 @@
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
-    background: linear-gradient(180deg, #0c0c0c 0%, #171717 40%, #1a1a1a 100%);
+    background: linear-gradient(180deg, #070d1a 0%, #0b1120 40%, #0f1729 100%);
   }
 
   .accent-line {
     height: 3px;
-    background: linear-gradient(90deg, #059669, #10b981, #c9a96e, #8b6f47);
+    background: linear-gradient(90deg, #059669, #10b981, #3b82f6, #1e3a5f);
     flex-shrink: 0;
   }
 
@@ -141,7 +141,7 @@
     height: 40px;
     padding: 0 14px;
     border-radius: var(--radius-sm);
-    color: #505050;
+    color: #475569;
     font-size: 14px;
     font-weight: 400;
     transition: background 0.15s, color 0.15s;
@@ -152,16 +152,16 @@
   }
 
   .nav-item span {
-    color: #808080;
+    color: #64748b;
   }
 
   .nav-item:hover {
     background: rgba(255, 255, 255, 0.05);
-    color: #888;
+    color: #7b8da6;
   }
 
   .nav-item:hover span {
-    color: #999;
+    color: #94a3b8;
   }
 
   .nav-item.active {
@@ -217,7 +217,7 @@
   .divider {
     height: 1px;
     margin: 12px 0;
-    background: linear-gradient(90deg, transparent, #2a2a2a 30%, #2a2a2a 70%, transparent);
+    background: linear-gradient(90deg, transparent, #1e293b 30%, #1e293b 70%, transparent);
   }
 
   .saved-badge {
@@ -254,7 +254,7 @@
     width: 32px;
     height: 32px;
     border-radius: 16px;
-    background: linear-gradient(135deg, #8b6f47, #c9a96e);
+    background: linear-gradient(135deg, #1e3a5f, #3b82f6);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -278,7 +278,7 @@
   }
 
   .user-role {
-    color: #666;
+    color: #64748b;
     font-size: 11px;
   }
 </style>

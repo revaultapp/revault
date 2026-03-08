@@ -71,38 +71,38 @@
     height: 36px;
     padding: 0 12px;
     margin-left: auto;
-    background: var(--wood-bg);
+    background: var(--navy-bg);
     border-radius: 10px;
-    color: var(--wood-medium);
+    color: var(--navy-medium);
     font-size: 13px;
     cursor: pointer;
     transition: background 0.15s;
   }
 
   .search-box:hover {
-    background: var(--wood-border);
+    background: var(--navy-border);
   }
 
   kbd {
     font-family: var(--font);
     font-size: 11px;
     padding: 2px 6px;
-    background: var(--wood-border);
+    background: var(--navy-border);
     border-radius: 5px;
-    color: var(--wood);
+    color: var(--navy);
     margin-left: 8px;
   }
 
   .bell {
     position: relative;
-    color: var(--wood-medium);
+    color: var(--navy-medium);
     padding: 8px;
     border-radius: var(--radius-sm);
     transition: color 0.15s;
   }
 
   .bell:hover {
-    color: var(--wood);
+    color: var(--navy);
   }
 
   .bell-dot {

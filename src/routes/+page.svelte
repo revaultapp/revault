@@ -30,8 +30,8 @@
 
   .placeholder span {
     font-size: 12px;
-    color: var(--wood);
-    background: var(--wood-bg);
+    color: var(--navy);
+    background: var(--navy-bg);
     padding: 4px 12px;
     border-radius: 6px;
   }

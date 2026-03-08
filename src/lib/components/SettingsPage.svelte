@@ -178,21 +178,21 @@
     gap: 6px;
     padding: 6px 12px;
     border-radius: 8px;
-    background: var(--wood-bg);
-    color: var(--wood);
+    background: var(--navy-bg);
+    color: var(--navy);
     font-size: 12px;
     font-weight: 500;
     transition: background 0.15s;
   }
 
   .pill:hover {
-    background: var(--wood-border);
+    background: var(--navy-border);
   }
 
   .segmented {
     display: flex;
     border-radius: 8px;
-    background: var(--wood-bg);
+    background: var(--navy-bg);
     overflow: hidden;
   }
 
@@ -209,7 +209,7 @@
 
   .seg.active {
     background: var(--bg-card);
-    color: var(--wood);
+    color: var(--navy);
     font-weight: 600;
     box-shadow: 0 0 0 1px var(--border);
   }
