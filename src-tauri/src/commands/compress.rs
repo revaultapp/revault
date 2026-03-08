@@ -10,6 +10,7 @@ fn detect_format(path: &str) -> OutputFormat {
     {
         Some("png") => OutputFormat::Png,
         Some("webp") => OutputFormat::Webp,
+        Some("heic") | Some("heif") => OutputFormat::Jpeg,
         _ => OutputFormat::Jpeg,
     }
 }

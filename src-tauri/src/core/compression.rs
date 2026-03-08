@@ -1,6 +1,19 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Cursor;
+use std::path::Path;
+
+fn open_image(input_path: &str) -> Result<image::DynamicImage, Box<dyn std::error::Error>> {
+    let ext = Path::new(input_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase());
+
+    match ext.as_deref() {
+        Some("heic") | Some("heif") => crate::core::heic::decode_heic(input_path),
+        _ => Ok(image::open(input_path)?),
+    }
+}
 
 #[derive(Debug, Serialize)]
 pub struct CompressionResult {
@@ -30,14 +43,30 @@ pub fn compress_jpeg(
         return Err("file exceeds 100 MB limit".into());
     }
 
-    let input = fs::read(input_path)?;
+    let ext = Path::new(input_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase());
+    let is_heic = matches!(ext.as_deref(), Some("heic") | Some("heif"));
 
-    let dinfo = mozjpeg::Decompress::with_markers(mozjpeg::ALL_MARKERS).from_mem(&input)?;
-    let mut rgb = dinfo.rgb()?;
-    let width = rgb.width();
-    let height = rgb.height();
-    let pixels: Vec<u8> = rgb.read_scanlines()?;
-    rgb.finish()?;
+    let (width, height, pixels) = if is_heic {
+        let img = crate::core::heic::decode_heic(input_path)?;
+        let rgb_img = img.to_rgb8();
+        (
+            rgb_img.width() as usize,
+            rgb_img.height() as usize,
+            rgb_img.into_raw(),
+        )
+    } else {
+        let input = fs::read(input_path)?;
+        let dinfo = mozjpeg::Decompress::with_markers(mozjpeg::ALL_MARKERS).from_mem(&input)?;
+        let mut rgb = dinfo.rgb()?;
+        let w = rgb.width();
+        let h = rgb.height();
+        let p: Vec<u8> = rgb.read_scanlines()?;
+        rgb.finish()?;
+        (w, h, p)
+    };
 
     let mut cinfo = mozjpeg::Compress::new(mozjpeg::ColorSpace::JCS_RGB);
     cinfo.set_size(width, height);
@@ -70,7 +99,7 @@ pub fn compress_png(
         return Err("file exceeds 100 MB limit".into());
     }
 
-    let img = image::open(input_path)?;
+    let img = open_image(input_path)?;
     let mut png_buffer = Cursor::new(Vec::new());
     img.write_to(&mut png_buffer, image::ImageFormat::Png)?;
 
@@ -102,7 +131,7 @@ pub fn compress_webp(
         return Err("file exceeds 100 MB limit".into());
     }
 
-    let img = image::open(input_path)?;
+    let img = open_image(input_path)?;
     let encoder = webp::Encoder::from_image(&img)?;
     let memory = encoder
         .encode_simple(false, quality)
