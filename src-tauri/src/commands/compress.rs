@@ -9,6 +9,7 @@ fn detect_format(path: &str) -> OutputFormat {
         .as_deref()
     {
         Some("png") => OutputFormat::Png,
+        Some("webp") => OutputFormat::Webp,
         _ => OutputFormat::Jpeg,
     }
 }
@@ -34,6 +35,7 @@ pub fn compress_images(
         let ext = match fmt {
             OutputFormat::Jpeg => "jpg",
             OutputFormat::Png => "png",
+            OutputFormat::Webp => "webp",
         };
         let output = parent.join(format!("{}_compressed.{ext}", stem.to_string_lossy()));
 

@@ -14,6 +14,7 @@ pub struct CompressionResult {
 pub enum OutputFormat {
     Jpeg,
     Png,
+    Webp,
 }
 
 pub fn compress_jpeg(
@@ -88,6 +89,36 @@ pub fn compress_png(
     })
 }
 
+pub fn compress_webp(
+    input_path: &str,
+    output_path: &str,
+    quality: f32,
+) -> Result<CompressionResult, Box<dyn std::error::Error>> {
+    let quality = quality.clamp(0.0, 100.0);
+
+    let metadata = fs::metadata(input_path)?;
+    let original_size = metadata.len();
+    if original_size > 100 * 1024 * 1024 {
+        return Err("file exceeds 100 MB limit".into());
+    }
+
+    let img = image::open(input_path)?;
+    let encoder = webp::Encoder::from_image(&img)?;
+    let memory = encoder
+        .encode_simple(false, quality)
+        .map_err(|e| format!("webp encoding failed: {e:?}"))?;
+
+    let compressed_size = memory.len() as u64;
+    fs::write(output_path, &*memory)?;
+
+    Ok(CompressionResult {
+        input_path: input_path.to_string(),
+        output_path: output_path.to_string(),
+        original_size,
+        compressed_size,
+    })
+}
+
 pub fn compress_image(
     input_path: &str,
     output_path: &str,
@@ -97,6 +128,7 @@ pub fn compress_image(
     match format {
         OutputFormat::Jpeg => compress_jpeg(input_path, output_path, quality),
         OutputFormat::Png => compress_png(input_path, output_path, quality as u8),
+        OutputFormat::Webp => compress_webp(input_path, output_path, quality),
     }
 }
 
@@ -194,6 +226,27 @@ mod tests {
     #[test]
     fn compress_png_invalid_path_returns_error() {
         let result = compress_png("/nonexistent/image.png", "/tmp/out.png", 2);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn compress_webp_reduces_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("test.png");
+        let output = dir.path().join("test_out.webp");
+
+        create_test_png(input.to_str().unwrap(), 200, 200);
+
+        let result =
+            compress_webp(input.to_str().unwrap(), output.to_str().unwrap(), 75.0).unwrap();
+
+        assert!(output.exists());
+        assert!(result.compressed_size > 0);
+    }
+
+    #[test]
+    fn compress_webp_invalid_path_returns_error() {
+        let result = compress_webp("/nonexistent/image.png", "/tmp/out.webp", 75.0);
         assert!(result.is_err());
     }
 
