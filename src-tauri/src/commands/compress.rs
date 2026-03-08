@@ -25,12 +25,32 @@ pub fn compress_images(
 
     for path in &paths {
         let input = Path::new(path);
-        let stem = input
-            .file_stem()
-            .ok_or_else(|| format!("invalid filename: {path}"))?;
-        let parent = input
-            .parent()
-            .ok_or_else(|| format!("invalid path: {path}"))?;
+        let stem = match input.file_stem() {
+            Some(s) => s,
+            None => {
+                results.push(compression::CompressionResult {
+                    input_path: path.to_string(),
+                    output_path: String::new(),
+                    original_size: 0,
+                    compressed_size: 0,
+                    error: Some(format!("invalid filename: {path}")),
+                });
+                continue;
+            }
+        };
+        let parent = match input.parent() {
+            Some(p) => p,
+            None => {
+                results.push(compression::CompressionResult {
+                    input_path: path.to_string(),
+                    output_path: String::new(),
+                    original_size: 0,
+                    compressed_size: 0,
+                    error: Some(format!("invalid path: {path}")),
+                });
+                continue;
+            }
+        };
 
         let fmt = format.clone().unwrap_or_else(|| detect_format(path));
         let ext = match fmt {
@@ -40,9 +60,16 @@ pub fn compress_images(
         };
         let output = parent.join(format!("{}_compressed.{ext}", stem.to_string_lossy()));
 
-        let result = compression::compress_image(path, &output.to_string_lossy(), &fmt, quality)
-            .map_err(|e| e.to_string())?;
-        results.push(result);
+        match compression::compress_image(path, &output.to_string_lossy(), &fmt, quality) {
+            Ok(result) => results.push(result),
+            Err(e) => results.push(compression::CompressionResult {
+                input_path: path.to_string(),
+                output_path: String::new(),
+                original_size: std::fs::metadata(path).map(|m| m.len()).unwrap_or(0),
+                compressed_size: 0,
+                error: Some(e.to_string()),
+            }),
+        }
     }
 
     Ok(results)

@@ -1,6 +1,7 @@
+use image::ImageReader;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::Cursor;
+use std::io::{BufReader, Cursor};
 use std::path::Path;
 
 fn open_image(input_path: &str) -> Result<image::DynamicImage, Box<dyn std::error::Error>> {
@@ -11,7 +12,11 @@ fn open_image(input_path: &str) -> Result<image::DynamicImage, Box<dyn std::erro
 
     match ext.as_deref() {
         Some("heic") | Some("heif") => crate::core::heic::decode_heic(input_path),
-        _ => Ok(image::open(input_path)?),
+        _ => {
+            let file = fs::File::open(input_path)?;
+            let reader = ImageReader::new(BufReader::new(file)).with_guessed_format()?;
+            Ok(reader.decode()?)
+        }
     }
 }
 
@@ -21,6 +26,7 @@ pub struct CompressionResult {
     pub output_path: String,
     pub original_size: u64,
     pub compressed_size: u64,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,13 +65,33 @@ pub fn compress_jpeg(
         )
     } else {
         let input = fs::read(input_path)?;
-        let dinfo = mozjpeg::Decompress::with_markers(mozjpeg::ALL_MARKERS).from_mem(&input)?;
-        let mut rgb = dinfo.rgb()?;
-        let w = rgb.width();
-        let h = rgb.height();
-        let p: Vec<u8> = rgb.read_scanlines()?;
-        rgb.finish()?;
-        (w, h, p)
+        let jpeg_result = {
+            let dinfo = mozjpeg::Decompress::with_markers(mozjpeg::ALL_MARKERS).from_mem(&input);
+            match dinfo {
+                Ok(dinfo) => {
+                    let mut rgb = dinfo.rgb()?;
+                    let w = rgb.width();
+                    let h = rgb.height();
+                    let p: Vec<u8> = rgb.read_scanlines()?;
+                    rgb.finish()?;
+                    Some((w, h, p))
+                }
+                Err(_) => None,
+            }
+        };
+        match jpeg_result {
+            Some(whp) => whp,
+            None => {
+                // Not a valid JPEG (e.g. renamed PNG) — decode via image crate and convert
+                let img = open_image(input_path)?;
+                let rgb_img = img.to_rgb8();
+                (
+                    rgb_img.width() as usize,
+                    rgb_img.height() as usize,
+                    rgb_img.into_raw(),
+                )
+            }
+        }
     };
 
     let mut cinfo = mozjpeg::Compress::new(mozjpeg::ColorSpace::JCS_RGB);
@@ -83,6 +109,7 @@ pub fn compress_jpeg(
         output_path: output_path.to_string(),
         original_size,
         compressed_size,
+        error: None,
     })
 }
 
@@ -115,6 +142,7 @@ pub fn compress_png(
         output_path: output_path.to_string(),
         original_size,
         compressed_size,
+        error: None,
     })
 }
 
@@ -145,6 +173,7 @@ pub fn compress_webp(
         output_path: output_path.to_string(),
         original_size,
         compressed_size,
+        error: None,
     })
 }
 

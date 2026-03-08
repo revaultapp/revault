@@ -47,6 +47,15 @@ mod platform {
         let bits_per_pixel = cg_image.bits_per_pixel();
         let bytes_per_pixel = bits_per_pixel / 8;
 
+        if width == 0 || height == 0 {
+            return Err("image has zero width or height".into());
+        }
+        if bytes_per_pixel == 0 {
+            return Err(
+                format!("unsupported pixel format: {bits_per_pixel} bits per pixel").into(),
+            );
+        }
+
         let data = cg_image.data();
         let raw = data.bytes();
 
