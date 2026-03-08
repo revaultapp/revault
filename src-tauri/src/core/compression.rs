@@ -1,5 +1,6 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::Cursor;
 
 #[derive(Debug, Serialize)]
 pub struct CompressionResult {
@@ -7,6 +8,12 @@ pub struct CompressionResult {
     pub output_path: String,
     pub original_size: u64,
     pub compressed_size: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum OutputFormat {
+    Jpeg,
+    Png,
 }
 
 pub fn compress_jpeg(
@@ -49,6 +56,50 @@ pub fn compress_jpeg(
     })
 }
 
+pub fn compress_png(
+    input_path: &str,
+    output_path: &str,
+    optimization_level: u8,
+) -> Result<CompressionResult, Box<dyn std::error::Error>> {
+    let optimization_level = optimization_level.min(6);
+
+    let metadata = fs::metadata(input_path)?;
+    let original_size = metadata.len();
+    if original_size > 100 * 1024 * 1024 {
+        return Err("file exceeds 100 MB limit".into());
+    }
+
+    let img = image::open(input_path)?;
+    let mut png_buffer = Cursor::new(Vec::new());
+    img.write_to(&mut png_buffer, image::ImageFormat::Png)?;
+
+    let raw_png = png_buffer.into_inner();
+    let optimized =
+        oxipng::optimize_from_memory(&raw_png, &oxipng::Options::from_preset(optimization_level))?;
+
+    let compressed_size = optimized.len() as u64;
+    fs::write(output_path, &optimized)?;
+
+    Ok(CompressionResult {
+        input_path: input_path.to_string(),
+        output_path: output_path.to_string(),
+        original_size,
+        compressed_size,
+    })
+}
+
+pub fn compress_image(
+    input_path: &str,
+    output_path: &str,
+    format: &OutputFormat,
+    quality: f32,
+) -> Result<CompressionResult, Box<dyn std::error::Error>> {
+    match format {
+        OutputFormat::Jpeg => compress_jpeg(input_path, output_path, quality),
+        OutputFormat::Png => compress_png(input_path, output_path, quality as u8),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -72,6 +123,20 @@ mod tests {
         let data = cinfo.finish().unwrap();
         let mut file = fs::File::create(path).unwrap();
         file.write_all(&data).unwrap();
+    }
+
+    fn create_test_png(path: &str, width: u32, height: u32) {
+        let mut img = image::RgbImage::new(width, height);
+        for y in 0..height {
+            for x in 0..width {
+                img.put_pixel(
+                    x,
+                    y,
+                    image::Rgb([(x % 256) as u8, (y % 256) as u8, ((x + y) % 256) as u8]),
+                );
+            }
+        }
+        img.save(path).unwrap();
     }
 
     #[test]
@@ -108,5 +173,58 @@ mod tests {
     fn compress_invalid_path_returns_error() {
         let result = compress_jpeg("/nonexistent/image.jpg", "/tmp/out.jpg", 80.0);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn compress_png_reduces_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("test.png");
+        let output = dir.path().join("test_out.png");
+
+        create_test_png(input.to_str().unwrap(), 200, 200);
+        let original_size = fs::metadata(&input).unwrap().len();
+
+        let result = compress_png(input.to_str().unwrap(), output.to_str().unwrap(), 2).unwrap();
+
+        assert!(output.exists());
+        assert_eq!(result.original_size, original_size);
+        assert!(result.compressed_size > 0);
+    }
+
+    #[test]
+    fn compress_png_invalid_path_returns_error() {
+        let result = compress_png("/nonexistent/image.png", "/tmp/out.png", 2);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn compress_image_routes_correctly() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let jpeg_input = dir.path().join("test.jpg");
+        let jpeg_output = dir.path().join("test_out.jpg");
+        create_test_jpeg(jpeg_input.to_str().unwrap(), 100, 100, 95.0);
+        let result = compress_image(
+            jpeg_input.to_str().unwrap(),
+            jpeg_output.to_str().unwrap(),
+            &OutputFormat::Jpeg,
+            60.0,
+        )
+        .unwrap();
+        assert!(jpeg_output.exists());
+        assert!(result.compressed_size > 0);
+
+        let png_input = dir.path().join("test.png");
+        let png_output = dir.path().join("test_out.png");
+        create_test_png(png_input.to_str().unwrap(), 100, 100);
+        let result = compress_image(
+            png_input.to_str().unwrap(),
+            png_output.to_str().unwrap(),
+            &OutputFormat::Png,
+            2.0,
+        )
+        .unwrap();
+        assert!(png_output.exists());
+        assert!(result.compressed_size > 0);
     }
 }
