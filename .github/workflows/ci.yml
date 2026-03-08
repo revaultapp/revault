@@ -56,7 +56,7 @@ jobs:
 
       - name: Rust format check
         working-directory: src-tauri
-        run: cargo fmt --workspace -- --check
+        run: cargo fmt --all -- --check
 
       - name: Rust clippy
         working-directory: src-tauri
