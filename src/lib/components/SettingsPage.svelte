@@ -128,7 +128,8 @@
 
   .section-header h2 {
     font-size: 18px;
-    font-weight: 600;
+    font-weight: 700;
+    letter-spacing: -0.025em;
     color: var(--text-primary);
   }
 

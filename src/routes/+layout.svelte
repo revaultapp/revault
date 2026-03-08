@@ -1,4 +1,5 @@
 <script lang="ts">
+  import "@fontsource-variable/plus-jakarta-sans";
   import "../app.css";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import TopBar from "$lib/components/TopBar.svelte";

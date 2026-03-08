@@ -20,13 +20,10 @@
 </script>
 
 <aside class="sidebar">
-  <div class="accent-line"></div>
-
   <div class="sidebar-inner">
     <div class="logo-row">
       <img class="logo-icon" src="/logo.png" alt="Revault" />
       <span class="logo-text">Revault</span>
-      <span class="status-dot"></span>
     </div>
 
     <nav class="nav">
@@ -85,17 +82,11 @@
     background: linear-gradient(180deg, #070d1a 0%, #0b1120 40%, #0f1729 100%);
   }
 
-  .accent-line {
-    height: 3px;
-    background: linear-gradient(90deg, #059669, #10b981, #3b82f6, #1e3a5f);
-    flex-shrink: 0;
-  }
-
   .sidebar-inner {
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 24px 18px 18px;
+    padding: 24px 18px 22px;
     overflow: hidden;
   }
 
@@ -116,16 +107,9 @@
 
   .logo-text {
     color: #fff;
-    font-size: 17px;
+    font-size: 18px;
     font-weight: 700;
-    letter-spacing: 0.5px;
-  }
-
-  .status-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 3px;
-    background: var(--accent);
+    letter-spacing: -0.02em;
   }
 
   .nav {
@@ -142,8 +126,8 @@
     padding: 0 14px;
     border-radius: var(--radius-sm);
     color: #475569;
-    font-size: 14px;
-    font-weight: 400;
+    font-size: 13.5px;
+    font-weight: 500;
     transition: background 0.15s, color 0.15s;
   }
 
@@ -216,7 +200,7 @@
 
   .divider {
     height: 1px;
-    margin: 12px 0;
+    margin: 16px 0;
     background: linear-gradient(90deg, transparent, #1e293b 30%, #1e293b 70%, transparent);
   }
 
@@ -231,8 +215,9 @@
     background: linear-gradient(90deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.08));
     border: 1px solid rgba(16, 185, 129, 0.19);
     color: var(--accent);
-    font-size: 13px;
-    font-weight: 700;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
     margin: 4px 0;
   }
 
@@ -246,7 +231,7 @@
     gap: 10px;
     height: 44px;
     padding: 0 6px;
-    margin-top: 8px;
+    margin-top: 14px;
     border-radius: 10px;
   }
 

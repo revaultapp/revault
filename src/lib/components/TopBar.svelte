@@ -54,14 +54,16 @@
   }
 
   .title-area h1 {
-    font-size: 18px;
-    font-weight: 600;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.025em;
     color: var(--text-primary);
   }
 
   .title-area p {
-    font-size: 12px;
-    color: var(--text-secondary);
+    font-size: 12.5px;
+    color: var(--text-muted);
+    font-weight: 400;
   }
 
   .search-box {
@@ -85,7 +87,8 @@
 
   kbd {
     font-family: var(--font);
-    font-size: 11px;
+    font-size: 10.5px;
+    font-weight: 600;
     padding: 2px 6px;
     background: var(--navy-border);
     border-radius: 5px;

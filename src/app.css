@@ -21,7 +21,7 @@
   --sidebar-width: 220px;
   --topbar-height: 64px;
 
-  --font: "Inter", system-ui, -apple-system, sans-serif;
+  --font: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
 }
 
 [data-theme="dark"] {
@@ -53,7 +53,8 @@ html, body {
   height: 100%;
   font-family: var(--font);
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.6;
+  letter-spacing: -0.01em;
   color: var(--text-primary);
   background: var(--bg-main);
   -webkit-font-smoothing: antialiased;
