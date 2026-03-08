@@ -10,6 +10,49 @@
   } from "$lib/stores/compress";
   import { X, Upload, CheckCircle, AlertCircle, Clock, Trash2 } from "lucide-svelte";
 
+  let displayPct = $state(0);
+
+  $effect(() => {
+    if (!$isCompressing) return;
+
+    displayPct = 0;
+    let lastRealPct = 0;
+    let lastCompletionTime = performance.now();
+    let rafId: number;
+
+    function tick() {
+      const total = $files.length;
+      if (total === 0) return;
+
+      const completed = $summary.done + $summary.failed;
+      const realPct = (completed / total) * 100;
+      const stepSize = 100 / total;
+
+      if (realPct > lastRealPct) {
+        lastRealPct = realPct;
+        lastCompletionTime = performance.now();
+      }
+
+      // Between completions, creep forward slowly over ~2.5s
+      const elapsed = performance.now() - lastCompletionTime;
+      const creep = Math.min(elapsed / 2500, 0.85) * stepSize;
+      const target = Math.min(realPct + creep, realPct >= 100 ? 100 : 99);
+
+      // Exponential smoothing — buttery 60fps
+      displayPct += (target - displayPct) * 0.06;
+
+      if (realPct >= 100 && displayPct > 99.5) {
+        displayPct = 100;
+        return;
+      }
+
+      rafId = requestAnimationFrame(tick);
+    }
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  });
+
   interface CompressionResult {
     input_path: string;
     output_path: string;
@@ -54,27 +97,22 @@
     if (selected) addFiles(selected);
   }
 
-  async function startCompression() {
-    const currentFiles = $files;
-    if (currentFiles.length === 0) return;
-    isCompressing.set(true);
-
-    const paths = currentFiles.map((f) => f.path);
-    const q = $quality;
-    const fmt = $format;
-
-    files.update((all) => all.map((f) => ({ ...f, status: "compressing" as const })));
+  async function compressFile(file: CompressFile, q: number, fmt: OutputFormat | null): Promise<void> {
+    files.update((all) =>
+      all.map((f) => f.path === file.path ? { ...f, status: "compressing" as const } : f),
+    );
 
     try {
       const results = await invoke<CompressionResult[]>("compress_images", {
-        paths,
+        paths: [file.path],
         quality: q,
         format: fmt,
       });
 
+      const result = results[0];
       files.update((all) =>
         all.map((f) => {
-          const result = results.find((r) => r.input_path === f.path);
+          if (f.path !== file.path) return f;
           if (!result) return { ...f, status: "error" as const, error: "No result returned" };
           if (result.error) {
             return { ...f, status: "error" as const, error: result.error, size: result.original_size };
@@ -91,14 +129,42 @@
     } catch (err) {
       files.update((all) =>
         all.map((f) =>
-          f.status === "compressing"
+          f.path === file.path
             ? { ...f, status: "error" as const, error: String(err) }
             : f,
         ),
       );
-    } finally {
-      isCompressing.set(false);
     }
+  }
+
+  async function startCompression() {
+    const currentFiles = $files;
+    if (currentFiles.length === 0) return;
+    isCompressing.set(true);
+
+    const q = $quality;
+    const fmt = $format;
+
+    // Leave 2 cores free for OS + UI thread to prevent beach ball
+    const concurrency = Math.min(
+      Math.max(2, (navigator.hardwareConcurrency || 4) - 2),
+      currentFiles.length,
+    );
+
+    // Mark all as pending, yield to let UI paint before heavy work
+    files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
+    await new Promise((r) => setTimeout(r, 0));
+
+    let nextIndex = 0;
+    async function worker() {
+      while (nextIndex < currentFiles.length) {
+        const file = currentFiles[nextIndex++];
+        await compressFile(file, q, fmt);
+      }
+    }
+
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+    isCompressing.set(false);
   }
 
   function formatBytes(bytes: number): string {
@@ -133,19 +199,40 @@
       </div>
     </div>
   </div>
+{:else if $isCompressing}
+  <!-- Compressing State — circular progress -->
+  {@const circumference = 2 * Math.PI * 54}
+  {@const offset = circumference - (displayPct / 100) * circumference}
+  <div class="progress-screen">
+    <div class="circle-wrap">
+      <svg width="180" height="180" viewBox="0 0 120 120">
+        <circle cx="60" cy="60" r="54" fill="none" stroke="var(--navy-bg)" stroke-width="6" />
+        <circle
+          cx="60" cy="60" r="54" fill="none"
+          stroke="var(--accent)" stroke-width="6"
+          stroke-linecap="round"
+          stroke-dasharray={circumference}
+          stroke-dashoffset={offset}
+          transform="rotate(-90 60 60)"
+          class="arc"
+        />
+      </svg>
+      <span class="pct">{Math.round(displayPct)}<small>%</small></span>
+    </div>
+    <p class="progress-label">{$summary.done + $summary.failed} of {$files.length} files</p>
+    {#if $summary.savedBytes > 0}
+      <p class="progress-saved">Saved {formatBytes($summary.savedBytes)}</p>
+    {/if}
+  </div>
 {:else}
   <!-- File List State -->
   <div class="compress-view">
     <div class="header">
       <div class="header-left">
         <h2>
-          {#if $isCompressing}
-            Compressing {$files.length} image{$files.length > 1 ? "s" : ""}...
-          {:else if $summary.done > 0 || $summary.failed > 0}
+          {#if $summary.done > 0 || $summary.failed > 0}
             {$summary.done} of {$files.length} compressed
-            {#if $summary.failed > 0}
-              · {$summary.failed} failed
-            {/if}
+            {#if $summary.failed > 0}· {$summary.failed} failed{/if}
           {:else}
             {$files.length} image{$files.length > 1 ? "s" : ""} selected
           {/if}
@@ -163,15 +250,9 @@
       </div>
     </div>
 
-    {#if $isCompressing || $summary.done > 0}
-      <div class="progress-bar">
-        <div class="progress-fill" style="width: {(($summary.done + $summary.failed) / $files.length) * 100}%"></div>
-      </div>
-    {/if}
-
     <div class="file-list">
       {#each $files as file (file.path)}
-        <div class="file-row" class:active={file.status === "compressing"} class:failed={file.status === "error"}>
+        <div class="file-row" class:failed={file.status === "error"}>
           <div class="file-info">
             <span class="file-name">{file.name}</span>
             <span class="file-detail">
@@ -179,8 +260,6 @@
                 {formatBytes(file.size)} → {formatBytes(file.compressedSize ?? 0)} · {savedPercent(file)}
               {:else if file.status === "error"}
                 {file.error}
-              {:else if file.status === "compressing"}
-                Compressing...
               {:else}
                 Ready
               {/if}
@@ -191,8 +270,6 @@
               <CheckCircle size={18} />
             {:else if file.status === "error"}
               <AlertCircle size={18} />
-            {:else if file.status === "compressing"}
-              <div class="spinner"></div>
             {:else}
               <button class="btn-icon" onclick={() => removeFile(file.path)}>
                 <X size={16} />
@@ -221,12 +298,8 @@
         <label for="quality-slider">Quality <span class="quality-value">{$quality}%</span></label>
         <input id="quality-slider" type="range" min="10" max="100" step="5" bind:value={$quality} />
       </div>
-      <button class="btn-primary" onclick={startCompression} disabled={$isCompressing}>
-        {#if $isCompressing}
-          Compressing...
-        {:else}
-          Compress {$files.length > 1 ? "All" : ""}
-        {/if}
+      <button class="btn-primary" onclick={startCompression}>
+        Compress {$files.length > 1 ? "All" : ""}
       </button>
     </div>
   </div>
@@ -288,6 +361,64 @@
     color: var(--text-secondary);
   }
 
+  /* Progress Screen */
+  .progress-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100%;
+    gap: 20px;
+  }
+
+  .circle-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .circle-wrap svg {
+    filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.25));
+    animation: glow-pulse 2.5s ease-in-out infinite;
+  }
+
+  .arc {
+    filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.5));
+  }
+
+  @keyframes glow-pulse {
+    0%, 100% { filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.2)); }
+    50% { filter: drop-shadow(0 0 16px rgba(16, 185, 129, 0.45)); }
+  }
+
+  .pct {
+    position: absolute;
+    font-size: 38px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pct small {
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--text-muted);
+  }
+
+  .progress-label {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+
+  .progress-saved {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+  }
+
   /* Compress View */
   .compress-view {
     display: flex;
@@ -339,20 +470,6 @@
     border-color: #ef4444;
   }
 
-  /* Progress Bar */
-  .progress-bar {
-    height: 4px;
-    border-radius: 2px;
-    background: var(--navy-bg);
-  }
-
-  .progress-fill {
-    height: 100%;
-    border-radius: 2px;
-    background: var(--accent);
-    transition: width 0.3s ease;
-  }
-
   /* File List */
   .file-list {
     flex: 1;
@@ -371,10 +488,6 @@
     border-radius: var(--radius-sm);
     background: var(--bg-card);
     transition: background 0.15s;
-  }
-
-  .file-row.active {
-    outline: 1px solid var(--accent);
   }
 
   .file-row.failed {
@@ -428,20 +541,6 @@
 
   .btn-icon:hover {
     color: #ef4444;
-  }
-
-  /* Spinner */
-  .spinner {
-    width: 18px;
-    height: 18px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-
-  @keyframes spin {
-    to { transform: rotate(360deg); }
   }
 
   /* Controls */
