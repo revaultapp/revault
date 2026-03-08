@@ -11,10 +11,8 @@
   <Sidebar />
   <div class="main">
     <TopBar />
-    <div class="content-wrapper">
-      <div class="content">
-        {@render children()}
-      </div>
+    <div class="content-area">
+      {@render children()}
     </div>
   </div>
 </div>
@@ -34,18 +32,9 @@
     background: var(--bg-main);
   }
 
-  .content-wrapper {
+  .content-area {
     flex: 1;
     padding: 28px;
     overflow-y: auto;
-  }
-
-  .content {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    padding: 32px 40px;
-    min-height: 100%;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.03);
   }
 </style>
