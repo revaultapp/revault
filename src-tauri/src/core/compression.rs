@@ -64,25 +64,29 @@ pub fn compress_jpeg(
             rgb_img.into_raw(),
         )
     } else {
-        let input = fs::read(input_path)?;
-        let jpeg_result = {
-            let dinfo = mozjpeg::Decompress::with_markers(mozjpeg::ALL_MARKERS).from_mem(&input);
-            match dinfo {
-                Ok(dinfo) => {
-                    let mut rgb = dinfo.rgb()?;
-                    let w = rgb.width();
-                    let h = rgb.height();
-                    let p: Vec<u8> = rgb.read_scanlines()?;
-                    rgb.finish()?;
-                    Some((w, h, p))
-                }
-                Err(_) => None,
+        // Only read full file if it looks like a JPEG (magic bytes FF D8 FF)
+        let jpeg_result = fs::read(input_path).ok().and_then(|input| {
+            if !input.starts_with(&[0xFF, 0xD8, 0xFF]) {
+                return None;
             }
-        };
+            // mozjpeg panics (not Err) on invalid data — catch_unwind is required
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let dinfo = mozjpeg::Decompress::with_markers(mozjpeg::ALL_MARKERS)
+                    .from_mem(&input)?;
+                let mut rgb = dinfo.rgb()?;
+                let w = rgb.width();
+                let h = rgb.height();
+                let p: Vec<u8> = rgb.read_scanlines()?;
+                rgb.finish()?;
+                Ok::<_, Box<dyn std::error::Error + Send + Sync>>((w, h, p))
+            }))
+            .ok()
+            .and_then(|r| r.ok())
+        });
+
         match jpeg_result {
             Some(whp) => whp,
             None => {
-                // Not a valid JPEG (e.g. renamed PNG) — decode via image crate and convert
                 let img = open_image(input_path)?;
                 let rgb_img = img.to_rgb8();
                 (
