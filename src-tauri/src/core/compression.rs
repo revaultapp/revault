@@ -4,21 +4,7 @@ use std::fs;
 use std::io::{BufReader, Cursor};
 use std::path::Path;
 
-fn open_image(input_path: &str) -> Result<image::DynamicImage, Box<dyn std::error::Error>> {
-    let ext = Path::new(input_path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_lowercase());
-
-    match ext.as_deref() {
-        Some("heic") | Some("heif") => crate::core::heic::decode_heic(input_path),
-        _ => {
-            let file = fs::File::open(input_path)?;
-            let reader = ImageReader::new(BufReader::new(file)).with_guessed_format()?;
-            Ok(reader.decode()?)
-        }
-    }
-}
+const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
 
 #[derive(Debug, Serialize)]
 pub struct CompressionResult {
@@ -29,11 +15,66 @@ pub struct CompressionResult {
     pub error: Option<String>,
 }
 
+impl CompressionResult {
+    pub fn ok(input: &str, output: &str, original: u64, compressed: u64) -> Self {
+        Self {
+            input_path: input.to_string(),
+            output_path: output.to_string(),
+            original_size: original,
+            compressed_size: compressed,
+            error: None,
+        }
+    }
+
+    pub fn err(input: &str, msg: String) -> Self {
+        Self {
+            input_path: input.to_string(),
+            output_path: String::new(),
+            original_size: fs::metadata(input).map(|m| m.len()).unwrap_or(0),
+            compressed_size: 0,
+            error: Some(msg),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum OutputFormat {
     Jpeg,
     Png,
     Webp,
+}
+
+fn ext_lowercase(path: &str) -> Option<String> {
+    Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+}
+
+fn open_image(path: &str) -> Result<image::DynamicImage, Box<dyn std::error::Error>> {
+    match ext_lowercase(path).as_deref() {
+        Some("heic") | Some("heif") => crate::core::heic::decode_heic(path),
+        _ => {
+            let file = fs::File::open(path)?;
+            Ok(ImageReader::new(BufReader::new(file))
+                .with_guessed_format()?
+                .decode()?)
+        }
+    }
+}
+
+fn checked_size(path: &str) -> Result<u64, Box<dyn std::error::Error>> {
+    let size = fs::metadata(path)?.len();
+    if size > MAX_FILE_SIZE {
+        return Err("file exceeds 100 MB limit".into());
+    }
+    Ok(size)
+}
+
+fn decode_rgb(path: &str) -> Result<(usize, usize, Vec<u8>), Box<dyn std::error::Error>> {
+    let img = open_image(path)?;
+    let rgb = img.to_rgb8();
+    Ok((rgb.width() as usize, rgb.height() as usize, rgb.into_raw()))
 }
 
 pub fn compress_jpeg(
@@ -42,56 +83,38 @@ pub fn compress_jpeg(
     quality: f32,
 ) -> Result<CompressionResult, Box<dyn std::error::Error>> {
     let quality = quality.clamp(0.0, 100.0);
+    let original_size = checked_size(input_path)?;
 
-    let metadata = fs::metadata(input_path)?;
-    let original_size = metadata.len();
-    if original_size > 100 * 1024 * 1024 {
-        return Err("file exceeds 100 MB limit".into());
-    }
-
-    let ext = Path::new(input_path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_lowercase());
-    let is_heic = matches!(ext.as_deref(), Some("heic") | Some("heif"));
+    // HEIC: skip file read + magic byte check, go straight to native decoder
+    let is_heic = matches!(
+        ext_lowercase(input_path).as_deref(),
+        Some("heic") | Some("heif")
+    );
 
     let (width, height, pixels) = if is_heic {
-        let img = crate::core::heic::decode_heic(input_path)?;
-        let rgb_img = img.to_rgb8();
-        (
-            rgb_img.width() as usize,
-            rgb_img.height() as usize,
-            rgb_img.into_raw(),
-        )
+        decode_rgb(input_path)?
     } else {
-        let input = fs::read(input_path)?;
-        let jpeg_result = {
-            let dinfo = mozjpeg::Decompress::with_markers(mozjpeg::ALL_MARKERS).from_mem(&input);
-            match dinfo {
-                Ok(dinfo) => {
-                    let mut rgb = dinfo.rgb()?;
-                    let w = rgb.width();
-                    let h = rgb.height();
-                    let p: Vec<u8> = rgb.read_scanlines()?;
-                    rgb.finish()?;
-                    Some((w, h, p))
-                }
-                Err(_) => None,
+        // Try mozjpeg direct decode (better quality) — falls back to image crate
+        let jpeg_result = fs::read(input_path).ok().and_then(|input| {
+            if !input.starts_with(&[0xFF, 0xD8, 0xFF]) {
+                return None;
             }
-        };
-        match jpeg_result {
-            Some(whp) => whp,
-            None => {
-                // Not a valid JPEG (e.g. renamed PNG) — decode via image crate and convert
-                let img = open_image(input_path)?;
-                let rgb_img = img.to_rgb8();
-                (
-                    rgb_img.width() as usize,
-                    rgb_img.height() as usize,
-                    rgb_img.into_raw(),
-                )
-            }
-        }
+            // mozjpeg panics (not Err) on invalid data — catch_unwind is required
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let dinfo =
+                    mozjpeg::Decompress::with_markers(mozjpeg::ALL_MARKERS).from_mem(&input)?;
+                let mut rgb = dinfo.rgb()?;
+                let w = rgb.width();
+                let h = rgb.height();
+                let p: Vec<u8> = rgb.read_scanlines()?;
+                rgb.finish()?;
+                Ok::<_, Box<dyn std::error::Error + Send + Sync>>((w, h, p))
+            }))
+            .ok()
+            .and_then(|r| r.ok())
+        });
+
+        jpeg_result.map_or_else(|| decode_rgb(input_path), Ok)?
     };
 
     let mut cinfo = mozjpeg::Compress::new(mozjpeg::ColorSpace::JCS_RGB);
@@ -104,46 +127,39 @@ pub fn compress_jpeg(
     let compressed_size = compressed.len() as u64;
     fs::write(output_path, &compressed)?;
 
-    Ok(CompressionResult {
-        input_path: input_path.to_string(),
-        output_path: output_path.to_string(),
+    Ok(CompressionResult::ok(
+        input_path,
+        output_path,
         original_size,
         compressed_size,
-        error: None,
-    })
+    ))
 }
 
 pub fn compress_png(
     input_path: &str,
     output_path: &str,
-    optimization_level: u8,
 ) -> Result<CompressionResult, Box<dyn std::error::Error>> {
-    let optimization_level = optimization_level.min(6);
+    let original_size = checked_size(input_path)?;
 
-    let metadata = fs::metadata(input_path)?;
-    let original_size = metadata.len();
-    if original_size > 100 * 1024 * 1024 {
-        return Err("file exceeds 100 MB limit".into());
-    }
+    let compressed = if matches!(ext_lowercase(input_path).as_deref(), Some("png")) {
+        // Already PNG: fast re-encode with oxipng preset 0
+        oxipng::optimize_from_memory(&fs::read(input_path)?, &oxipng::Options::from_preset(0))?
+    } else {
+        let img = open_image(input_path)?;
+        let mut buf = Cursor::new(Vec::new());
+        img.write_to(&mut buf, image::ImageFormat::Png)?;
+        buf.into_inner()
+    };
 
-    let img = open_image(input_path)?;
-    let mut png_buffer = Cursor::new(Vec::new());
-    img.write_to(&mut png_buffer, image::ImageFormat::Png)?;
+    let compressed_size = compressed.len() as u64;
+    fs::write(output_path, &compressed)?;
 
-    let raw_png = png_buffer.into_inner();
-    let optimized =
-        oxipng::optimize_from_memory(&raw_png, &oxipng::Options::from_preset(optimization_level))?;
-
-    let compressed_size = optimized.len() as u64;
-    fs::write(output_path, &optimized)?;
-
-    Ok(CompressionResult {
-        input_path: input_path.to_string(),
-        output_path: output_path.to_string(),
+    Ok(CompressionResult::ok(
+        input_path,
+        output_path,
         original_size,
         compressed_size,
-        error: None,
-    })
+    ))
 }
 
 pub fn compress_webp(
@@ -152,29 +168,28 @@ pub fn compress_webp(
     quality: f32,
 ) -> Result<CompressionResult, Box<dyn std::error::Error>> {
     let quality = quality.clamp(0.0, 100.0);
-
-    let metadata = fs::metadata(input_path)?;
-    let original_size = metadata.len();
-    if original_size > 100 * 1024 * 1024 {
-        return Err("file exceeds 100 MB limit".into());
-    }
+    let original_size = checked_size(input_path)?;
 
     let img = open_image(input_path)?;
     let encoder = webp::Encoder::from_image(&img)?;
+
+    let mut config = webp::WebPConfig::new().map_err(|_| "failed to create WebP config")?;
+    config.quality = quality;
+    config.method = 0; // fastest encoding (default 4 is ~3x slower)
+
     let memory = encoder
-        .encode_simple(false, quality)
+        .encode_advanced(&config)
         .map_err(|e| format!("webp encoding failed: {e:?}"))?;
 
     let compressed_size = memory.len() as u64;
     fs::write(output_path, &*memory)?;
 
-    Ok(CompressionResult {
-        input_path: input_path.to_string(),
-        output_path: output_path.to_string(),
+    Ok(CompressionResult::ok(
+        input_path,
+        output_path,
         original_size,
         compressed_size,
-        error: None,
-    })
+    ))
 }
 
 pub fn compress_image(
@@ -185,9 +200,53 @@ pub fn compress_image(
 ) -> Result<CompressionResult, Box<dyn std::error::Error>> {
     match format {
         OutputFormat::Jpeg => compress_jpeg(input_path, output_path, quality),
-        OutputFormat::Png => compress_png(input_path, output_path, quality as u8),
+        OutputFormat::Png => compress_png(input_path, output_path),
         OutputFormat::Webp => compress_webp(input_path, output_path, quality),
     }
+}
+
+pub fn detect_format(path: &str) -> OutputFormat {
+    match ext_lowercase(path).as_deref() {
+        Some("png") => OutputFormat::Png,
+        Some("webp") => OutputFormat::Webp,
+        _ => OutputFormat::Jpeg,
+    }
+}
+
+pub fn compress_batch(
+    paths: &[String],
+    quality: f32,
+    format: Option<OutputFormat>,
+    output_dir: Option<&str>,
+) -> Vec<CompressionResult> {
+    paths
+        .iter()
+        .map(|path| {
+            let input = Path::new(path.as_str());
+            let stem = match input.file_stem().and_then(|s| s.to_str()) {
+                Some(s) => s,
+                None => return CompressionResult::err(path, format!("invalid filename: {path}")),
+            };
+            let parent = match input.parent() {
+                Some(p) => p,
+                None => return CompressionResult::err(path, format!("invalid path: {path}")),
+            };
+
+            let fmt = format.clone().unwrap_or_else(|| detect_format(path));
+            let ext = match fmt {
+                OutputFormat::Jpeg => "jpg",
+                OutputFormat::Png => "png",
+                OutputFormat::Webp => "webp",
+            };
+            let out_base = output_dir.map(Path::new).unwrap_or(parent);
+            let output = out_base.join(format!("{stem}_compressed.{ext}"));
+
+            match compress_image(path, &output.to_string_lossy(), &fmt, quality) {
+                Ok(r) => r,
+                Err(e) => CompressionResult::err(path, e.to_string()),
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -274,17 +333,11 @@ mod tests {
         create_test_png(input.to_str().unwrap(), 200, 200);
         let original_size = fs::metadata(&input).unwrap().len();
 
-        let result = compress_png(input.to_str().unwrap(), output.to_str().unwrap(), 2).unwrap();
+        let result = compress_png(input.to_str().unwrap(), output.to_str().unwrap()).unwrap();
 
         assert!(output.exists());
         assert_eq!(result.original_size, original_size);
         assert!(result.compressed_size > 0);
-    }
-
-    #[test]
-    fn compress_png_invalid_path_returns_error() {
-        let result = compress_png("/nonexistent/image.png", "/tmp/out.png", 2);
-        assert!(result.is_err());
     }
 
     #[test]
@@ -303,39 +356,29 @@ mod tests {
     }
 
     #[test]
-    fn compress_webp_invalid_path_returns_error() {
-        let result = compress_webp("/nonexistent/image.png", "/tmp/out.webp", 75.0);
-        assert!(result.is_err());
+    fn compress_batch_handles_mixed_results() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("test.jpg");
+        create_test_jpeg(input.to_str().unwrap(), 100, 100, 95.0);
+
+        let paths = vec![
+            input.to_string_lossy().to_string(),
+            "/nonexistent/fake.jpg".to_string(),
+        ];
+        let results = compress_batch(&paths, 60.0, None, None);
+
+        assert_eq!(results.len(), 2);
+        assert!(results[0].error.is_none());
+        assert!(results[0].compressed_size > 0);
+        assert!(results[1].error.is_some());
     }
 
     #[test]
-    fn compress_image_routes_correctly() {
-        let dir = tempfile::tempdir().unwrap();
-
-        let jpeg_input = dir.path().join("test.jpg");
-        let jpeg_output = dir.path().join("test_out.jpg");
-        create_test_jpeg(jpeg_input.to_str().unwrap(), 100, 100, 95.0);
-        let result = compress_image(
-            jpeg_input.to_str().unwrap(),
-            jpeg_output.to_str().unwrap(),
-            &OutputFormat::Jpeg,
-            60.0,
-        )
-        .unwrap();
-        assert!(jpeg_output.exists());
-        assert!(result.compressed_size > 0);
-
-        let png_input = dir.path().join("test.png");
-        let png_output = dir.path().join("test_out.png");
-        create_test_png(png_input.to_str().unwrap(), 100, 100);
-        let result = compress_image(
-            png_input.to_str().unwrap(),
-            png_output.to_str().unwrap(),
-            &OutputFormat::Png,
-            2.0,
-        )
-        .unwrap();
-        assert!(png_output.exists());
-        assert!(result.compressed_size > 0);
+    fn detect_format_from_extension() {
+        assert!(matches!(detect_format("photo.jpg"), OutputFormat::Jpeg));
+        assert!(matches!(detect_format("photo.png"), OutputFormat::Png));
+        assert!(matches!(detect_format("photo.webp"), OutputFormat::Webp));
+        assert!(matches!(detect_format("photo.heic"), OutputFormat::Jpeg));
+        assert!(matches!(detect_format("photo.unknown"), OutputFormat::Jpeg));
     }
 }

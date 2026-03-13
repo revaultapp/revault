@@ -16,6 +16,7 @@ export interface CompressFile {
 export const files = writable<CompressFile[]>([]);
 export const quality = writable(80);
 export const format = writable<OutputFormat | null>(null);
+export const outputDir = writable<string | null>(null);
 export const isCompressing = writable(false);
 
 export const summary = derived(files, ($files) => {
