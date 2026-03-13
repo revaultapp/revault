@@ -116,26 +116,31 @@ pub fn compress_jpeg(
 pub fn compress_png(
     input_path: &str,
     output_path: &str,
-    optimization_level: u8,
 ) -> Result<CompressionResult, Box<dyn std::error::Error>> {
-    let optimization_level = optimization_level.min(6);
-
     let metadata = fs::metadata(input_path)?;
     let original_size = metadata.len();
     if original_size > 100 * 1024 * 1024 {
         return Err("file exceeds 100 MB limit".into());
     }
 
-    let img = open_image(input_path)?;
-    let mut png_buffer = Cursor::new(Vec::new());
-    img.write_to(&mut png_buffer, image::ImageFormat::Png)?;
+    let is_png = matches!(
+        Path::new(input_path).extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).as_deref(),
+        Some("png")
+    );
 
-    let raw_png = png_buffer.into_inner();
-    let optimized =
-        oxipng::optimize_from_memory(&raw_png, &oxipng::Options::from_preset(optimization_level))?;
+    let compressed = if is_png {
+        // Already PNG: fast re-encode with oxipng preset 0 (libdeflater level 5, no filter search)
+        oxipng::optimize_from_memory(&fs::read(input_path)?, &oxipng::Options::from_preset(0))?
+    } else {
+        // Non-PNG input: encode via image crate (fdeflate, fast and well-compressed)
+        let img = open_image(input_path)?;
+        let mut buf = Cursor::new(Vec::new());
+        img.write_to(&mut buf, image::ImageFormat::Png)?;
+        buf.into_inner()
+    };
 
-    let compressed_size = optimized.len() as u64;
-    fs::write(output_path, &optimized)?;
+    let compressed_size = compressed.len() as u64;
+    fs::write(output_path, &compressed)?;
 
     Ok(CompressionResult {
         input_path: input_path.to_string(),
@@ -185,7 +190,7 @@ pub fn compress_image(
 ) -> Result<CompressionResult, Box<dyn std::error::Error>> {
     match format {
         OutputFormat::Jpeg => compress_jpeg(input_path, output_path, quality),
-        OutputFormat::Png => compress_png(input_path, output_path, quality as u8),
+        OutputFormat::Png => compress_png(input_path, output_path),
         OutputFormat::Webp => compress_webp(input_path, output_path, quality),
     }
 }
@@ -274,7 +279,7 @@ mod tests {
         create_test_png(input.to_str().unwrap(), 200, 200);
         let original_size = fs::metadata(&input).unwrap().len();
 
-        let result = compress_png(input.to_str().unwrap(), output.to_str().unwrap(), 2).unwrap();
+        let result = compress_png(input.to_str().unwrap(), output.to_str().unwrap()).unwrap();
 
         assert!(output.exists());
         assert_eq!(result.original_size, original_size);
@@ -283,7 +288,7 @@ mod tests {
 
     #[test]
     fn compress_png_invalid_path_returns_error() {
-        let result = compress_png("/nonexistent/image.png", "/tmp/out.png", 2);
+        let result = compress_png("/nonexistent/image.png", "/tmp/out.png");
         assert!(result.is_err());
     }
 

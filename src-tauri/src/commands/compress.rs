@@ -20,6 +20,7 @@ pub async fn compress_images(
     paths: Vec<String>,
     quality: f32,
     format: Option<OutputFormat>,
+    output_dir: Option<String>,
 ) -> Result<Vec<compression::CompressionResult>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let mut results = Vec::with_capacity(paths.len());
@@ -59,7 +60,8 @@ pub async fn compress_images(
                 OutputFormat::Png => "png",
                 OutputFormat::Webp => "webp",
             };
-            let output = parent.join(format!("{}_compressed.{ext}", stem.to_string_lossy()));
+            let out_base = output_dir.as_deref().map(Path::new).unwrap_or(parent);
+            let output = out_base.join(format!("{}_compressed.{ext}", stem.to_string_lossy()));
 
             match compression::compress_image(path, &output.to_string_lossy(), &fmt, quality) {
                 Ok(result) => results.push(result),

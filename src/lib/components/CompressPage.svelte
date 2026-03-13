@@ -4,11 +4,12 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { onMount, onDestroy } from "svelte";
   import {
-    files, quality, format, isCompressing, summary,
+    files, quality, format, outputDir, isCompressing, summary,
     addFiles, removeFile, clearFiles,
     type OutputFormat, type CompressFile,
   } from "$lib/stores/compress";
-  import { X, Upload, CheckCircle, AlertCircle, Clock, Trash2 } from "lucide-svelte";
+  import { revealItemInDir } from "@tauri-apps/plugin-opener";
+  import { X, Upload, CheckCircle, AlertCircle, Trash2, FolderOpen } from "lucide-svelte";
 
   let displayPct = $state(0);
 
@@ -97,6 +98,16 @@
     if (selected) addFiles(selected);
   }
 
+  async function browseOutputDir() {
+    const selected = await open({ directory: true });
+    if (selected) outputDir.set(selected);
+  }
+
+  async function openOutputFolder() {
+    const firstOutput = $files.find((f) => f.outputPath)?.outputPath;
+    if (firstOutput) await revealItemInDir(firstOutput);
+  }
+
   async function compressFile(file: CompressFile, q: number, fmt: OutputFormat | null): Promise<void> {
     files.update((all) =>
       all.map((f) => f.path === file.path ? { ...f, status: "compressing" as const } : f),
@@ -107,6 +118,7 @@
         paths: [file.path],
         quality: q,
         format: fmt,
+        outputDir: $outputDir,
       });
 
       const result = results[0];
@@ -242,7 +254,14 @@
         {/if}
       </div>
       <div class="header-actions">
-        <button class="btn-ghost" onclick={browseFiles}>Add more</button>
+        {#if $summary.done > 0 && $summary.pending === 0}
+          <button class="btn-ghost" onclick={openOutputFolder}>
+            <FolderOpen size={14} />
+            Open Folder
+          </button>
+        {:else}
+          <button class="btn-ghost" onclick={browseFiles}>Add more</button>
+        {/if}
         <button class="btn-ghost danger" onclick={clearFiles}>
           <Trash2 size={14} />
           Clear
@@ -297,6 +316,13 @@
       <div class="control-group">
         <label for="quality-slider">Quality <span class="quality-value">{$quality}%</span></label>
         <input id="quality-slider" type="range" min="10" max="100" step="5" bind:value={$quality} />
+      </div>
+      <div class="control-group">
+        <span class="label">Output</span>
+        <button class="btn-ghost output-btn" onclick={browseOutputDir}>
+          <FolderOpen size={14} />
+          {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
+        </button>
       </div>
       <button class="btn-primary" onclick={startCompression}>
         Compress {$files.length > 1 ? "All" : ""}
@@ -463,6 +489,13 @@
 
   .btn-ghost:hover {
     background: var(--navy-bg);
+  }
+
+  .output-btn {
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .btn-ghost.danger:hover {
