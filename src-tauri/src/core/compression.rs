@@ -170,8 +170,14 @@ pub fn compress_webp(
 
     let img = open_image(input_path)?;
     let encoder = webp::Encoder::from_image(&img)?;
+
+    let mut config = webp::WebPConfig::new()
+        .map_err(|_| "failed to create WebP config")?;
+    config.quality = quality;
+    config.method = 0; // fastest encoding (default 4 is ~3x slower)
+
     let memory = encoder
-        .encode_simple(false, quality)
+        .encode_advanced(&config)
         .map_err(|e| format!("webp encoding failed: {e:?}"))?;
 
     let compressed_size = memory.len() as u64;
