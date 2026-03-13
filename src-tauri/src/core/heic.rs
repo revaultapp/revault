@@ -90,6 +90,7 @@ mod platform {
 #[cfg(target_os = "windows")]
 mod platform {
     use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{CO_E_ALREADYINITIALIZED, GENERIC_READ};
     use windows::Win32::Graphics::Imaging::*;
     use windows::Win32::System::Com::*;
 
