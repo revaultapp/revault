@@ -4,11 +4,9 @@
 
   const titles: Record<string, [string, string]> = {
     dashboard: ["Good morning, Mike", "Dashboard · 3 pending actions"],
-    compress: ["Compress", "Reduce file size"],
-    convert: ["Convert", "Change image formats"],
+    tools: ["Tools", "Compress, convert and resize"],
     analyze: ["Analyze", "Scan your storage"],
     organize: ["Organize", "Sort and manage files"],
-    edit: ["Edit", "Batch image editing"],
     privacy: ["Privacy", "Metadata and sensitive data"],
     cloud: ["Cloud", "Sync and backup"],
     settings: ["Settings", "Manage your preferences"],

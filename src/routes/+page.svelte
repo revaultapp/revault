@@ -1,11 +1,11 @@
 <script lang="ts">
   import { activePage } from "$lib/stores/nav";
   import SettingsPage from "$lib/components/SettingsPage.svelte";
-  import CompressPage from "$lib/components/CompressPage.svelte";
+  import ToolsPage from "$lib/components/ToolsPage.svelte";
 </script>
 
-{#if $activePage === "compress"}
-  <CompressPage />
+{#if $activePage === "tools"}
+  <ToolsPage />
 {:else if $activePage === "settings"}
   <SettingsPage />
 {:else}

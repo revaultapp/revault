@@ -1,7 +1,7 @@
 <script lang="ts">
   import {
-    Compass, Zap, Shuffle, ScanSearch,
-    Boxes, Sparkles, EyeOff, CloudCog,
+    Compass, Wand2, ScanSearch,
+    Boxes, EyeOff, CloudCog,
     Settings, Database
   } from "lucide-svelte";
   import { activePage } from "$lib/stores/nav";
@@ -9,11 +9,9 @@
   type NavItem = { icon: typeof Compass; id: string; label: string; badge?: string; dot?: boolean };
   const navItems: NavItem[] = [
     { icon: Compass, id: "dashboard", label: "Dashboard" },
-    { icon: Zap, id: "compress", label: "Compress" },
-    { icon: Shuffle, id: "convert", label: "Convert" },
+    { icon: Wand2, id: "tools", label: "Tools" },
     { icon: ScanSearch, id: "analyze", label: "Analyze", badge: "3" },
     { icon: Boxes, id: "organize", label: "Organize" },
-    { icon: Sparkles, id: "edit", label: "Edit" },
     { icon: EyeOff, id: "privacy", label: "Privacy" },
     { icon: CloudCog, id: "cloud", label: "Cloud", dot: true },
   ];
