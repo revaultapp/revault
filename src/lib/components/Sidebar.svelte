@@ -1,7 +1,7 @@
 <script lang="ts">
   import {
-    Compass, Zap, Shuffle, ScanSearch,
-    Boxes, Sparkles, EyeOff, CloudCog,
+    Compass, Wand2, ScanSearch,
+    Boxes, EyeOff, CloudCog,
     Settings, Database
   } from "lucide-svelte";
   import { activePage } from "$lib/stores/nav";
@@ -9,11 +9,9 @@
   type NavItem = { icon: typeof Compass; id: string; label: string; badge?: string; dot?: boolean };
   const navItems: NavItem[] = [
     { icon: Compass, id: "dashboard", label: "Dashboard" },
-    { icon: Zap, id: "compress", label: "Compress" },
-    { icon: Shuffle, id: "convert", label: "Convert" },
+    { icon: Wand2, id: "tools", label: "Tools" },
     { icon: ScanSearch, id: "analyze", label: "Analyze", badge: "3" },
     { icon: Boxes, id: "organize", label: "Organize" },
-    { icon: Sparkles, id: "edit", label: "Edit" },
     { icon: EyeOff, id: "privacy", label: "Privacy" },
     { icon: CloudCog, id: "cloud", label: "Cloud", dot: true },
   ];
@@ -27,8 +25,8 @@
     </div>
 
     <nav class="nav">
-      {#each navItems as item}
-        <button class="nav-item" class:active={$activePage === item.id} onclick={() => activePage.set(item.id)}>
+      {#each navItems as item (item.id)}
+        <button type="button" class="nav-item" class:active={$activePage === item.id} onclick={() => activePage.set(item.id)}>
           {#if $activePage === item.id}
             <span class="accent-bar"></span>
           {/if}
@@ -54,7 +52,7 @@
 
     <div class="divider"></div>
 
-    <button class="nav-item settings" class:active={$activePage === 'settings'} onclick={() => activePage.set('settings')}>
+    <button type="button" class="nav-item settings" class:active={$activePage === 'settings'} onclick={() => activePage.set('settings')}>
       {#if $activePage === 'settings'}
         <span class="accent-bar"></span>
       {/if}
@@ -169,12 +167,12 @@
     flex-shrink: 0;
   }
 
-  .nav-badge {
+  .nav-item .nav-badge {
     min-width: 20px;
     height: 18px;
     border-radius: 9px;
     background: var(--accent);
-    color: #fff !important;
+    color: #fff;
     font-size: 9px;
     font-weight: 700;
     display: flex;

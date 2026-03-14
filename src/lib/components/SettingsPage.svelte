@@ -205,7 +205,7 @@
     font-size: 12px;
     color: var(--text-muted);
     border-radius: 8px;
-    transition: all 0.15s;
+    transition: background-color 0.15s, border-color 0.15s;
   }
 
   .seg.active {

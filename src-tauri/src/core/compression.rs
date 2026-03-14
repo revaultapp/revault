@@ -1,12 +1,11 @@
-use image::ImageReader;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::{BufReader, Cursor};
+use std::io::Cursor;
 use std::path::Path;
 
-const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
+use crate::core::image_io::{checked_size, decode_rgb, ext_lowercase, open_image};
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
 pub struct CompressionResult {
     pub input_path: String,
     pub output_path: String,
@@ -37,44 +36,19 @@ impl CompressionResult {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum OutputFormat {
     Jpeg,
     Png,
     Webp,
 }
 
-fn ext_lowercase(path: &str) -> Option<String> {
-    Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_lowercase())
-}
-
-fn open_image(path: &str) -> Result<image::DynamicImage, Box<dyn std::error::Error>> {
+pub fn detect_format(path: &str) -> OutputFormat {
     match ext_lowercase(path).as_deref() {
-        Some("heic") | Some("heif") => crate::core::heic::decode_heic(path),
-        _ => {
-            let file = fs::File::open(path)?;
-            Ok(ImageReader::new(BufReader::new(file))
-                .with_guessed_format()?
-                .decode()?)
-        }
+        Some("png") => OutputFormat::Png,
+        Some("webp") => OutputFormat::Webp,
+        _ => OutputFormat::Jpeg,
     }
-}
-
-fn checked_size(path: &str) -> Result<u64, Box<dyn std::error::Error>> {
-    let size = fs::metadata(path)?.len();
-    if size > MAX_FILE_SIZE {
-        return Err("file exceeds 100 MB limit".into());
-    }
-    Ok(size)
-}
-
-fn decode_rgb(path: &str) -> Result<(usize, usize, Vec<u8>), Box<dyn std::error::Error>> {
-    let img = open_image(path)?;
-    let rgb = img.to_rgb8();
-    Ok((rgb.width() as usize, rgb.height() as usize, rgb.into_raw()))
 }
 
 pub fn compress_jpeg(
@@ -205,19 +179,12 @@ pub fn compress_image(
     }
 }
 
-pub fn detect_format(path: &str) -> OutputFormat {
-    match ext_lowercase(path).as_deref() {
-        Some("png") => OutputFormat::Png,
-        Some("webp") => OutputFormat::Webp,
-        _ => OutputFormat::Jpeg,
-    }
-}
-
 pub fn compress_batch(
     paths: &[String],
     quality: f32,
     format: Option<OutputFormat>,
     output_dir: Option<&str>,
+    suffix: &str,
 ) -> Vec<CompressionResult> {
     paths
         .iter()
@@ -239,7 +206,7 @@ pub fn compress_batch(
                 OutputFormat::Webp => "webp",
             };
             let out_base = output_dir.map(Path::new).unwrap_or(parent);
-            let output = out_base.join(format!("{stem}_compressed.{ext}"));
+            let output = out_base.join(format!("{stem}{suffix}.{ext}"));
 
             match compress_image(path, &output.to_string_lossy(), &fmt, quality) {
                 Ok(r) => r,
@@ -365,7 +332,7 @@ mod tests {
             input.to_string_lossy().to_string(),
             "/nonexistent/fake.jpg".to_string(),
         ];
-        let results = compress_batch(&paths, 60.0, None, None);
+        let results = compress_batch(&paths, 60.0, None, None, "_compressed");
 
         assert_eq!(results.len(), 2);
         assert!(results[0].error.is_none());

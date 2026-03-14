@@ -1,19 +1,20 @@
 use crate::core::compression;
 
 #[tauri::command]
-pub async fn compress_images(
+pub async fn convert_images(
     paths: Vec<String>,
-    quality: f32,
-    format: Option<compression::OutputFormat>,
+    format: compression::OutputFormat,
+    quality: Option<f32>,
     output_dir: Option<String>,
 ) -> Result<Vec<compression::CompressionResult>, String> {
+    let quality = quality.unwrap_or(90.0);
     tauri::async_runtime::spawn_blocking(move || {
         Ok(compression::compress_batch(
             &paths,
             quality,
-            format,
+            Some(format),
             output_dir.as_deref(),
-            "_compressed",
+            "_converted",
         ))
     })
     .await

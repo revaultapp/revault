@@ -2,14 +2,16 @@
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
-  import { FolderOpen, CheckCircle, AlertCircle, X } from "lucide-svelte";
+  import { FolderOpen, CircleCheck, CircleAlert, X } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
   import { formatBytes } from "$lib/utils";
   import {
-    files, quality, format, outputDir, isCompressing, summary,
+    files, targetFormat, outputDir, isConverting, summary,
     addFiles, removeFile, clearFiles,
-    type OutputFormat, type CompressFile,
-  } from "$lib/stores/compress";
+    type TargetFormat, type ConvertFile,
+  } from "$lib/stores/convert";
+
+  let quality = $state(90);
 
   let targetPct = $derived(
     $files.length === 0 ? 0 : (($summary.done + $summary.failed) / $files.length) * 100
@@ -17,11 +19,11 @@
 
   let headerText = $derived(
     $summary.done > 0 || $summary.failed > 0
-      ? `${$summary.done} of ${$files.length} compressed${$summary.failed > 0 ? ` · ${$summary.failed} failed` : ""}`
+      ? `${$summary.done} of ${$files.length} converted${$summary.failed > 0 ? ` · ${$summary.failed} failed` : ""}`
       : `${$files.length} image${$files.length > 1 ? "s" : ""} selected`
   );
 
-  interface CompressionResult {
+  interface ConversionResult {
     input_path: string;
     output_path: string;
     original_size: number;
@@ -29,8 +31,7 @@
     error: string | null;
   }
 
-  const formats: { value: OutputFormat | null; label: string }[] = [
-    { value: null, label: "Auto" },
+  const formats: { value: TargetFormat; label: string }[] = [
     { value: "Jpeg", label: "JPEG" },
     { value: "Png", label: "PNG" },
     { value: "Webp", label: "WebP" },
@@ -54,15 +55,15 @@
     if (firstOutput) await revealItemInDir(firstOutput);
   }
 
-  async function compressFile(file: CompressFile, q: number, fmt: OutputFormat | null): Promise<void> {
+  async function convertFile(file: ConvertFile, fmt: TargetFormat, q: number): Promise<void> {
     files.update((all) =>
-      all.map((f) => f.path === file.path ? { ...f, status: "compressing" as const } : f)
+      all.map((f) => f.path === file.path ? { ...f, status: "converting" as const } : f)
     );
     try {
-      const results = await invoke<CompressionResult[]>("compress_images", {
+      const results = await invoke<ConversionResult[]>("convert_images", {
         paths: [file.path],
-        quality: q,
         format: fmt,
+        quality: q,
         outputDir: $outputDir,
       });
       const result = results[0];
@@ -70,8 +71,8 @@
         all.map((f) => {
           if (f.path !== file.path) return f;
           if (!result) return { ...f, status: "error" as const, error: "No result returned" };
-          if (result.error) return { ...f, status: "error" as const, error: result.error, size: result.original_size };
-          return { ...f, status: "done" as const, compressedSize: result.compressed_size, outputPath: result.output_path, size: result.original_size };
+          if (result.error) return { ...f, status: "error" as const, error: result.error };
+          return { ...f, status: "done" as const, outputPath: result.output_path, outputSize: result.compressed_size, size: result.original_size };
         })
       );
     } catch (err) {
@@ -81,12 +82,12 @@
     }
   }
 
-  async function startCompression() {
+  async function startConversion() {
     const currentFiles = $files;
     if (currentFiles.length === 0) return;
-    isCompressing.set(true);
-    const q = $quality;
-    const fmt = $format;
+    isConverting.set(true);
+    const fmt = $targetFormat;
+    const q = quality;
     const concurrency = Math.min(Math.max(2, (navigator.hardwareConcurrency || 4) - 2), currentFiles.length);
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
     await new Promise((r) => setTimeout(r, 0));
@@ -94,54 +95,43 @@
     async function worker() {
       while (nextIndex < currentFiles.length) {
         const file = currentFiles[nextIndex++];
-        await compressFile(file, q, fmt);
+        await convertFile(file, fmt, q);
       }
     }
     await Promise.all(Array.from({ length: concurrency }, () => worker()));
-    isCompressing.set(false);
-  }
-
-  function savedPercent(file: CompressFile): string {
-    if (!file.compressedSize || file.size === 0) return "";
-    return `${Math.round(((file.size - file.compressedSize) / file.size) * 100)}% smaller`;
+    isConverting.set(false);
   }
 </script>
 
 <ToolShell
   files={$files}
-  isProcessing={$isCompressing}
+  isProcessing={$isConverting}
   {targetPct}
   progressLabel="{$summary.done + $summary.failed} of {$files.length} files"
-  progressSublabel={$summary.savedBytes > 0 ? `Saved ${formatBytes($summary.savedBytes)}` : undefined}
   onfiles={(paths) => addFiles(paths)}
   onbrowse={browseFiles}
   onclear={clearFiles}
   onopenfolder={$summary.done > 0 && $summary.pending === 0 ? openOutputFolder : undefined}
-  actionLabel="Compress {$files.length > 1 ? 'All' : ''}"
-  onaction={startCompression}
+  actionLabel="Convert {$files.length > 1 ? 'All' : ''}"
+  onaction={startConversion}
   {headerText}
 >
-  {#snippet headerSub()}
-    {#if $summary.savedBytes > 0}
-      <span class="saved-total">Saved {formatBytes($summary.savedBytes)}</span>
-    {/if}
-  {/snippet}
-
   {#snippet fileDetail(file)}
+    {@const label = formats.find((f) => f.value === $targetFormat)?.label ?? ""}
     {#if file.status === "done"}
-      {formatBytes(file.size)} → {formatBytes(file.compressedSize ?? 0)} · {savedPercent(file)}
+      {file.sourceFormat} → {label} · {formatBytes(file.outputSize ?? 0)}
     {:else if file.status === "error"}
       {file.error}
     {:else}
-      Ready
+      {file.sourceFormat} → {label}
     {/if}
   {/snippet}
 
   {#snippet fileStatus(file)}
     {#if file.status === "done"}
-      <CheckCircle size={18} />
+      <CircleCheck size={18} />
     {:else if file.status === "error"}
-      <AlertCircle size={18} />
+      <CircleAlert size={18} />
     {:else}
       <button class="btn-icon" onclick={() => removeFile(file.path)}>
         <X size={16} />
@@ -150,18 +140,23 @@
   {/snippet}
 
   <div class="control-group">
-    <span class="label">Format</span>
+    <span class="label">To</span>
     <div class="pills">
       {#each formats as f}
-        <button class="pill" class:active={$format === f.value} onclick={() => format.set(f.value)}>
+        <button class="pill" class:active={$targetFormat === f.value} onclick={() => targetFormat.set(f.value)}>
           {f.label}
         </button>
       {/each}
     </div>
   </div>
   <div class="control-group">
-    <label for="quality-slider">Quality <span class="quality-value">{$quality}%</span></label>
-    <input id="quality-slider" type="range" min="10" max="100" step="5" bind:value={$quality} />
+    {#if $targetFormat === "Png"}
+      <span class="label">Quality</span>
+      <span class="hint">Lossless — no quality setting</span>
+    {:else}
+      <label for="quality-slider">Quality <span class="quality-value">{quality}%</span></label>
+      <input id="quality-slider" type="range" min="10" max="100" step="5" bind:value={quality} />
+    {/if}
   </div>
   <div class="control-group">
     <span class="label">Output</span>
@@ -173,9 +168,8 @@
 </ToolShell>
 
 <style>
-  .saved-total {
-    font-size: 13px;
-    color: var(--accent);
-    font-weight: 500;
+  .hint {
+    font-size: 12px;
+    color: var(--text-muted);
   }
 </style>

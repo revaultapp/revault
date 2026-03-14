@@ -1,5 +1,3 @@
-//! HEIC decoding via native OS APIs. Input-only format (iPhone photos).
-
 #[cfg(target_os = "macos")]
 mod platform {
     use core_foundation::base::TCFType;
