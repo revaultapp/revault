@@ -4,12 +4,18 @@
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { FolderOpen, CheckCircle, AlertCircle, X } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
-  import { formatBytes } from "$lib/utils";
   import {
-    files, quality, format, outputDir, isCompressing, summary,
+    files, isResizing, outputDir, resizeMode, width, height, summary,
     addFiles, removeFile, clearFiles,
-    type OutputFormat, type CompressFile,
-  } from "$lib/stores/compress";
+    type ResizeFile,
+  } from "$lib/stores/resize";
+
+  const presets = [
+    { label: "Full HD", w: 1920, h: 1080 },
+    { label: "HD", w: 1280, h: 720 },
+    { label: "Instagram", w: 1080, h: 1080 },
+    { label: "Thumbnail", w: 300, h: 300 },
+  ];
 
   let targetPct = $derived(
     $files.length === 0 ? 0 : (($summary.done + $summary.failed) / $files.length) * 100
@@ -17,29 +23,26 @@
 
   let headerText = $derived(
     $summary.done > 0 || $summary.failed > 0
-      ? `${$summary.done} of ${$files.length} compressed${$summary.failed > 0 ? ` · ${$summary.failed} failed` : ""}`
+      ? `${$summary.done} of ${$files.length} resized${$summary.failed > 0 ? ` · ${$summary.failed} failed` : ""}`
       : `${$files.length} image${$files.length > 1 ? "s" : ""} selected`
   );
 
-  interface CompressionResult {
+  interface ResizeResult {
     input_path: string;
     output_path: string;
+    original_width: number;
+    original_height: number;
+    new_width: number;
+    new_height: number;
     original_size: number;
-    compressed_size: number;
+    resized_size: number;
     error: string | null;
   }
-
-  const formats: { value: OutputFormat | null; label: string }[] = [
-    { value: null, label: "Auto" },
-    { value: "Jpeg", label: "JPEG" },
-    { value: "Png", label: "PNG" },
-    { value: "Webp", label: "WebP" },
-  ];
 
   async function browseFiles() {
     const selected = await open({
       multiple: true,
-      filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp", "heic", "heif", "tiff", "bmp", "gif"] }],
+      filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp", "heic", "heif", "tiff", "bmp"] }],
     });
     if (selected) addFiles(selected);
   }
@@ -54,15 +57,16 @@
     if (firstOutput) await revealItemInDir(firstOutput);
   }
 
-  async function compressFile(file: CompressFile, q: number, fmt: OutputFormat | null): Promise<void> {
+  async function resizeFile(file: ResizeFile): Promise<void> {
     files.update((all) =>
-      all.map((f) => f.path === file.path ? { ...f, status: "compressing" as const } : f)
+      all.map((f) => f.path === file.path ? { ...f, status: "resizing" as const } : f)
     );
     try {
-      const results = await invoke<CompressionResult[]>("compress_images", {
+      const results = await invoke<ResizeResult[]>("resize_images", {
         paths: [file.path],
-        quality: q,
-        format: fmt,
+        width: $width,
+        height: $height,
+        mode: $resizeMode,
         outputDir: $outputDir,
       });
       const result = results[0];
@@ -70,8 +74,13 @@
         all.map((f) => {
           if (f.path !== file.path) return f;
           if (!result) return { ...f, status: "error" as const, error: "No result returned" };
-          if (result.error) return { ...f, status: "error" as const, error: result.error, size: result.original_size };
-          return { ...f, status: "done" as const, compressedSize: result.compressed_size, outputPath: result.output_path, size: result.original_size };
+          if (result.error) return { ...f, status: "error" as const, error: result.error };
+          return {
+            ...f, status: "done" as const,
+            outputPath: result.output_path,
+            outputWidth: result.new_width, outputHeight: result.new_height,
+            originalWidth: result.original_width, originalHeight: result.original_height,
+          };
         })
       );
     } catch (err) {
@@ -81,12 +90,10 @@
     }
   }
 
-  async function startCompression() {
+  async function startResize() {
     const currentFiles = $files;
     if (currentFiles.length === 0) return;
-    isCompressing.set(true);
-    const q = $quality;
-    const fmt = $format;
+    isResizing.set(true);
     const concurrency = Math.min(Math.max(2, (navigator.hardwareConcurrency || 4) - 2), currentFiles.length);
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
     await new Promise((r) => setTimeout(r, 0));
@@ -94,46 +101,35 @@
     async function worker() {
       while (nextIndex < currentFiles.length) {
         const file = currentFiles[nextIndex++];
-        await compressFile(file, q, fmt);
+        await resizeFile(file);
       }
     }
     await Promise.all(Array.from({ length: concurrency }, () => worker()));
-    isCompressing.set(false);
+    isResizing.set(false);
   }
 
-  function savedPercent(file: CompressFile): string {
-    if (!file.compressedSize || file.size === 0) return "";
-    return `${Math.round(((file.size - file.compressedSize) / file.size) * 100)}% smaller`;
-  }
 </script>
 
 <ToolShell
   files={$files}
-  isProcessing={$isCompressing}
+  isProcessing={$isResizing}
   {targetPct}
   progressLabel="{$summary.done + $summary.failed} of {$files.length} files"
-  progressSublabel={$summary.savedBytes > 0 ? `Saved ${formatBytes($summary.savedBytes)}` : undefined}
   onfiles={(paths) => addFiles(paths)}
   onbrowse={browseFiles}
   onclear={clearFiles}
   onopenfolder={$summary.done > 0 && $summary.pending === 0 ? openOutputFolder : undefined}
-  actionLabel="Compress {$files.length > 1 ? 'All' : ''}"
-  onaction={startCompression}
+  actionLabel="Resize {$files.length > 1 ? 'All' : ''}"
+  onaction={startResize}
   {headerText}
 >
-  {#snippet headerSub()}
-    {#if $summary.savedBytes > 0}
-      <span class="saved-total">Saved {formatBytes($summary.savedBytes)}</span>
-    {/if}
-  {/snippet}
-
   {#snippet fileDetail(file)}
     {#if file.status === "done"}
-      {formatBytes(file.size)} → {formatBytes(file.compressedSize ?? 0)} · {savedPercent(file)}
+      {file.originalWidth}×{file.originalHeight} → {file.outputWidth}×{file.outputHeight}
     {:else if file.status === "error"}
       {file.error}
     {:else}
-      Ready
+      {$width}×{$height} · {$resizeMode}
     {/if}
   {/snippet}
 
@@ -150,18 +146,34 @@
   {/snippet}
 
   <div class="control-group">
-    <span class="label">Format</span>
-    <div class="pills">
-      {#each formats as f}
-        <button class="pill" class:active={$format === f.value} onclick={() => format.set(f.value)}>
-          {f.label}
-        </button>
+    <span class="label">Presets</span>
+    <div class="preset-grid">
+      {#each presets as p}
+        <button
+          class="pill"
+          class:active={$width === p.w && $height === p.h}
+          onclick={() => { width.set(p.w); height.set(p.h); }}
+        >{p.label}</button>
       {/each}
     </div>
   </div>
   <div class="control-group">
-    <label for="quality-slider">Quality <span class="quality-value">{$quality}%</span></label>
-    <input id="quality-slider" type="range" min="10" max="100" step="5" bind:value={$quality} />
+    <span class="label">Size</span>
+    <div class="dimension-inputs">
+      <input type="number" min="1" max="10000" bind:value={$width} />
+      <span class="dim-sep">×</span>
+      <input type="number" min="1" max="10000" bind:value={$height} />
+    </div>
+  </div>
+  <div class="control-group">
+    <span class="label">Mode</span>
+    <div class="pills">
+      {#each (["Fit", "Exact"] as const) as mode}
+        <button class="pill" class:active={$resizeMode === mode} onclick={() => resizeMode.set(mode)}>
+          {mode}
+        </button>
+      {/each}
+    </div>
   </div>
   <div class="control-group">
     <span class="label">Output</span>
@@ -173,9 +185,31 @@
 </ToolShell>
 
 <style>
-  .saved-total {
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
+
+  .dimension-inputs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .dimension-inputs input {
+    width: 72px;
+    padding: 5px 8px;
+    border-radius: 6px;
     font-size: 13px;
-    color: var(--accent);
-    font-weight: 500;
+    border: 1px solid var(--border);
+    background: var(--navy-bg);
+    color: var(--text-primary);
+    text-align: center;
+  }
+
+  .dim-sep {
+    font-size: 13px;
+    color: var(--text-muted);
   }
 </style>

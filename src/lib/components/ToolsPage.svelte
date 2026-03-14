@@ -4,6 +4,7 @@
   import SegmentedControl from "./SegmentedControl.svelte";
   import CompressPage from "./CompressPage.svelte";
   import ConvertPage from "./ConvertPage.svelte";
+  import ResizePage from "./ResizePage.svelte";
 
   const tools = [
     { id: "compress", label: "Compress", icon: Minimize2 },
@@ -22,6 +23,8 @@
       <CompressPage />
     {:else if $activeTool === "convert"}
       <ConvertPage />
+    {:else if $activeTool === "resize"}
+      <ResizePage />
     {:else}
       <div class="placeholder">
         <p>{tools.find(t => t.id === $activeTool)?.label}</p>
