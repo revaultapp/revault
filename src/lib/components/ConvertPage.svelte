@@ -2,7 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
-  import { FolderOpen, CheckCircle, AlertCircle, X } from "lucide-svelte";
+  import { FolderOpen, CircleCheck, CircleAlert, X } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
   import { formatBytes } from "$lib/utils";
   import {
@@ -62,7 +62,7 @@
     try {
       const results = await invoke<ConversionResult[]>("convert_images", {
         paths: [file.path],
-        targetFormat: fmt,
+        format: fmt,
         quality: q,
         outputDir: $outputDir,
       });
@@ -129,9 +129,9 @@
 
   {#snippet fileStatus(file)}
     {#if file.status === "done"}
-      <CheckCircle size={18} />
+      <CircleCheck size={18} />
     {:else if file.status === "error"}
-      <AlertCircle size={18} />
+      <CircleAlert size={18} />
     {:else}
       <button class="btn-icon" onclick={() => removeFile(file.path)}>
         <X size={16} />
@@ -149,12 +149,15 @@
       {/each}
     </div>
   </div>
-  {#if $targetFormat !== "Png"}
-    <div class="control-group">
+  <div class="control-group">
+    {#if $targetFormat === "Png"}
+      <span class="label">Quality</span>
+      <span class="hint">Lossless — no quality setting</span>
+    {:else}
       <label for="quality-slider">Quality <span class="quality-value">{quality}%</span></label>
       <input id="quality-slider" type="range" min="10" max="100" step="5" bind:value={quality} />
-    </div>
-  {/if}
+    {/if}
+  </div>
   <div class="control-group">
     <span class="label">Output</span>
     <button class="btn-ghost output-btn" onclick={browseOutputDir}>
@@ -164,3 +167,9 @@
   </div>
 </ToolShell>
 
+<style>
+  .hint {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+</style>

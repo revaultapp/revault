@@ -57,17 +57,17 @@
     if (firstOutput) await revealItemInDir(firstOutput);
   }
 
-  async function resizeFile(file: ResizeFile): Promise<void> {
+  async function resizeFile(file: ResizeFile, w: number, h: number, mode: string, outDir: string | null): Promise<void> {
     files.update((all) =>
       all.map((f) => f.path === file.path ? { ...f, status: "resizing" as const } : f)
     );
     try {
       const results = await invoke<ResizeResult[]>("resize_images", {
         paths: [file.path],
-        width: $width,
-        height: $height,
-        mode: $resizeMode,
-        outputDir: $outputDir,
+        width: w,
+        height: h,
+        mode,
+        outputDir: outDir,
       });
       const result = results[0];
       files.update((all) =>
@@ -93,6 +93,10 @@
   async function startResize() {
     const currentFiles = $files;
     if (currentFiles.length === 0) return;
+    const w = $width;
+    const h = $height;
+    const mode = $resizeMode;
+    const outDir = $outputDir;
     isResizing.set(true);
     const concurrency = Math.min(Math.max(2, (navigator.hardwareConcurrency || 4) - 2), currentFiles.length);
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
@@ -101,7 +105,7 @@
     async function worker() {
       while (nextIndex < currentFiles.length) {
         const file = currentFiles[nextIndex++];
-        await resizeFile(file);
+        await resizeFile(file, w, h, mode, outDir);
       }
     }
     await Promise.all(Array.from({ length: concurrency }, () => worker()));

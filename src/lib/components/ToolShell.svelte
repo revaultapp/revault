@@ -213,6 +213,13 @@
 
   .btn-primary:hover { opacity: 0.9; }
 
+  /*
+   * Shared slot styles — these :global() rules style content passed via
+   * Svelte snippets from CompressPage, ConvertPage, ResizePage.
+   * Child components MUST use these class names: .control-group, .pill,
+   * .quality-value, .btn-ghost, .output-btn, .btn-icon
+   * This is an intentional design contract, not an accident.
+   */
   .controls :global(.control-group) {
     display: flex;
     flex-direction: column;

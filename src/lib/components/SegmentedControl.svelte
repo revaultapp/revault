@@ -47,7 +47,7 @@
   <div
     class="pill"
     class:pill--visible={measured}
-    style="left: {pillLeft}px; width: {pillWidth}px;"
+    style="transform: translateX({pillLeft}px); width: {pillWidth}px;"
   ></div>
 
   {#each segments as segment, i (segment.id)}
@@ -89,8 +89,10 @@
     box-shadow:
       0 1px 3px rgba(0, 0, 0, 0.08),
       0 1px 2px rgba(0, 0, 0, 0.06);
-    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    left: 0;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
                 width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform, width;
     opacity: 0;
     pointer-events: none;
     z-index: 0;

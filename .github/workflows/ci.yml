@@ -54,6 +54,9 @@ jobs:
       - name: Build frontend
         run: pnpm build
 
+      - name: Svelte / TypeScript type check
+        run: pnpm check
+
       - name: Rust format check
         working-directory: src-tauri
         run: cargo fmt --all -- --check

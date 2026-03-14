@@ -7,6 +7,22 @@ use std::path::Path;
 use crate::core::compression::{detect_format, OutputFormat};
 use crate::core::image_io::{checked_size, ext_lowercase, open_image};
 
+fn encode_jpeg_mozjpeg(
+    img: &image::DynamicImage,
+    quality: f32,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let rgb = img.to_rgb8();
+    let (w, h) = (rgb.width() as usize, rgb.height() as usize);
+    let pixels = rgb.into_raw();
+
+    let mut cinfo = mozjpeg::Compress::new(mozjpeg::ColorSpace::JCS_RGB);
+    cinfo.set_size(w, h);
+    cinfo.set_quality(quality);
+    let mut cinfo = cinfo.start_compress(Vec::new())?;
+    cinfo.write_scanlines(&pixels)?;
+    Ok(cinfo.finish()?)
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub enum ResizeMode {
     Fit,
@@ -63,13 +79,7 @@ pub fn resize_image(
     let quality = quality.unwrap_or(90.0).clamp(0.0, 100.0);
 
     let bytes = match fmt {
-        OutputFormat::Jpeg => {
-            let mut buf = Cursor::new(Vec::new());
-            let encoder =
-                image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, quality as u8);
-            resized.write_with_encoder(encoder)?;
-            buf.into_inner()
-        }
+        OutputFormat::Jpeg => encode_jpeg_mozjpeg(&resized, quality)?,
         OutputFormat::Png => {
             let mut buf = Cursor::new(Vec::new());
             resized.write_to(&mut buf, image::ImageFormat::Png)?;

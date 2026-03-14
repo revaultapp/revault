@@ -42,7 +42,12 @@
   }
 </script>
 
-<div class="empty" class:dragging={isDragging} role="button" tabindex="0" onclick={browseFiles} onkeydown={(e) => e.key === "Enter" && browseFiles()}>
+<div class="empty" class:dragging={isDragging} role="button" tabindex="0" onclick={browseFiles} onkeydown={(e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      browseFiles();
+    }
+  }}>
   <div class="drop-zone">
     <Upload size={40} strokeWidth={1.5} />
     <p class="drop-title">Drop images here</p>

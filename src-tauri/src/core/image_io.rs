@@ -17,9 +17,13 @@ pub fn open_image(path: &str) -> Result<image::DynamicImage, Box<dyn std::error:
         Some("heic") | Some("heif") => crate::core::heic::decode_heic(path),
         _ => {
             let file = fs::File::open(path)?;
-            Ok(ImageReader::new(BufReader::new(file))
-                .with_guessed_format()?
-                .decode()?)
+            let mut reader = ImageReader::new(BufReader::new(file)).with_guessed_format()?;
+            let mut limits = image::Limits::default();
+            limits.max_image_width = Some(16384);
+            limits.max_image_height = Some(16384);
+            limits.max_alloc = Some(512 * 1024 * 1024);
+            reader.limits(limits);
+            Ok(reader.decode()?)
         }
     }
 }
