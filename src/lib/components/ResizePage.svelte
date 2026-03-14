@@ -172,9 +172,9 @@
   <div class="control-group">
     <span class="label">Mode</span>
     <div class="pills">
-      {#each (["Fit", "Exact"] as const) as mode}
-        <button class="pill" class:active={$resizeMode === mode} onclick={() => resizeMode.set(mode)}>
-          {mode}
+      {#each ([["Fit", "Fit"], ["Exact", "Stretch"]] as const) as [value, label]}
+        <button class="pill" class:active={$resizeMode === value} onclick={() => resizeMode.set(value)}>
+          {label}
         </button>
       {/each}
     </div>
