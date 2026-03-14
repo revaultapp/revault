@@ -1,10 +1,9 @@
-use image::ImageReader;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::{BufReader, Cursor};
+use std::io::Cursor;
 use std::path::Path;
 
-const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
+use crate::core::image_io::{checked_size, decode_rgb, detect_format, ext_lowercase, open_image};
 
 #[derive(Debug, Serialize)]
 pub struct CompressionResult {
@@ -42,39 +41,6 @@ pub enum OutputFormat {
     Jpeg,
     Png,
     Webp,
-}
-
-fn ext_lowercase(path: &str) -> Option<String> {
-    Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_lowercase())
-}
-
-fn open_image(path: &str) -> Result<image::DynamicImage, Box<dyn std::error::Error>> {
-    match ext_lowercase(path).as_deref() {
-        Some("heic") | Some("heif") => crate::core::heic::decode_heic(path),
-        _ => {
-            let file = fs::File::open(path)?;
-            Ok(ImageReader::new(BufReader::new(file))
-                .with_guessed_format()?
-                .decode()?)
-        }
-    }
-}
-
-fn checked_size(path: &str) -> Result<u64, Box<dyn std::error::Error>> {
-    let size = fs::metadata(path)?.len();
-    if size > MAX_FILE_SIZE {
-        return Err("file exceeds 100 MB limit".into());
-    }
-    Ok(size)
-}
-
-fn decode_rgb(path: &str) -> Result<(usize, usize, Vec<u8>), Box<dyn std::error::Error>> {
-    let img = open_image(path)?;
-    let rgb = img.to_rgb8();
-    Ok((rgb.width() as usize, rgb.height() as usize, rgb.into_raw()))
 }
 
 pub fn compress_jpeg(
@@ -202,14 +168,6 @@ pub fn compress_image(
         OutputFormat::Jpeg => compress_jpeg(input_path, output_path, quality),
         OutputFormat::Png => compress_png(input_path, output_path),
         OutputFormat::Webp => compress_webp(input_path, output_path, quality),
-    }
-}
-
-pub fn detect_format(path: &str) -> OutputFormat {
-    match ext_lowercase(path).as_deref() {
-        Some("png") => OutputFormat::Png,
-        Some("webp") => OutputFormat::Webp,
-        _ => OutputFormat::Jpeg,
     }
 }
 
