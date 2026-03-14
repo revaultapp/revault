@@ -3,8 +3,6 @@ use std::fs;
 use std::io::BufReader;
 use std::path::Path;
 
-use crate::core::compression::OutputFormat;
-
 pub const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
 
 pub fn ext_lowercase(path: &str) -> Option<String> {
@@ -38,12 +36,4 @@ pub fn decode_rgb(path: &str) -> Result<(usize, usize, Vec<u8>), Box<dyn std::er
     let img = open_image(path)?;
     let rgb = img.to_rgb8();
     Ok((rgb.width() as usize, rgb.height() as usize, rgb.into_raw()))
-}
-
-pub fn detect_format(path: &str) -> OutputFormat {
-    match ext_lowercase(path).as_deref() {
-        Some("png") => OutputFormat::Png,
-        Some("webp") => OutputFormat::Webp,
-        _ => OutputFormat::Jpeg,
-    }
 }

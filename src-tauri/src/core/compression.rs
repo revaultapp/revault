@@ -3,9 +3,9 @@ use std::fs;
 use std::io::Cursor;
 use std::path::Path;
 
-use crate::core::image_io::{checked_size, decode_rgb, detect_format, ext_lowercase, open_image};
+use crate::core::image_io::{checked_size, decode_rgb, ext_lowercase, open_image};
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
 pub struct CompressionResult {
     pub input_path: String,
     pub output_path: String,
@@ -36,11 +36,19 @@ impl CompressionResult {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum OutputFormat {
     Jpeg,
     Png,
     Webp,
+}
+
+pub fn detect_format(path: &str) -> OutputFormat {
+    match ext_lowercase(path).as_deref() {
+        Some("png") => OutputFormat::Png,
+        Some("webp") => OutputFormat::Webp,
+        _ => OutputFormat::Jpeg,
+    }
 }
 
 pub fn compress_jpeg(
