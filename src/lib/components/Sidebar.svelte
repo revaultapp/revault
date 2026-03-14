@@ -25,8 +25,8 @@
     </div>
 
     <nav class="nav">
-      {#each navItems as item}
-        <button class="nav-item" class:active={$activePage === item.id} onclick={() => activePage.set(item.id)}>
+      {#each navItems as item (item.id)}
+        <button type="button" class="nav-item" class:active={$activePage === item.id} onclick={() => activePage.set(item.id)}>
           {#if $activePage === item.id}
             <span class="accent-bar"></span>
           {/if}
@@ -52,7 +52,7 @@
 
     <div class="divider"></div>
 
-    <button class="nav-item settings" class:active={$activePage === 'settings'} onclick={() => activePage.set('settings')}>
+    <button type="button" class="nav-item settings" class:active={$activePage === 'settings'} onclick={() => activePage.set('settings')}>
       {#if $activePage === 'settings'}
         <span class="accent-bar"></span>
       {/if}
@@ -167,12 +167,12 @@
     flex-shrink: 0;
   }
 
-  .nav-badge {
+  .nav-item .nav-badge {
     min-width: 20px;
     height: 18px;
     border-radius: 9px;
     background: var(--accent);
-    color: #fff !important;
+    color: #fff;
     font-size: 9px;
     font-weight: 700;
     display: flex;

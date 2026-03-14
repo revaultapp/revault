@@ -5,10 +5,9 @@
     icon?: any;
   }
 
-  let { segments, selected = $bindable(), ...restProps }: {
+  let { segments, selected = $bindable() }: {
     segments: readonly Segment[];
     selected: string;
-    [key: string]: unknown;
   } = $props();
 
   // Refs for each button so we can measure widths/offsets
@@ -46,7 +45,7 @@
   }
 </script>
 
-<div class="segmented-control" bind:this={containerEl} {...restProps}>
+<div class="segmented-control" bind:this={containerEl}>
   <!-- Sliding pill indicator -->
   <div
     class="pill"
