@@ -40,9 +40,6 @@
     queueMicrotask(measure);
   });
 
-  function handleSelect(id: string) {
-    selected = id;
-  }
 </script>
 
 <div class="segmented-control" bind:this={containerEl}>
@@ -58,7 +55,7 @@
       class="segment"
       class:segment--active={selected === segment.id}
       bind:this={buttonEls[i]}
-      onclick={() => handleSelect(segment.id)}
+      onclick={() => { selected = segment.id; }}
       type="button"
     >
       {#if segment.icon}

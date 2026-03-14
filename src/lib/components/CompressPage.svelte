@@ -1,58 +1,19 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
   import { open } from "@tauri-apps/plugin-dialog";
-  import { onMount, onDestroy } from "svelte";
   import {
     files, quality, format, outputDir, isCompressing, summary,
     addFiles, removeFile, clearFiles,
     type OutputFormat, type CompressFile,
   } from "$lib/stores/compress";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
-  import { X, Upload, CheckCircle, AlertCircle, Trash2, FolderOpen } from "lucide-svelte";
+  import { X, CheckCircle, AlertCircle, Trash2, FolderOpen } from "lucide-svelte";
+  import DropZone from "./DropZone.svelte";
+  import ProgressRing from "./ProgressRing.svelte";
 
-  let displayPct = $state(0);
-
-  $effect(() => {
-    if (!$isCompressing) return;
-
-    displayPct = 0;
-    let lastRealPct = 0;
-    let lastCompletionTime = performance.now();
-    let rafId: number;
-
-    function tick() {
-      const total = $files.length;
-      if (total === 0) return;
-
-      const completed = $summary.done + $summary.failed;
-      const realPct = (completed / total) * 100;
-      const stepSize = 100 / total;
-
-      if (realPct > lastRealPct) {
-        lastRealPct = realPct;
-        lastCompletionTime = performance.now();
-      }
-
-      // Between completions, creep forward slowly over ~2.5s
-      const elapsed = performance.now() - lastCompletionTime;
-      const creep = Math.min(elapsed / 2500, 0.85) * stepSize;
-      const target = Math.min(realPct + creep, realPct >= 100 ? 100 : 99);
-
-      // Exponential smoothing — buttery 60fps
-      displayPct += (target - displayPct) * 0.06;
-
-      if (realPct >= 100 && displayPct > 99.5) {
-        displayPct = 100;
-        return;
-      }
-
-      rafId = requestAnimationFrame(tick);
-    }
-
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  });
+  let targetPct = $derived(
+    $files.length === 0 ? 0 : (($summary.done + $summary.failed) / $files.length) * 100
+  );
 
   interface CompressionResult {
     input_path: string;
@@ -62,33 +23,12 @@
     error: string | null;
   }
 
-  const IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|heic|heif|tiff?|bmp|gif)$/i;
-
   const formats: { value: OutputFormat | null; label: string }[] = [
     { value: null, label: "Auto" },
     { value: "Jpeg", label: "JPEG" },
     { value: "Png", label: "PNG" },
     { value: "Webp", label: "WebP" },
   ];
-
-  let isDragging = $state(false);
-  let unlisten: (() => void) | undefined;
-
-  onMount(async () => {
-    unlisten = await getCurrentWebviewWindow().onDragDropEvent((event) => {
-      if (event.payload.type === "over") {
-        isDragging = true;
-      } else if (event.payload.type === "drop") {
-        isDragging = false;
-        const paths = event.payload.paths.filter((p) => IMAGE_EXTENSIONS.test(p));
-        if (paths.length > 0) addFiles(paths);
-      } else {
-        isDragging = false;
-      }
-    });
-  });
-
-  onDestroy(() => unlisten?.());
 
   async function browseFiles() {
     const selected = await open({
@@ -157,13 +97,11 @@
     const q = $quality;
     const fmt = $format;
 
-    // Leave 2 cores free for OS + UI thread to prevent beach ball
     const concurrency = Math.min(
       Math.max(2, (navigator.hardwareConcurrency || 4) - 2),
       currentFiles.length,
     );
 
-    // Mark all as pending, yield to let UI paint before heavy work
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
     await new Promise((r) => setTimeout(r, 0));
 
@@ -194,48 +132,13 @@
 </script>
 
 {#if $files.length === 0}
-  <!-- Empty State -->
-  <div class="empty" class:dragging={isDragging} role="button" tabindex="0" onclick={browseFiles} onkeydown={(e) => e.key === "Enter" && browseFiles()}>
-    <div class="drop-zone">
-      <Upload size={40} strokeWidth={1.5} />
-      <p class="drop-title">Drop images here</p>
-      <p class="drop-sub">or click to browse</p>
-      <div class="format-tags">
-        <span class="tag">JPEG</span>
-        <span class="tag">PNG</span>
-        <span class="tag">WebP</span>
-        <span class="tag">HEIC</span>
-        <span class="tag">TIFF</span>
-        <span class="tag">BMP</span>
-        <span class="tag">GIF</span>
-      </div>
-    </div>
-  </div>
+  <DropZone onfiles={(paths) => addFiles(paths)} />
 {:else if $isCompressing}
-  <!-- Compressing State — circular progress -->
-  {@const circumference = 2 * Math.PI * 54}
-  {@const offset = circumference - (displayPct / 100) * circumference}
-  <div class="progress-screen">
-    <div class="circle-wrap">
-      <svg width="180" height="180" viewBox="0 0 120 120">
-        <circle cx="60" cy="60" r="54" fill="none" stroke="var(--navy-bg)" stroke-width="6" />
-        <circle
-          cx="60" cy="60" r="54" fill="none"
-          stroke="var(--accent)" stroke-width="6"
-          stroke-linecap="round"
-          stroke-dasharray={circumference}
-          stroke-dashoffset={offset}
-          transform="rotate(-90 60 60)"
-          class="arc"
-        />
-      </svg>
-      <span class="pct">{Math.round(displayPct)}<small>%</small></span>
-    </div>
-    <p class="progress-label">{$summary.done + $summary.failed} of {$files.length} files</p>
-    {#if $summary.savedBytes > 0}
-      <p class="progress-saved">Saved {formatBytes($summary.savedBytes)}</p>
-    {/if}
-  </div>
+  <ProgressRing
+    {targetPct}
+    label="{$summary.done + $summary.failed} of {$files.length} files"
+    sublabel={$summary.savedBytes > 0 ? `Saved ${formatBytes($summary.savedBytes)}` : undefined}
+  />
 {:else}
   <!-- File List State -->
   <div class="compress-view">
@@ -332,119 +235,6 @@
 {/if}
 
 <style>
-  /* Empty State */
-  .empty {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100%;
-    cursor: pointer;
-  }
-
-  .drop-zone {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    padding: 64px 80px;
-    border: 2px dashed var(--border);
-    border-radius: 16px;
-    color: var(--text-muted);
-    transition: border-color 0.2s, color 0.2s;
-  }
-
-  .empty:hover .drop-zone,
-  .empty.dragging .drop-zone {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
-
-  .drop-title {
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .drop-sub {
-    font-size: 13px;
-    color: var(--text-muted);
-  }
-
-  .format-tags {
-    display: flex;
-    gap: 6px;
-    margin-top: 8px;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-
-  .tag {
-    padding: 3px 10px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 600;
-    background: var(--navy-bg);
-    color: var(--text-secondary);
-  }
-
-  /* Progress Screen */
-  .progress-screen {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 100%;
-    gap: 20px;
-  }
-
-  .circle-wrap {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .circle-wrap svg {
-    filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.25));
-    animation: glow-pulse 2.5s ease-in-out infinite;
-  }
-
-  .arc {
-    filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.5));
-  }
-
-  @keyframes glow-pulse {
-    0%, 100% { filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.2)); }
-    50% { filter: drop-shadow(0 0 16px rgba(16, 185, 129, 0.45)); }
-  }
-
-  .pct {
-    position: absolute;
-    font-size: 38px;
-    font-weight: 700;
-    color: var(--text-primary);
-    letter-spacing: -0.02em;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .pct small {
-    font-size: 18px;
-    font-weight: 500;
-    color: var(--text-muted);
-  }
-
-  .progress-label {
-    font-size: 15px;
-    font-weight: 500;
-    color: var(--text-secondary);
-  }
-
-  .progress-saved {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--accent);
-  }
-
   /* Compress View */
   .compress-view {
     display: flex;
@@ -646,10 +436,5 @@
 
   .btn-primary:hover {
     opacity: 0.9;
-  }
-
-  .btn-primary:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
   }
 </style>

@@ -21,7 +21,7 @@
       <CompressPage />
     {:else}
       <div class="placeholder">
-        <p>{$activeTool === "convert" ? "Convert" : "Resize"}</p>
+        <p>{tools.find(t => t.id === $activeTool)?.label}</p>
         <span>Coming soon</span>
       </div>
     {/if}
