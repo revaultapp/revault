@@ -184,6 +184,7 @@ pub fn compress_batch(
     quality: f32,
     format: Option<OutputFormat>,
     output_dir: Option<&str>,
+    suffix: &str,
 ) -> Vec<CompressionResult> {
     paths
         .iter()
@@ -205,7 +206,7 @@ pub fn compress_batch(
                 OutputFormat::Webp => "webp",
             };
             let out_base = output_dir.map(Path::new).unwrap_or(parent);
-            let output = out_base.join(format!("{stem}_compressed.{ext}"));
+            let output = out_base.join(format!("{stem}{suffix}.{ext}"));
 
             match compress_image(path, &output.to_string_lossy(), &fmt, quality) {
                 Ok(r) => r,
@@ -331,7 +332,7 @@ mod tests {
             input.to_string_lossy().to_string(),
             "/nonexistent/fake.jpg".to_string(),
         ];
-        let results = compress_batch(&paths, 60.0, None, None);
+        let results = compress_batch(&paths, 60.0, None, None, "_compressed");
 
         assert_eq!(results.len(), 2);
         assert!(results[0].error.is_none());

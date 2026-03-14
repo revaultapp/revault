@@ -1,22 +1,24 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
-  import {
-    files, quality, format, outputDir, isCompressing, summary,
-    addFiles, removeFile, clearFiles,
-    type OutputFormat, type CompressFile,
-  } from "$lib/stores/compress";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { X, CheckCircle, AlertCircle, Trash2, FolderOpen } from "lucide-svelte";
   import DropZone from "./DropZone.svelte";
   import ProgressRing from "./ProgressRing.svelte";
   import { formatBytes } from "$lib/utils";
+  import {
+    files, targetFormat, outputDir, isConverting, summary,
+    addFiles, removeFile, clearFiles,
+    type TargetFormat, type ConvertFile,
+  } from "$lib/stores/convert";
+
+  let quality = $state(90);
 
   let targetPct = $derived(
     $files.length === 0 ? 0 : (($summary.done + $summary.failed) / $files.length) * 100
   );
 
-  interface CompressionResult {
+  interface ConversionResult {
     input_path: string;
     output_path: string;
     original_size: number;
@@ -24,8 +26,7 @@
     error: string | null;
   }
 
-  const formats: { value: OutputFormat | null; label: string }[] = [
-    { value: null, label: "Auto" },
+  const formats: { value: TargetFormat; label: string }[] = [
     { value: "Jpeg", label: "JPEG" },
     { value: "Png", label: "PNG" },
     { value: "Webp", label: "WebP" },
@@ -49,59 +50,49 @@
     if (firstOutput) await revealItemInDir(firstOutput);
   }
 
-  async function compressFile(file: CompressFile, q: number, fmt: OutputFormat | null): Promise<void> {
+  async function convertFile(file: ConvertFile, fmt: TargetFormat, q: number): Promise<void> {
     files.update((all) =>
-      all.map((f) => f.path === file.path ? { ...f, status: "compressing" as const } : f),
+      all.map((f) => f.path === file.path ? { ...f, status: "converting" as const } : f)
     );
-
     try {
-      const results = await invoke<CompressionResult[]>("compress_images", {
+      const results = await invoke<ConversionResult[]>("convert_images", {
         paths: [file.path],
+        targetFormat: fmt,
         quality: q,
-        format: fmt,
         outputDir: $outputDir,
       });
-
       const result = results[0];
       files.update((all) =>
         all.map((f) => {
           if (f.path !== file.path) return f;
           if (!result) return { ...f, status: "error" as const, error: "No result returned" };
-          if (result.error) {
-            return { ...f, status: "error" as const, error: result.error, size: result.original_size };
-          }
+          if (result.error) return { ...f, status: "error" as const, error: result.error };
           return {
             ...f,
             status: "done" as const,
-            compressedSize: result.compressed_size,
             outputPath: result.output_path,
+            outputSize: result.compressed_size,
             size: result.original_size,
           };
-        }),
+        })
       );
     } catch (err) {
       files.update((all) =>
         all.map((f) =>
-          f.path === file.path
-            ? { ...f, status: "error" as const, error: String(err) }
-            : f,
-        ),
+          f.path === file.path ? { ...f, status: "error" as const, error: String(err) } : f
+        )
       );
     }
   }
 
-  async function startCompression() {
+  async function startConversion() {
     const currentFiles = $files;
     if (currentFiles.length === 0) return;
-    isCompressing.set(true);
+    isConverting.set(true);
 
-    const q = $quality;
-    const fmt = $format;
-
-    const concurrency = Math.min(
-      Math.max(2, (navigator.hardwareConcurrency || 4) - 2),
-      currentFiles.length,
-    );
+    const fmt = $targetFormat;
+    const q = quality;
+    const concurrency = Math.min(Math.max(2, (navigator.hardwareConcurrency || 4) - 2), currentFiles.length);
 
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
     await new Promise((r) => setTimeout(r, 0));
@@ -110,46 +101,34 @@
     async function worker() {
       while (nextIndex < currentFiles.length) {
         const file = currentFiles[nextIndex++];
-        await compressFile(file, q, fmt);
+        await convertFile(file, fmt, q);
       }
     }
 
     await Promise.all(Array.from({ length: concurrency }, () => worker()));
-    isCompressing.set(false);
+    isConverting.set(false);
   }
 
-  function savedPercent(file: CompressFile): string {
-    if (!file.compressedSize || file.size === 0) return "";
-    const pct = Math.round(((file.size - file.compressedSize) / file.size) * 100);
-    return `${pct}% smaller`;
-  }
 </script>
 
 {#if $files.length === 0}
   <DropZone onfiles={(paths) => addFiles(paths)} />
-{:else if $isCompressing}
+{:else if $isConverting}
   <ProgressRing
     {targetPct}
     label="{$summary.done + $summary.failed} of {$files.length} files"
-    sublabel={$summary.savedBytes > 0 ? `Saved ${formatBytes($summary.savedBytes)}` : undefined}
   />
 {:else}
-  <!-- File List State -->
-  <div class="compress-view">
+  <div class="convert-view">
     <div class="header">
-      <div class="header-left">
-        <h2>
-          {#if $summary.done > 0 || $summary.failed > 0}
-            {$summary.done} of {$files.length} compressed
-            {#if $summary.failed > 0}· {$summary.failed} failed{/if}
-          {:else}
-            {$files.length} image{$files.length > 1 ? "s" : ""} selected
-          {/if}
-        </h2>
-        {#if $summary.savedBytes > 0}
-          <span class="saved-total">Saved {formatBytes($summary.savedBytes)}</span>
+      <h2>
+        {#if $summary.done > 0 || $summary.failed > 0}
+          {$summary.done} of {$files.length} converted
+          {#if $summary.failed > 0}· {$summary.failed} failed{/if}
+        {:else}
+          {$files.length} image{$files.length > 1 ? "s" : ""} selected
         {/if}
-      </div>
+      </h2>
       <div class="header-actions">
         {#if $summary.done > 0 && $summary.pending === 0}
           <button class="btn-ghost" onclick={openOutputFolder}>
@@ -173,11 +152,11 @@
             <span class="file-name">{file.name}</span>
             <span class="file-detail">
               {#if file.status === "done"}
-                {formatBytes(file.size)} → {formatBytes(file.compressedSize ?? 0)} · {savedPercent(file)}
+                {file.sourceFormat} → {formats.find(f => f.value === $targetFormat)?.label ?? ""} · {formatBytes(file.outputSize ?? 0)}
               {:else if file.status === "error"}
                 {file.error}
               {:else}
-                Ready
+                {file.sourceFormat} → {formats.find(f => f.value === $targetFormat)?.label ?? ""}
               {/if}
             </span>
           </div>
@@ -196,24 +175,25 @@
       {/each}
     </div>
 
-    <!-- Controls -->
     <div class="controls">
       <div class="control-group">
-        <span class="label">Format</span>
+        <span class="label">To</span>
         <div class="pills">
           {#each formats as f}
             <button
               class="pill"
-              class:active={$format === f.value}
-              onclick={() => format.set(f.value)}
+              class:active={$targetFormat === f.value}
+              onclick={() => targetFormat.set(f.value)}
             >{f.label}</button>
           {/each}
         </div>
       </div>
-      <div class="control-group">
-        <label for="quality-slider">Quality <span class="quality-value">{$quality}%</span></label>
-        <input id="quality-slider" type="range" min="10" max="100" step="5" bind:value={$quality} />
-      </div>
+      {#if $targetFormat !== "Png"}
+        <div class="control-group">
+          <label for="quality-slider">Quality <span class="quality-value">{quality}%</span></label>
+          <input id="quality-slider" type="range" min="10" max="100" step="5" bind:value={quality} />
+        </div>
+      {/if}
       <div class="control-group">
         <span class="label">Output</span>
         <button class="btn-ghost output-btn" onclick={browseOutputDir}>
@@ -221,16 +201,15 @@
           {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
         </button>
       </div>
-      <button class="btn-primary" onclick={startCompression}>
-        Compress {$files.length > 1 ? "All" : ""}
+      <button class="btn-primary" onclick={startConversion}>
+        Convert {$files.length > 1 ? "All" : ""}
       </button>
     </div>
   </div>
 {/if}
 
 <style>
-  /* Compress View */
-  .compress-view {
+  .convert-view {
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -246,12 +225,6 @@
   .header h2 {
     font-size: 18px;
     font-weight: 600;
-  }
-
-  .saved-total {
-    font-size: 13px;
-    color: var(--accent);
-    font-weight: 500;
   }
 
   .header-actions {
@@ -271,9 +244,7 @@
     transition: background 0.15s;
   }
 
-  .btn-ghost:hover {
-    background: var(--navy-bg);
-  }
+  .btn-ghost:hover { background: var(--navy-bg); }
 
   .output-btn {
     max-width: 180px;
@@ -282,12 +253,8 @@
     white-space: nowrap;
   }
 
-  .btn-ghost.danger:hover {
-    color: #ef4444;
-    border-color: #ef4444;
-  }
+  .btn-ghost.danger:hover { color: #ef4444; border-color: #ef4444; }
 
-  /* File List */
   .file-list {
     flex: 1;
     display: flex;
@@ -304,12 +271,9 @@
     padding: 10px 14px;
     border-radius: var(--radius-sm);
     background: var(--bg-card);
-    transition: background 0.15s;
   }
 
-  .file-row.failed {
-    background: rgba(239, 68, 68, 0.06);
-  }
+  .file-row.failed { background: rgba(239, 68, 68, 0.06); }
 
   .file-info {
     display: flex;
@@ -326,14 +290,8 @@
     white-space: nowrap;
   }
 
-  .file-detail {
-    font-size: 12px;
-    color: var(--text-muted);
-  }
-
-  .file-row.failed .file-detail {
-    color: #ef4444;
-  }
+  .file-detail { font-size: 12px; color: var(--text-muted); }
+  .file-row.failed .file-detail { color: #ef4444; }
 
   .file-status {
     flex-shrink: 0;
@@ -341,13 +299,8 @@
     align-items: center;
   }
 
-  .file-status :global(svg) {
-    color: var(--accent);
-  }
-
-  .file-row.failed .file-status :global(svg) {
-    color: #ef4444;
-  }
+  .file-status :global(svg) { color: var(--accent); }
+  .file-row.failed .file-status :global(svg) { color: #ef4444; }
 
   .btn-icon {
     padding: 4px;
@@ -356,11 +309,8 @@
     transition: color 0.15s;
   }
 
-  .btn-icon:hover {
-    color: #ef4444;
-  }
+  .btn-icon:hover { color: #ef4444; }
 
-  /* Controls */
   .controls {
     display: flex;
     align-items: center;
@@ -386,16 +336,9 @@
     color: var(--text-muted);
   }
 
-  .quality-value {
-    color: var(--accent);
-    text-transform: none;
-    letter-spacing: 0;
-  }
+  .quality-value { color: var(--accent); text-transform: none; letter-spacing: 0; }
 
-  .pills {
-    display: flex;
-    gap: 4px;
-  }
+  .pills { display: flex; gap: 4px; }
 
   .pill {
     padding: 5px 12px;
@@ -407,15 +350,9 @@
     transition: background 0.15s, color 0.15s;
   }
 
-  .pill.active {
-    background: var(--accent);
-    color: #fff;
-  }
+  .pill.active { background: var(--accent); color: #fff; }
 
-  input[type="range"] {
-    width: 160px;
-    accent-color: var(--accent);
-  }
+  input[type="range"] { width: 160px; accent-color: var(--accent); }
 
   .btn-primary {
     margin-left: auto;
@@ -428,7 +365,5 @@
     transition: opacity 0.15s;
   }
 
-  .btn-primary:hover {
-    opacity: 0.9;
-  }
+  .btn-primary:hover { opacity: 0.9; }
 </style>

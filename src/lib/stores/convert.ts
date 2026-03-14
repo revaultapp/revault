@@ -1,0 +1,51 @@
+import { writable, derived } from "svelte/store";
+
+export type FileStatus = "pending" | "converting" | "done" | "error";
+export type TargetFormat = "Jpeg" | "Png" | "Webp";
+
+export interface ConvertFile {
+  path: string;
+  name: string;
+  size: number;
+  status: FileStatus;
+  sourceFormat: string;
+  outputPath?: string;
+  outputSize?: number;
+  error?: string;
+}
+
+export const files = writable<ConvertFile[]>([]);
+export const targetFormat = writable<TargetFormat>("Jpeg");
+export const outputDir = writable<string | null>(null);
+export const isConverting = writable(false);
+
+export const summary = derived(files, ($files) => ({
+  done: $files.filter((f) => f.status === "done").length,
+  failed: $files.filter((f) => f.status === "error").length,
+  pending: $files.filter((f) => f.status === "pending" || f.status === "converting").length,
+}));
+
+export function addFiles(paths: string[]) {
+  files.update((current) => {
+    const existing = new Set(current.map((f) => f.path));
+    const newFiles: ConvertFile[] = paths
+      .filter((p) => !existing.has(p))
+      .map((p) => ({
+        path: p,
+        name: p.split(/[\\/]/).pop() ?? p,
+        size: 0,
+        status: "pending" as const,
+        sourceFormat: p.split(".").pop()?.toUpperCase() ?? "?",
+      }));
+    return [...current, ...newFiles];
+  });
+}
+
+export function removeFile(path: string) {
+  files.update((current) => current.filter((f) => f.path !== path));
+}
+
+export function clearFiles() {
+  files.set([]);
+  isConverting.set(false);
+}

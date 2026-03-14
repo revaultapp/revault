@@ -3,6 +3,7 @@
   import { activeTool } from "$lib/stores/nav";
   import SegmentedControl from "./SegmentedControl.svelte";
   import CompressPage from "./CompressPage.svelte";
+  import ConvertPage from "./ConvertPage.svelte";
 
   const tools = [
     { id: "compress", label: "Compress", icon: Minimize2 },
@@ -19,6 +20,8 @@
   <div class="tools-content">
     {#if $activeTool === "compress"}
       <CompressPage />
+    {:else if $activeTool === "convert"}
+      <ConvertPage />
     {:else}
       <div class="placeholder">
         <p>{tools.find(t => t.id === $activeTool)?.label}</p>
