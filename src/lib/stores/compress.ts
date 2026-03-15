@@ -2,7 +2,7 @@ import { writable, derived } from "svelte/store";
 import type { BaseFile } from "$lib/types";
 
 export type FileStatus = "pending" | "compressing" | "done" | "error";
-export type OutputFormat = "Jpeg" | "Png" | "Webp";
+export type OutputFormat = "Jpeg" | "Png" | "Webp" | "Avif";
 
 export interface CompressFile extends BaseFile {
   size: number;

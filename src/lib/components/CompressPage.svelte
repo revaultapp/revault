@@ -10,6 +10,7 @@
     addFiles, removeFile, clearFiles,
     type OutputFormat, type CompressFile,
   } from "$lib/stores/compress";
+  import { IMAGE_EXTENSIONS } from "$lib/types";
 
   let targetPct = $derived(
     $files.length === 0 ? 0 : (($summary.done + $summary.failed) / $files.length) * 100
@@ -34,12 +35,13 @@
     { value: "Jpeg", label: "JPEG" },
     { value: "Png", label: "PNG" },
     { value: "Webp", label: "WebP" },
+    { value: "Avif", label: "AVIF" },
   ];
 
   async function browseFiles() {
     const selected = await open({
       multiple: true,
-      filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp", "heic", "heif", "tiff", "bmp", "gif"] }],
+      filters: [{ name: "Images", extensions: [...IMAGE_EXTENSIONS] }],
     });
     if (selected) addFiles(selected);
   }

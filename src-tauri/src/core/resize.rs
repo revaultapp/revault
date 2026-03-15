@@ -95,6 +95,22 @@ pub fn resize_image(
                 .map_err(|e| format!("webp encoding failed: {e:?}"))?;
             memory.to_vec()
         }
+        OutputFormat::Avif => {
+            let rgba = resized.to_rgba8();
+            let (w, h) = (rgba.width() as usize, rgba.height() as usize);
+            let pixels: Vec<ravif::RGBA8> = rgba
+                .as_raw()
+                .chunks_exact(4)
+                .map(|c| ravif::RGBA8::new(c[0], c[1], c[2], c[3]))
+                .collect();
+            let encoded = ravif::Encoder::new()
+                .with_quality(quality)
+                .with_speed(6)
+                .with_alpha_quality(quality)
+                .encode_rgba(ravif::Img::new(&pixels, w, h))
+                .map_err(|e| format!("avif encoding failed: {e}"))?;
+            encoded.avif_file
+        }
     };
 
     let resized_size = bytes.len() as u64;

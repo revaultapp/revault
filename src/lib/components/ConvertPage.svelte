@@ -10,6 +10,7 @@
     addFiles, removeFile, clearFiles,
     type TargetFormat, type ConvertFile,
   } from "$lib/stores/convert";
+  import { IMAGE_EXTENSIONS } from "$lib/types";
 
   let quality = $state(90);
 
@@ -35,12 +36,13 @@
     { value: "Jpeg", label: "JPEG" },
     { value: "Png", label: "PNG" },
     { value: "Webp", label: "WebP" },
+    { value: "Avif", label: "AVIF" },
   ];
 
   async function browseFiles() {
     const selected = await open({
       multiple: true,
-      filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp", "heic", "heif", "tiff", "bmp", "gif"] }],
+      filters: [{ name: "Images", extensions: [...IMAGE_EXTENSIONS] }],
     });
     if (selected) addFiles(selected);
   }

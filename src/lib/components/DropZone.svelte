@@ -3,11 +3,12 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { onMount, onDestroy } from "svelte";
   import { Upload } from "lucide-svelte";
+  import { IMAGE_EXTENSIONS, IMAGE_EXTENSIONS_RE } from "$lib/types";
 
   let {
     onfiles,
-    acceptedExtensions = /\.(jpe?g|png|webp|heic|heif|tiff?|bmp|gif)$/i,
-    formatTags = ["JPEG", "PNG", "WebP", "HEIC", "TIFF", "BMP", "GIF"],
+    acceptedExtensions = IMAGE_EXTENSIONS_RE,
+    formatTags = ["JPEG", "PNG", "WebP", "HEIC", "TIFF", "BMP", "GIF", "JXL"],
   }: {
     onfiles: (paths: string[]) => void;
     acceptedExtensions?: RegExp;
@@ -36,7 +37,7 @@
   async function browseFiles() {
     const selected = await open({
       multiple: true,
-      filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp", "heic", "heif", "tiff", "bmp", "gif"] }],
+      filters: [{ name: "Images", extensions: [...IMAGE_EXTENSIONS] }],
     });
     if (selected) onfiles(selected);
   }

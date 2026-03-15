@@ -5,6 +5,7 @@
   import { FolderOpen, CheckCircle, AlertCircle, X } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
   import { runWithConcurrency } from "$lib/utils";
+  import { IMAGE_EXTENSIONS } from "$lib/types";
   import {
     files, isResizing, outputDir, resizeMode, width, height, summary,
     addFiles, removeFile, clearFiles,
@@ -43,7 +44,7 @@
   async function browseFiles() {
     const selected = await open({
       multiple: true,
-      filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp", "heic", "heif", "tiff", "bmp"] }],
+      filters: [{ name: "Images", extensions: [...IMAGE_EXTENSIONS] }],
     });
     if (selected) addFiles(selected);
   }

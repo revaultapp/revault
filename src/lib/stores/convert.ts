@@ -2,7 +2,7 @@ import { writable, derived } from "svelte/store";
 import type { BaseFile } from "$lib/types";
 
 export type FileStatus = "pending" | "converting" | "done" | "error";
-export type TargetFormat = "Jpeg" | "Png" | "Webp";
+export type TargetFormat = "Jpeg" | "Png" | "Webp" | "Avif";
 
 export interface ConvertFile extends BaseFile {
   size: number;

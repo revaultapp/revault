@@ -36,17 +36,19 @@ impl CompressionResult {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub enum OutputFormat {
     Jpeg,
     Png,
     Webp,
+    Avif,
 }
 
 pub fn detect_format(path: &str) -> OutputFormat {
     match ext_lowercase(path).as_deref() {
         Some("png") => OutputFormat::Png,
         Some("webp") => OutputFormat::Webp,
+        Some("avif") => OutputFormat::Avif,
         _ => OutputFormat::Jpeg,
     }
 }
@@ -166,6 +168,40 @@ pub fn compress_webp(
     ))
 }
 
+pub fn compress_avif(
+    input_path: &str,
+    output_path: &str,
+    quality: f32,
+) -> Result<CompressionResult, Box<dyn std::error::Error>> {
+    let quality = quality.clamp(0.0, 100.0);
+    let original_size = checked_size(input_path)?;
+
+    let img = open_image(input_path)?;
+    let rgba = img.to_rgba8();
+    let (w, h) = (rgba.width() as usize, rgba.height() as usize);
+
+    let pixels: Vec<ravif::RGBA8> = rgba
+        .as_raw()
+        .chunks_exact(4)
+        .map(|c| ravif::RGBA8::new(c[0], c[1], c[2], c[3]))
+        .collect();
+    let encoded = ravif::Encoder::new()
+        .with_quality(quality)
+        .with_speed(6)
+        .with_alpha_quality(quality)
+        .encode_rgba(ravif::Img::new(&pixels, w, h))?;
+
+    let compressed_size = encoded.avif_file.len() as u64;
+    fs::write(output_path, &encoded.avif_file)?;
+
+    Ok(CompressionResult::ok(
+        input_path,
+        output_path,
+        original_size,
+        compressed_size,
+    ))
+}
+
 pub fn compress_image(
     input_path: &str,
     output_path: &str,
@@ -176,6 +212,7 @@ pub fn compress_image(
         OutputFormat::Jpeg => compress_jpeg(input_path, output_path, quality),
         OutputFormat::Png => compress_png(input_path, output_path),
         OutputFormat::Webp => compress_webp(input_path, output_path, quality),
+        OutputFormat::Avif => compress_avif(input_path, output_path, quality),
     }
 }
 
@@ -199,11 +236,12 @@ pub fn compress_batch(
                 None => return CompressionResult::err(path, format!("invalid path: {path}")),
             };
 
-            let fmt = format.clone().unwrap_or_else(|| detect_format(path));
+            let fmt = format.unwrap_or_else(|| detect_format(path));
             let ext = match fmt {
                 OutputFormat::Jpeg => "jpg",
                 OutputFormat::Png => "png",
                 OutputFormat::Webp => "webp",
+                OutputFormat::Avif => "avif",
             };
             let out_base = output_dir.map(Path::new).unwrap_or(parent);
             let output = out_base.join(format!("{stem}{suffix}.{ext}"));
@@ -355,10 +393,26 @@ mod tests {
     }
 
     #[test]
+    fn compress_avif_produces_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("test.png");
+        let output = dir.path().join("test_out.avif");
+
+        create_test_png(input.to_str().unwrap(), 200, 200);
+
+        let result =
+            compress_avif(input.to_str().unwrap(), output.to_str().unwrap(), 75.0).unwrap();
+
+        assert!(output.exists());
+        assert!(result.compressed_size > 0);
+    }
+
+    #[test]
     fn detect_format_from_extension() {
         assert!(matches!(detect_format("photo.jpg"), OutputFormat::Jpeg));
         assert!(matches!(detect_format("photo.png"), OutputFormat::Png));
         assert!(matches!(detect_format("photo.webp"), OutputFormat::Webp));
+        assert!(matches!(detect_format("photo.avif"), OutputFormat::Avif));
         assert!(matches!(detect_format("photo.heic"), OutputFormat::Jpeg));
         assert!(matches!(detect_format("photo.unknown"), OutputFormat::Jpeg));
     }

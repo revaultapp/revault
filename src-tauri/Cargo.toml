@@ -21,6 +21,8 @@ mozjpeg = { version = "0.10", default-features = false }
 image = "0.25"
 oxipng = "10"
 webp = "0.3"
+ravif = "0.13"
+jxl-oxide = "0.12"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"
