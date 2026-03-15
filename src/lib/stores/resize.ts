@@ -1,11 +1,10 @@
 import { writable, derived } from "svelte/store";
+import type { BaseFile } from "$lib/types";
 
 export type FileStatus = "pending" | "resizing" | "done" | "error";
 export type ResizeMode = "Fit" | "Exact";
 
-export interface ResizeFile {
-  path: string;
-  name: string;
+export interface ResizeFile extends BaseFile {
   size: number;
   status: FileStatus;
   outputPath?: string;

@@ -5,6 +5,8 @@
     Settings, Database
   } from "lucide-svelte";
   import { activePage } from "$lib/stores/nav";
+  import { savings } from "$lib/stores/savings";
+  import { formatBytes } from "$lib/utils";
 
   type NavItem = { icon: typeof Compass; id: string; label: string; badge?: string; dot?: boolean };
   const navItems: NavItem[] = [
@@ -44,7 +46,7 @@
 
       <div class="saved-badge">
         <Database size={16} strokeWidth={1.8} />
-        <span>Saved: 12.4 GB</span>
+        <span>Saved: {formatBytes($savings)}</span>
       </div>
     </nav>
 

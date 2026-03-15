@@ -1,11 +1,15 @@
-<script lang="ts">
+<script lang="ts" generics="T extends BaseFile">
   import type { Snippet } from "svelte";
-  import { FolderOpen, Trash2, CheckCircle, AlertCircle, X } from "lucide-svelte";
+  import { invoke } from "@tauri-apps/api/core";
+  import { FolderOpen, Trash2, ImageIcon } from "lucide-svelte";
   import DropZone from "./DropZone.svelte";
   import ProgressRing from "./ProgressRing.svelte";
+  import type { BaseFile } from "$lib/types";
+
+  let thumbnails = $state<Record<string, string>>({});
 
   interface Props {
-    files: any[];
+    files: T[];
     isProcessing: boolean;
     targetPct: number;
     progressLabel: string;
@@ -18,9 +22,9 @@
     onaction: () => void;
     headerText: string;
     headerSub?: Snippet;
-    children: Snippet;
-    fileDetail: Snippet<[any]>;
-    fileStatus: Snippet<[any]>;
+    children?: Snippet;
+    fileDetail: Snippet<[T]>;
+    fileStatus: Snippet<[T]>;
   }
 
   let {
@@ -41,6 +45,16 @@
     fileDetail,
     fileStatus,
   }: Props = $props();
+
+  $effect(() => {
+    for (const file of files) {
+      if (thumbnails[file.path] !== undefined) continue;
+      thumbnails[file.path] = ""; // mark as loading
+      invoke<string>("generate_thumbnail", { path: file.path })
+        .then((src) => { thumbnails[file.path] = src; })
+        .catch(() => { thumbnails[file.path] = "error"; });
+    }
+  });
 </script>
 
 {#if files.length === 0}
@@ -72,6 +86,11 @@
     <div class="file-list">
       {#each files as file (file.path)}
         <div class="file-row" class:failed={file.status === "error"}>
+          {#if thumbnails[file.path] && thumbnails[file.path] !== "error"}
+            <img class="file-thumb" src={thumbnails[file.path]} alt="" draggable="false" />
+          {:else}
+            <div class="file-thumb placeholder"><ImageIcon size={18} /></div>
+          {/if}
           <div class="file-info">
             <span class="file-name">{file.name}</span>
             <span class="file-detail">{@render fileDetail(file)}</span>
@@ -82,7 +101,7 @@
     </div>
 
     <div class="controls">
-      {@render children()}
+      {#if children}{@render children()}{/if}
       <button class="btn-primary" onclick={onaction}>{actionLabel}</button>
     </div>
   </div>
@@ -146,6 +165,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 12px;
     padding: 10px 14px;
     border-radius: var(--radius-sm);
     background: var(--bg-card);
@@ -154,10 +174,28 @@
 
   .file-row.failed { background: rgba(239, 68, 68, 0.06); }
 
+  .file-thumb {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+  }
+
+  .file-thumb.placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--navy-bg);
+    color: var(--text-muted);
+  }
+
   .file-info {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    flex: 1;
     min-width: 0;
   }
 
@@ -192,8 +230,10 @@
 
   .controls {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 24px;
+    column-gap: 24px;
+    row-gap: 12px;
     padding: 16px 20px;
     background: var(--bg-card);
     border-radius: 12px;

@@ -2,12 +2,15 @@
   import { activePage } from "$lib/stores/nav";
   import SettingsPage from "$lib/components/SettingsPage.svelte";
   import ToolsPage from "$lib/components/ToolsPage.svelte";
+  import PrivacyPage from "$lib/components/PrivacyPage.svelte";
 </script>
 
 {#if $activePage === "tools"}
   <ToolsPage />
 {:else if $activePage === "settings"}
   <SettingsPage />
+{:else if $activePage === "privacy"}
+  <PrivacyPage />
 {:else}
   <div class="placeholder">
     <p>This section is not yet available.</p>

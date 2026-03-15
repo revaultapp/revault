@@ -1,9 +1,10 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
-  import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { FolderOpen, CheckCircle, AlertCircle, X } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
+  import { runWithConcurrency, browseOutputDir, openOutputFolder } from "$lib/utils";
+  import { IMAGE_EXTENSIONS } from "$lib/types";
   import {
     files, isResizing, outputDir, resizeMode, width, height, summary,
     addFiles, removeFile, clearFiles,
@@ -42,19 +43,19 @@
   async function browseFiles() {
     const selected = await open({
       multiple: true,
-      filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp", "heic", "heif", "tiff", "bmp"] }],
+      filters: [{ name: "Images", extensions: [...IMAGE_EXTENSIONS] }],
     });
     if (selected) addFiles(selected);
   }
 
-  async function browseOutputDir() {
-    const selected = await open({ directory: true });
-    if (selected) outputDir.set(selected);
+  async function handleBrowseOutputDir() {
+    const dir = await browseOutputDir();
+    if (dir) outputDir.set(dir);
   }
 
-  async function openOutputFolder() {
+  async function handleOpenOutputFolder() {
     const firstOutput = $files.find((f) => f.outputPath)?.outputPath;
-    if (firstOutput) await revealItemInDir(firstOutput);
+    if (firstOutput) await openOutputFolder(firstOutput);
   }
 
   async function resizeFile(file: ResizeFile, w: number, h: number, mode: string, outDir: string | null): Promise<void> {
@@ -98,17 +99,8 @@
     const mode = $resizeMode;
     const outDir = $outputDir;
     isResizing.set(true);
-    const concurrency = Math.min(Math.max(2, (navigator.hardwareConcurrency || 4) - 2), currentFiles.length);
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
-    await new Promise((r) => setTimeout(r, 0));
-    let nextIndex = 0;
-    async function worker() {
-      while (nextIndex < currentFiles.length) {
-        const file = currentFiles[nextIndex++];
-        await resizeFile(file, w, h, mode, outDir);
-      }
-    }
-    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+    await runWithConcurrency(currentFiles, (file) => resizeFile(file, w, h, mode, outDir));
     isResizing.set(false);
   }
 
@@ -122,7 +114,7 @@
   onfiles={(paths) => addFiles(paths)}
   onbrowse={browseFiles}
   onclear={clearFiles}
-  onopenfolder={$summary.done > 0 && $summary.pending === 0 ? openOutputFolder : undefined}
+  onopenfolder={$summary.done > 0 && $summary.pending === 0 ? handleOpenOutputFolder : undefined}
   actionLabel="Resize {$files.length > 1 ? 'All' : ''}"
   onaction={startResize}
   {headerText}
@@ -181,7 +173,7 @@
   </div>
   <div class="control-group">
     <span class="label">Output</span>
-    <button class="btn-ghost output-btn" onclick={browseOutputDir}>
+    <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
       <FolderOpen size={14} />
       {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
     </button>
