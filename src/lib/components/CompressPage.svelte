@@ -10,6 +10,7 @@
     addFiles, removeFile, clearFiles,
     type OutputFormat, type CompressFile,
   } from "$lib/stores/compress";
+  import { savings } from "$lib/stores/savings";
   import { IMAGE_EXTENSIONS } from "$lib/types";
 
   let targetPct = $derived(
@@ -91,6 +92,7 @@
     const fmt = $format;
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
     await runWithConcurrency(currentFiles, (file) => compressFile(file, q, fmt));
+    savings.add($summary.savedBytes);
     isCompressing.set(false);
   }
 

@@ -3,7 +3,9 @@ use std::fs;
 use std::io::Cursor;
 use std::path::Path;
 
-use crate::core::image_io::{checked_size, decode_rgb, ext_lowercase, open_image};
+use crate::core::image_io::{
+    checked_size, decode_rgb, ext_lowercase, open_image, write_preserving_timestamps,
+};
 
 #[derive(Serialize)]
 pub struct CompressionResult {
@@ -101,7 +103,7 @@ pub fn compress_jpeg(
     let compressed = cinfo.finish()?;
 
     let compressed_size = compressed.len() as u64;
-    fs::write(output_path, &compressed)?;
+    write_preserving_timestamps(input_path, output_path, &compressed)?;
 
     Ok(CompressionResult::ok(
         input_path,
@@ -128,7 +130,7 @@ pub fn compress_png(
     };
 
     let compressed_size = compressed.len() as u64;
-    fs::write(output_path, &compressed)?;
+    write_preserving_timestamps(input_path, output_path, &compressed)?;
 
     Ok(CompressionResult::ok(
         input_path,
@@ -158,7 +160,7 @@ pub fn compress_webp(
         .map_err(|e| format!("webp encoding failed: {e:?}"))?;
 
     let compressed_size = memory.len() as u64;
-    fs::write(output_path, &*memory)?;
+    write_preserving_timestamps(input_path, output_path, &memory)?;
 
     Ok(CompressionResult::ok(
         input_path,
@@ -192,7 +194,7 @@ pub fn compress_avif(
         .encode_rgba(ravif::Img::new(&pixels, w, h))?;
 
     let compressed_size = encoded.avif_file.len() as u64;
-    fs::write(output_path, &encoded.avif_file)?;
+    write_preserving_timestamps(input_path, output_path, &encoded.avif_file)?;
 
     Ok(CompressionResult::ok(
         input_path,

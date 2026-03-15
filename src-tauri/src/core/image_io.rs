@@ -67,6 +67,17 @@ pub fn open_image(path: &str) -> Result<image::DynamicImage, Box<dyn std::error:
     }
 }
 
+pub fn write_preserving_timestamps(
+    input_path: &str,
+    output_path: &str,
+    data: &[u8],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mtime = filetime::FileTime::from_last_modification_time(&fs::metadata(input_path)?);
+    fs::write(output_path, data)?;
+    filetime::set_file_mtime(output_path, mtime)?;
+    Ok(())
+}
+
 pub fn checked_size(path: &str) -> Result<u64, Box<dyn std::error::Error>> {
     let size = fs::metadata(path)?.len();
     if size > MAX_FILE_SIZE {
@@ -79,4 +90,28 @@ pub fn decode_rgb(path: &str) -> Result<(usize, usize, Vec<u8>), Box<dyn std::er
     let img = open_image(path)?;
     let rgb = img.to_rgb8();
     Ok((rgb.width() as usize, rgb.height() as usize, rgb.into_raw()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn write_preserving_timestamps_copies_mtime() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("input.bin");
+        let output = dir.path().join("output.bin");
+
+        fs::write(&input, b"hello").unwrap();
+
+        let past = filetime::FileTime::from_unix_time(1_000_000, 0);
+        filetime::set_file_times(&input, past, past).unwrap();
+
+        write_preserving_timestamps(input.to_str().unwrap(), output.to_str().unwrap(), b"world")
+            .unwrap();
+
+        let meta = fs::metadata(&output).unwrap();
+        let mtime = filetime::FileTime::from_last_modification_time(&meta);
+        assert_eq!(mtime, past);
+    }
 }

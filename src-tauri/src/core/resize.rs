@@ -5,7 +5,7 @@ use std::io::Cursor;
 use std::path::Path;
 
 use crate::core::compression::{detect_format, OutputFormat};
-use crate::core::image_io::{checked_size, ext_lowercase, open_image};
+use crate::core::image_io::{checked_size, ext_lowercase, open_image, write_preserving_timestamps};
 
 fn encode_jpeg_mozjpeg(
     img: &image::DynamicImage,
@@ -114,7 +114,7 @@ pub fn resize_image(
     };
 
     let resized_size = bytes.len() as u64;
-    fs::write(output, &bytes)?;
+    write_preserving_timestamps(input, output, &bytes)?;
 
     Ok(ResizeResult {
         input_path: input.to_string(),
