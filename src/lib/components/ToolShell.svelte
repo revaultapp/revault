@@ -1,11 +1,12 @@
-<script lang="ts">
+<script lang="ts" generics="T extends BaseFile">
   import type { Snippet } from "svelte";
   import { FolderOpen, Trash2, CheckCircle, AlertCircle, X } from "lucide-svelte";
   import DropZone from "./DropZone.svelte";
   import ProgressRing from "./ProgressRing.svelte";
+  import type { BaseFile } from "$lib/types";
 
   interface Props {
-    files: any[];
+    files: T[];
     isProcessing: boolean;
     targetPct: number;
     progressLabel: string;
@@ -19,8 +20,8 @@
     headerText: string;
     headerSub?: Snippet;
     children: Snippet;
-    fileDetail: Snippet<[any]>;
-    fileStatus: Snippet<[any]>;
+    fileDetail: Snippet<[T]>;
+    fileStatus: Snippet<[T]>;
   }
 
   let {

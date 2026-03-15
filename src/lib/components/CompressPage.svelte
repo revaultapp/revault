@@ -4,7 +4,7 @@
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { FolderOpen, CheckCircle, AlertCircle, X } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
-  import { formatBytes } from "$lib/utils";
+  import { formatBytes, runWithConcurrency } from "$lib/utils";
   import {
     files, quality, format, outputDir, isCompressing, summary,
     addFiles, removeFile, clearFiles,
@@ -87,17 +87,8 @@
     isCompressing.set(true);
     const q = $quality;
     const fmt = $format;
-    const concurrency = Math.min(Math.max(2, (navigator.hardwareConcurrency || 4) - 2), currentFiles.length);
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
-    await new Promise((r) => setTimeout(r, 0));
-    let nextIndex = 0;
-    async function worker() {
-      while (nextIndex < currentFiles.length) {
-        const file = currentFiles[nextIndex++];
-        await compressFile(file, q, fmt);
-      }
-    }
-    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+    await runWithConcurrency(currentFiles, (file) => compressFile(file, q, fmt));
     isCompressing.set(false);
   }
 

@@ -4,3 +4,23 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+export async function runWithConcurrency<T>(
+  items: T[],
+  task: (item: T) => Promise<void>,
+): Promise<void> {
+  if (items.length === 0) return;
+  const concurrency = Math.min(
+    Math.max(2, (navigator.hardwareConcurrency || 4) - 2),
+    items.length,
+  );
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < items.length) {
+      await task(items[nextIndex++]);
+    }
+  }
+  await new Promise<void>((r) => setTimeout(r, 0));
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+}
+

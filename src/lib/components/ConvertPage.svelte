@@ -4,7 +4,7 @@
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { FolderOpen, CircleCheck, CircleAlert, X } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
-  import { formatBytes } from "$lib/utils";
+  import { formatBytes, runWithConcurrency } from "$lib/utils";
   import {
     files, targetFormat, outputDir, isConverting, summary,
     addFiles, removeFile, clearFiles,
@@ -88,17 +88,8 @@
     isConverting.set(true);
     const fmt = $targetFormat;
     const q = quality;
-    const concurrency = Math.min(Math.max(2, (navigator.hardwareConcurrency || 4) - 2), currentFiles.length);
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
-    await new Promise((r) => setTimeout(r, 0));
-    let nextIndex = 0;
-    async function worker() {
-      while (nextIndex < currentFiles.length) {
-        const file = currentFiles[nextIndex++];
-        await convertFile(file, fmt, q);
-      }
-    }
-    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+    await runWithConcurrency(currentFiles, (file) => convertFile(file, fmt, q));
     isConverting.set(false);
   }
 </script>

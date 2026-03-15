@@ -122,7 +122,7 @@ pub fn compress_png(
         let img = open_image(input_path)?;
         let mut buf = Cursor::new(Vec::new());
         img.write_to(&mut buf, image::ImageFormat::Png)?;
-        buf.into_inner()
+        oxipng::optimize_from_memory(&buf.into_inner(), &oxipng::Options::from_preset(0))?
     };
 
     let compressed_size = compressed.len() as u64;
@@ -338,6 +338,20 @@ mod tests {
         assert!(results[0].error.is_none());
         assert!(results[0].compressed_size > 0);
         assert!(results[1].error.is_some());
+    }
+
+    #[test]
+    fn compress_png_from_jpeg_input_applies_oxipng() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("photo.jpg");
+        let output = dir.path().join("photo_out.png");
+
+        create_test_jpeg(input.to_str().unwrap(), 100, 100, 90.0);
+        let result = compress_png(input.to_str().unwrap(), output.to_str().unwrap()).unwrap();
+
+        assert!(result.compressed_size > 0);
+        let header = &fs::read(&output).unwrap()[..4];
+        assert_eq!(header, [0x89, 0x50, 0x4E, 0x47]);
     }
 
     #[test]

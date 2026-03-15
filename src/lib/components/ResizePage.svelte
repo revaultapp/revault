@@ -4,6 +4,7 @@
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { FolderOpen, CheckCircle, AlertCircle, X } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
+  import { runWithConcurrency } from "$lib/utils";
   import {
     files, isResizing, outputDir, resizeMode, width, height, summary,
     addFiles, removeFile, clearFiles,
@@ -98,17 +99,8 @@
     const mode = $resizeMode;
     const outDir = $outputDir;
     isResizing.set(true);
-    const concurrency = Math.min(Math.max(2, (navigator.hardwareConcurrency || 4) - 2), currentFiles.length);
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
-    await new Promise((r) => setTimeout(r, 0));
-    let nextIndex = 0;
-    async function worker() {
-      while (nextIndex < currentFiles.length) {
-        const file = currentFiles[nextIndex++];
-        await resizeFile(file, w, h, mode, outDir);
-      }
-    }
-    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+    await runWithConcurrency(currentFiles, (file) => resizeFile(file, w, h, mode, outDir));
     isResizing.set(false);
   }
 
