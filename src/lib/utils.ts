@@ -1,3 +1,15 @@
+import { open } from "@tauri-apps/plugin-dialog";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
+
+export async function browseOutputDir(): Promise<string | null> {
+  const dir = await open({ directory: true, multiple: false });
+  return typeof dir === "string" ? dir : null;
+}
+
+export async function openOutputFolder(filePath: string): Promise<void> {
+  await revealItemInDir(filePath);
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
   if (bytes < 1024) return `${bytes} B`;
