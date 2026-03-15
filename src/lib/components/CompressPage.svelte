@@ -1,16 +1,45 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
-  import { FolderOpen, CheckCircle, AlertCircle, X } from "lucide-svelte";
+  import { FolderOpen, CheckCircle, AlertCircle, X, Eye } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
+  import BeforeAfterSlider from "./BeforeAfterSlider.svelte";
   import { formatBytes, runWithConcurrency, browseOutputDir, openOutputFolder } from "$lib/utils";
   import {
     files, quality, format, outputDir, isCompressing, summary,
+    compressMode, targetSize, targetUnit, activeProfile,
     addFiles, removeFile, clearFiles,
-    type OutputFormat, type CompressFile,
+    type OutputFormat, type CompressFile, type CompressionProfile, type CompressMode,
   } from "$lib/stores/compress";
   import { savings } from "$lib/stores/savings";
   import { IMAGE_EXTENSIONS } from "$lib/types";
+
+  const profiles: { id: CompressionProfile; label: string }[] = [
+    { id: "Web", label: "Web" },
+    { id: "Email", label: "Email" },
+    { id: "Archive", label: "Archive" },
+    { id: "Custom", label: "Custom" },
+  ];
+
+  const targetPresets = [
+    { label: "500 KB", size: 500, unit: "KB" as const },
+    { label: "1 MB", size: 1, unit: "MB" as const },
+    { label: "2 MB", size: 2, unit: "MB" as const },
+    { label: "5 MB", size: 5, unit: "MB" as const },
+  ];
+
+  function applyProfile(p: CompressionProfile) {
+    activeProfile.set(p);
+    if (p === "Web") { quality.set(75); format.set("Webp"); compressMode.set("quality"); }
+    else if (p === "Email") { quality.set(60); format.set("Jpeg"); compressMode.set("target"); targetSize.set(500); targetUnit.set("KB"); }
+    else if (p === "Archive") { quality.set(95); format.set(null); compressMode.set("quality"); }
+  }
+
+  function onManualChange() { activeProfile.set("Custom"); }
+
+  function targetBytes(): number {
+    return $targetUnit === "MB" ? $targetSize * 1024 * 1024 : $targetSize * 1024;
+  }
 
   let targetPct = $derived(
     $files.length === 0 ? 0 : (($summary.done + $summary.failed) / $files.length) * 100
@@ -27,6 +56,7 @@
     output_path: string;
     original_size: number;
     compressed_size: number;
+    already_optimal: boolean;
     error: string | null;
   }
 
@@ -56,24 +86,23 @@
     if (firstOutput) await openOutputFolder(firstOutput);
   }
 
-  async function compressFile(file: CompressFile, q: number, fmt: OutputFormat | null): Promise<void> {
+  async function compressFile(file: CompressFile, q: number, fmt: OutputFormat | null, mode: CompressMode, tb: number): Promise<void> {
     files.update((all) =>
       all.map((f) => f.path === file.path ? { ...f, status: "compressing" as const } : f)
     );
     try {
-      const results = await invoke<CompressionResult[]>("compress_images", {
-        paths: [file.path],
-        quality: q,
-        format: fmt,
-        outputDir: $outputDir,
-      });
+      const cmd = mode === "target" ? "compress_to_target" : "compress_images";
+      const args = mode === "target"
+        ? { paths: [file.path], targetBytes: tb, format: fmt, outputDir: $outputDir }
+        : { paths: [file.path], quality: q, format: fmt, outputDir: $outputDir };
+      const results = await invoke<CompressionResult[]>(cmd, args);
       const result = results[0];
       files.update((all) =>
         all.map((f) => {
           if (f.path !== file.path) return f;
           if (!result) return { ...f, status: "error" as const, error: "No result returned" };
           if (result.error) return { ...f, status: "error" as const, error: result.error, size: result.original_size };
-          return { ...f, status: "done" as const, compressedSize: result.compressed_size, outputPath: result.output_path, size: result.original_size };
+          return { ...f, status: "done" as const, compressedSize: result.compressed_size, outputPath: result.output_path, size: result.original_size, alreadyOptimal: result.already_optimal };
         })
       );
     } catch (err) {
@@ -89,15 +118,26 @@
     isCompressing.set(true);
     const q = $quality;
     const fmt = $format;
+    const mode = $compressMode;
+    const tb = targetBytes();
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
-    await runWithConcurrency(currentFiles, (file) => compressFile(file, q, fmt));
+    await runWithConcurrency(currentFiles, (file) => compressFile(file, q, fmt, mode, tb));
     savings.add($summary.savedBytes);
     isCompressing.set(false);
   }
 
   function savedPercent(file: CompressFile): string {
     if (!file.compressedSize || file.size === 0) return "";
-    return `${Math.round(((file.size - file.compressedSize) / file.size) * 100)}% smaller`;
+    if (file.alreadyOptimal) return "Already optimal";
+    const pct = Math.round(((file.size - file.compressedSize) / file.size) * 100);
+    return pct > 0 ? `${pct}% smaller` : "Already optimal";
+  }
+
+  let compareFile = $state<CompressFile | null>(null);
+
+  function handleClear() {
+    compareFile = null;
+    clearFiles();
   }
 </script>
 
@@ -109,7 +149,7 @@
   progressSublabel={$summary.savedBytes > 0 ? `Saved ${formatBytes($summary.savedBytes)}` : undefined}
   onfiles={(paths) => addFiles(paths)}
   onbrowse={browseFiles}
-  onclear={clearFiles}
+  onclear={handleClear}
   onopenfolder={$summary.done > 0 && $summary.pending === 0 ? handleOpenOutputFolder : undefined}
   actionLabel="Compress {$files.length > 1 ? 'All' : ''}"
   onaction={startCompression}
@@ -133,6 +173,9 @@
 
   {#snippet fileStatus(file)}
     {#if file.status === "done"}
+      <button class="btn-icon compare-btn" onclick={() => compareFile = file} title="Compare">
+        <Eye size={16} />
+      </button>
       <CheckCircle size={18} />
     {:else if file.status === "error"}
       <AlertCircle size={18} />
@@ -144,19 +187,50 @@
   {/snippet}
 
   <div class="control-group">
+    <span class="label">Profile</span>
+    <div class="pills">
+      {#each profiles as p}
+        <button class="pill" class:active={$activeProfile === p.id} onclick={() => applyProfile(p.id)}>
+          {p.label}
+        </button>
+      {/each}
+    </div>
+  </div>
+  <div class="control-group">
     <span class="label">Format</span>
     <div class="pills">
       {#each formats as f}
-        <button class="pill" class:active={$format === f.value} onclick={() => format.set(f.value)}>
+        <button class="pill" class:active={$format === f.value} onclick={() => { format.set(f.value); onManualChange(); }}>
           {f.label}
         </button>
       {/each}
     </div>
   </div>
   <div class="control-group">
-    <label for="quality-slider">Quality <span class="quality-value">{$quality}%</span></label>
-    <input id="quality-slider" type="range" min="10" max="100" step="5" bind:value={$quality} />
+    <span class="label">Mode</span>
+    <div class="pills">
+      <button class="pill" class:active={$compressMode === "quality"} onclick={() => { compressMode.set("quality"); onManualChange(); }}>Quality</button>
+      <button class="pill" class:active={$compressMode === "target"} onclick={() => { compressMode.set("target"); onManualChange(); }}>Target Size</button>
+    </div>
   </div>
+  {#if $compressMode === "quality"}
+    <div class="control-group">
+      <label for="quality-slider">Quality <span class="quality-value">{$quality}%</span></label>
+      <input id="quality-slider" type="range" min="10" max="100" step="5" bind:value={$quality} oninput={onManualChange} />
+    </div>
+  {:else}
+    <div class="control-group">
+      <span class="label">Target</span>
+      <div class="pills">
+        {#each targetPresets as tp}
+          <button class="pill" class:active={$targetSize === tp.size && $targetUnit === tp.unit}
+            onclick={() => { targetSize.set(tp.size); targetUnit.set(tp.unit); onManualChange(); }}>
+            {tp.label}
+          </button>
+        {/each}
+      </div>
+    </div>
+  {/if}
   <div class="control-group">
     <span class="label">Output</span>
     <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
@@ -166,10 +240,27 @@
   </div>
 </ToolShell>
 
+{#if compareFile?.outputPath}
+  <BeforeAfterSlider
+    beforePath={compareFile.path}
+    afterPath={compareFile.outputPath}
+    beforeSize={compareFile.size}
+    afterSize={compareFile.compressedSize ?? 0}
+    onclose={() => compareFile = null}
+  />
+{/if}
+
 <style>
   .saved-total {
     font-size: 13px;
     color: var(--accent);
     font-weight: 500;
   }
+
+  .compare-btn {
+    margin-right: 6px;
+    color: var(--text-muted);
+    transition: color 0.15s;
+  }
+  .compare-btn:hover { color: var(--accent); }
 </style>

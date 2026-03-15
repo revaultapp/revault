@@ -6,7 +6,7 @@ use std::fs;
 use std::io::Cursor;
 use std::path::Path;
 
-use crate::core::compression::{detect_format, OutputFormat};
+use crate::core::compression::{detect_format, encode_jpeg_bytes, OutputFormat};
 use crate::core::image_io::{checked_size, ext_lowercase, open_image, write_preserving_timestamps};
 
 fn encode_jpeg_mozjpeg(
@@ -15,14 +15,7 @@ fn encode_jpeg_mozjpeg(
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let rgb = img.to_rgb8();
     let (w, h) = (rgb.width() as usize, rgb.height() as usize);
-    let pixels = rgb.into_raw();
-
-    let mut cinfo = mozjpeg::Compress::new(mozjpeg::ColorSpace::JCS_RGB);
-    cinfo.set_size(w, h);
-    cinfo.set_quality(quality);
-    let mut cinfo = cinfo.start_compress(Vec::new())?;
-    cinfo.write_scanlines(&pixels)?;
-    Ok(cinfo.finish()?)
+    encode_jpeg_bytes(w, h, rgb.as_raw(), quality)
 }
 
 #[derive(Clone, Serialize, Deserialize)]

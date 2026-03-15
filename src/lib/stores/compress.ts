@@ -9,14 +9,22 @@ export interface CompressFile extends BaseFile {
   status: FileStatus;
   compressedSize?: number;
   outputPath?: string;
+  alreadyOptimal?: boolean;
   error?: string;
 }
+
+export type CompressMode = "quality" | "target";
+export type CompressionProfile = "Web" | "Email" | "Archive" | "Custom";
 
 export const files = writable<CompressFile[]>([]);
 export const quality = writable(80);
 export const format = writable<OutputFormat | null>(null);
 export const outputDir = writable<string | null>(null);
 export const isCompressing = writable(false);
+export const compressMode = writable<CompressMode>("quality");
+export const targetSize = writable<number>(500);
+export const targetUnit = writable<"KB" | "MB">("KB");
+export const activeProfile = writable<CompressionProfile>("Custom");
 
 export const summary = derived(files, ($files) => {
   const done = $files.filter((f) => f.status === "done");

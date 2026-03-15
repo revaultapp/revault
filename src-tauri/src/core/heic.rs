@@ -26,6 +26,11 @@ mod platform {
         let url = CFURL::from_path(path, false)
             .ok_or_else(|| format!("failed to create CFURL for: {input_path}"))?;
 
+        // SAFETY: CGImageSourceCreateWithURL and CGImageSourceCreateImageAtIndex are
+        // ImageIO C APIs. `url` is borrowed via as_concrete_TypeRef() and stays alive on
+        // the stack for the entire block. Null returns are checked before use. CFRelease
+        // is called once on `source`. CGImage::from_ptr takes ownership of `image_ref`
+        // and will call CGImageRelease on drop.
         let cg_image = unsafe {
             let source = CGImageSourceCreateWithURL(url.as_concrete_TypeRef() as _, ptr::null());
             if source.is_null() {
@@ -65,17 +70,15 @@ mod platform {
         let mut rgb = Vec::with_capacity((width * height * 3) as usize);
         for y in 0..height as usize {
             let row_start = y * bytes_per_row;
-            for x in 0..width as usize {
-                let offset = row_start + x * bytes_per_pixel;
-                if bytes_per_pixel == 4 {
-                    // CoreGraphics uses RGBA byte order
-                    let (r, g, b) = (raw[offset], raw[offset + 1], raw[offset + 2]);
-                    rgb.extend_from_slice(&[r, g, b]);
-                } else if bytes_per_pixel == 3 {
-                    rgb.extend_from_slice(&raw[offset..offset + 3]);
-                } else {
-                    return Err(format!("unsupported pixel format: {bits_per_pixel} bpp").into());
+            let row = &raw[row_start..row_start + width as usize * bytes_per_pixel];
+            if bytes_per_pixel == 4 {
+                for pixel in row.chunks_exact(4) {
+                    rgb.extend_from_slice(&[pixel[0], pixel[1], pixel[2]]);
                 }
+            } else if bytes_per_pixel == 3 {
+                rgb.extend_from_slice(row);
+            } else {
+                return Err(format!("unsupported pixel format: {bits_per_pixel} bpp").into());
             }
         }
 
@@ -92,10 +95,15 @@ mod platform {
     use windows::Win32::Graphics::Imaging::*;
     use windows::Win32::System::Com::*;
 
-    struct ComGuard;
+    struct ComGuard(bool);
     impl Drop for ComGuard {
         fn drop(&mut self) {
-            unsafe { CoUninitialize() }
+            // SAFETY: CoUninitialize balances CoInitializeEx only when we own the init
+            // (self.0 == true). Skipped for CO_E_ALREADYINITIALIZED to avoid unbalanced
+            // uninit. Dropped on the same thread that called CoInitializeEx.
+            if self.0 {
+                unsafe { CoUninitialize() }
+            }
         }
     }
 
@@ -105,12 +113,15 @@ mod platform {
             return Err(format!("file not found: {input_path}").into());
         }
 
+        // SAFETY: All COM pointers (factory, decoder, frame, converter) are managed
+        // by the `windows` crate's ComInterface wrappers which handle Release on drop.
+        // ComGuard ensures CoUninitialize is called only when we own the init.
         unsafe {
             let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
             if hr.is_err() && hr != CO_E_ALREADYINITIALIZED {
                 return Err(format!("COM initialization failed: {hr:?}").into());
             }
-            let _com = ComGuard;
+            let _com = ComGuard(hr.is_ok());
 
             let factory: IWICImagingFactory =
                 CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER)?;

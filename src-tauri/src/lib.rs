@@ -8,11 +8,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             commands::compress::compress_images,
+            commands::compress::compress_to_target,
             commands::convert::convert_images,
             commands::privacy::read_metadata,
             commands::privacy::strip_files,
             commands::resize::resize_images,
             commands::scanner::scan_folder,
+            commands::thumbnail::generate_thumbnail,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

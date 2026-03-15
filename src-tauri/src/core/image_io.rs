@@ -1,3 +1,4 @@
+use base64::Engine;
 use image::ImageReader;
 use std::fs;
 use std::io::BufReader;
@@ -92,6 +93,15 @@ pub fn decode_rgb(path: &str) -> Result<(usize, usize, Vec<u8>), Box<dyn std::er
     Ok((rgb.width() as usize, rgb.height() as usize, rgb.into_raw()))
 }
 
+pub fn generate_thumbnail(path: &str, max_size: u32) -> Result<String, Box<dyn std::error::Error>> {
+    let img = open_image(path)?;
+    let thumb = img.thumbnail(max_size, max_size).to_rgb8();
+    let (w, h) = (thumb.width() as usize, thumb.height() as usize);
+    let jpeg_bytes = crate::core::compression::encode_jpeg_bytes(w, h, thumb.as_raw(), 60.0)?;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg_bytes);
+    Ok(format!("data:image/jpeg;base64,{b64}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,5 +123,20 @@ mod tests {
         let meta = fs::metadata(&output).unwrap();
         let mtime = filetime::FileTime::from_last_modification_time(&meta);
         assert_eq!(mtime, past);
+    }
+
+    #[test]
+    fn generate_thumbnail_returns_data_uri() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.jpg");
+
+        let img = image::RgbImage::from_fn(200, 200, |x, y| {
+            image::Rgb([(x % 256) as u8, (y % 256) as u8, ((x + y) % 256) as u8])
+        });
+        img.save(&path).unwrap();
+
+        let result = generate_thumbnail(path.to_str().unwrap(), 80).unwrap();
+        assert!(result.starts_with("data:image/jpeg;base64,"));
+        assert!(result.len() > 30);
     }
 }
