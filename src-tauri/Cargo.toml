@@ -24,6 +24,7 @@ webp = "0.3"
 ravif = "0.13"
 jxl-oxide = "0.12"
 filetime = "0.2"
+fast_image_resize = { version = "6", features = ["image"] }
 kamadak-exif = "0.6"
 img-parts = "0.4"
 little_exif = "0.6"

@@ -1,4 +1,6 @@
-use image::imageops::FilterType;
+use fast_image_resize::images::Image;
+use fast_image_resize::{ResizeAlg, ResizeOptions, Resizer};
+use image::DynamicImage;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Cursor;
@@ -58,6 +60,37 @@ impl ResizeResult {
     }
 }
 
+fn fit_dimensions(src_w: u32, src_h: u32, max_w: u32, max_h: u32) -> (u32, u32) {
+    let ratio = (max_w as f64 / src_w as f64).min(max_h as f64 / src_h as f64);
+    let w = ((src_w as f64 * ratio).round() as u32).max(1);
+    let h = ((src_h as f64 * ratio).round() as u32).max(1);
+    (w, h)
+}
+
+fn fast_resize(
+    img: &DynamicImage,
+    width: u32,
+    height: u32,
+) -> Result<DynamicImage, Box<dyn std::error::Error>> {
+    let src = img.to_rgba8();
+    let src_view = fast_image_resize::images::ImageRef::new(
+        img.width(),
+        img.height(),
+        src.as_raw(),
+        fast_image_resize::PixelType::U8x4,
+    )?;
+    let mut dst = Image::new(width, height, fast_image_resize::PixelType::U8x4);
+    let mut resizer = Resizer::new();
+    let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(
+        fast_image_resize::FilterType::Lanczos3,
+    ));
+    resizer.resize(&src_view, &mut dst, &options)?;
+
+    let buf = image::RgbaImage::from_raw(width, height, dst.into_vec())
+        .ok_or("failed to reconstruct image from resized buffer")?;
+    Ok(DynamicImage::ImageRgba8(buf))
+}
+
 pub fn resize_image(
     input: &str,
     output: &str,
@@ -70,10 +103,12 @@ pub fn resize_image(
     let img = open_image(input)?;
     let (ow, oh) = (img.width(), img.height());
 
-    let resized = match mode {
-        ResizeMode::Fit => img.resize(width, height, FilterType::Lanczos3),
-        ResizeMode::Exact => img.resize_exact(width, height, FilterType::Lanczos3),
+    let (dst_w, dst_h) = match mode {
+        ResizeMode::Fit => fit_dimensions(img.width(), img.height(), width, height),
+        ResizeMode::Exact => (width, height),
     };
+
+    let resized = fast_resize(&img, dst_w, dst_h)?;
 
     let fmt = detect_format(input);
     let quality = quality.unwrap_or(90.0).clamp(0.0, 100.0);

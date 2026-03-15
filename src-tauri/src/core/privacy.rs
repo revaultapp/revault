@@ -359,12 +359,12 @@ mod tests {
     #[test]
     fn build_output_path_same_dir() {
         let out = build_output_path("/photos/vacation.jpg", None);
-        assert_eq!(out, "/photos/vacation_stripped.jpg");
+        assert_eq!(Path::new(&out), Path::new("/photos/vacation_stripped.jpg"));
     }
 
     #[test]
     fn build_output_path_custom_dir() {
         let out = build_output_path("/photos/vacation.jpg", Some("/output"));
-        assert_eq!(out, "/output/vacation_stripped.jpg");
+        assert_eq!(Path::new(&out), Path::new("/output/vacation_stripped.jpg"));
     }
 }
