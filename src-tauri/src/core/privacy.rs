@@ -1,6 +1,7 @@
 use crate::core::image_io::{checked_size, ext_lowercase, write_preserving_timestamps};
 use exif::{In, Reader, Tag, Value};
 use img_parts::ImageEXIF;
+use little_exif::metadata::Metadata;
 use serde::Serialize;
 use std::error::Error;
 use std::fs;
@@ -240,6 +241,14 @@ pub fn strip_metadata(input: &str, output: &str) -> Result<StripResult, Box<dyn 
             webp.set_exif(None);
             webp.encoder().bytes().to_vec()
         }
+        Some("heic" | "heif") => {
+            let mtime = filetime::FileTime::from_last_modification_time(&fs::metadata(input)?);
+            fs::copy(input, output)?;
+            Metadata::file_clear_metadata(Path::new(output))?;
+            filetime::set_file_mtime(output, mtime)?;
+            let stripped_size = fs::metadata(output)?.len();
+            return Ok(StripResult::ok(input, output, original_size, stripped_size));
+        }
         Some(ext) => return Err(format!("metadata stripping not supported for .{ext}").into()),
         None => return Err("file has no extension".into()),
     };
@@ -289,7 +298,6 @@ mod tests {
             },
         ];
         let val = dms_to_decimal(&dms, Some("N")).unwrap();
-        // 40 + 26/60 + 0.46/3600 = 40.43346
         assert!((val - 40.43346).abs() < 0.001);
     }
 
@@ -301,7 +309,6 @@ mod tests {
             exif::Rational { num: 54, denom: 1 },
         ];
         let val = dms_to_decimal(&dms, Some("S")).unwrap();
-        // -(33 + 51/60 + 54/3600) = -33.865
         assert!((val - -33.865).abs() < 0.001);
     }
 
@@ -315,7 +322,6 @@ mod tests {
     fn read_metadata_no_exif() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.jpg");
-        // Minimal valid JPEG: SOI + EOI
         fs::write(&path, &[0xFF, 0xD8, 0xFF, 0xD9]).unwrap();
         let result = read_metadata(path.to_str().unwrap()).unwrap();
         assert!(!result.has_metadata);
@@ -337,7 +343,6 @@ mod tests {
     fn strip_batch_mixed_results() {
         let dir = tempfile::tempdir().unwrap();
         let valid = dir.path().join("valid.jpg");
-        // Minimal JPEG
         fs::write(&valid, &[0xFF, 0xD8, 0xFF, 0xD9]).unwrap();
         let missing = dir.path().join("missing.jpg");
 

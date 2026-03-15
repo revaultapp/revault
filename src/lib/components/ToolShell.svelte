@@ -19,7 +19,7 @@
     onaction: () => void;
     headerText: string;
     headerSub?: Snippet;
-    children: Snippet;
+    children?: Snippet;
     fileDetail: Snippet<[T]>;
     fileStatus: Snippet<[T]>;
   }
@@ -83,7 +83,7 @@
     </div>
 
     <div class="controls">
-      {@render children()}
+      {#if children}{@render children()}{/if}
       <button class="btn-primary" onclick={onaction}>{actionLabel}</button>
     </div>
   </div>

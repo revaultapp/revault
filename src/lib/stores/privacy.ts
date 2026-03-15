@@ -1,7 +1,7 @@
 import { writable, derived } from "svelte/store";
 import type { BaseFile } from "$lib/types";
 
-export type MetaCategory = "GPS" | "Device" | "DateTime" | "Author" | "Technical";
+export const outputDir = writable<string | null>(null);
 
 export interface PrivacyFile extends BaseFile {
   status: "pending" | "scanning" | "scanned" | "stripping" | "done" | "error";
@@ -18,9 +18,6 @@ export interface PrivacyFile extends BaseFile {
 }
 
 export const files = writable<PrivacyFile[]>([]);
-export const selectedCategories = writable<Set<MetaCategory>>(
-  new Set(["GPS", "Device", "DateTime", "Author", "Technical"])
-);
 export const isProcessing = writable(false);
 
 export const summary = derived(files, ($f) => ({

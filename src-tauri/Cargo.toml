@@ -26,6 +26,7 @@ jxl-oxide = "0.12"
 filetime = "0.2"
 kamadak-exif = "0.6"
 img-parts = "0.4"
+little_exif = "0.6"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"

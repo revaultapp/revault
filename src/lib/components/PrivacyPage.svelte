@@ -1,15 +1,20 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
-  import { ShieldOff, CheckCircle, AlertCircle, X, MapPin, Cpu, Clock, User, Wrench } from "lucide-svelte";
+  import { CheckCircle, AlertCircle, X, FolderOpen } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
-  import { runWithConcurrency } from "$lib/utils";
+  import { runWithConcurrency, browseOutputDir } from "$lib/utils";
   import { IMAGE_EXTENSIONS } from "$lib/types";
   import {
-    files, selectedCategories, isProcessing, summary,
+    files, isProcessing, summary, outputDir,
     addFiles, removeFile, clearFiles,
-    type MetaCategory, type PrivacyFile,
+    type PrivacyFile,
   } from "$lib/stores/privacy";
+
+  async function handleBrowseOutputDir() {
+    const dir = await browseOutputDir();
+    if (dir) outputDir.set(dir);
+  }
 
   interface ScanResult {
     path: string;
@@ -29,14 +34,6 @@
     error: string | null;
   }
 
-  const categories: { value: MetaCategory; label: string; icon: typeof MapPin }[] = [
-    { value: "GPS", label: "GPS", icon: MapPin },
-    { value: "Device", label: "Device", icon: Cpu },
-    { value: "DateTime", label: "Date/Time", icon: Clock },
-    { value: "Author", label: "Author", icon: User },
-    { value: "Technical", label: "Technical", icon: Wrench },
-  ];
-
   let targetPct = $derived(
     $files.length === 0 ? 0 : (($summary.stripped + $summary.failed) / $files.length) * 100
   );
@@ -46,6 +43,14 @@
       ? `${$summary.stripped} of ${$files.length} stripped${$summary.failed > 0 ? ` · ${$summary.failed} failed` : ""}`
       : `${$files.length} image${$files.length > 1 ? "s" : ""} selected`
   );
+
+  let gpsCount = $derived($files.filter(f => f.gps).length);
+  let deviceCount = $derived($files.filter(f => f.device).length);
+  let datetimeCount = $derived($files.filter(f => f.datetime).length);
+  let authorCount = $derived($files.filter(f => f.author).length);
+  let techCount = $derived($files.filter(f => f.technical).length);
+  let totalFound = $derived(gpsCount + deviceCount + datetimeCount + authorCount + techCount);
+  let allStripped = $derived($summary.stripped > 0 && $summary.stripped === $files.filter(f => f.hasMetadata !== undefined).length);
 
   async function browseFiles() {
     const selected = await open({
@@ -108,7 +113,7 @@
     try {
       const results = await invoke<StripResult[]>("strip_files", {
         paths: [file.path],
-        outputDir: null,
+        outputDir: $outputDir,
       });
       const result = results[0];
       files.update((all) =>
@@ -144,15 +149,6 @@
     );
     isProcessing.set(false);
   }
-
-  function toggleCategory(cat: MetaCategory) {
-    selectedCategories.update((set) => {
-      const next = new Set(set);
-      if (next.has(cat)) next.delete(cat);
-      else next.add(cat);
-      return next;
-    });
-  }
 </script>
 
 <ToolShell
@@ -172,7 +168,12 @@
       Scanning...
     {:else if file.status === "error"}
       {file.error}
-    {:else if file.status === "scanned" || file.status === "done" || file.status === "stripping"}
+    {:else if file.status === "done"}
+      {#if file.hasMetadata}
+        <span class="meta-removed">{[file.gps && "GPS", file.device, file.datetime, file.author && "Author", file.technical && "Technical"].filter(Boolean).join(" · ")}</span>
+      {/if}
+      {#if file.outputPath}<span class="meta-tag">{file.outputPath.split(/[\\/]/).pop()}</span>{/if}
+    {:else if file.status === "scanned" || file.status === "stripping"}
       {#if file.hasMetadata}
         {#if file.gps}<span class="meta-tag">GPS</span>{/if}
         {#if file.device}<span class="meta-tag">{file.device}</span>{/if}
@@ -200,20 +201,27 @@
   {/snippet}
 
   <div class="control-group">
-    <span class="label">Strip</span>
+    <span class="label">{allStripped ? "Removed" : "Found"}</span>
     <div class="pills">
-      {#each categories as cat}
-        <button
-          class="pill"
-          class:active={$selectedCategories.has(cat.value)}
-          onclick={() => toggleCategory(cat.value)}
-        >
-          <cat.icon size={11} />
-          {cat.label}
-        </button>
-      {/each}
+      {#if totalFound === 0}
+        <span class="pill">No metadata</span>
+      {:else}
+        {#if gpsCount > 0}<span class="pill" class:active={allStripped}>GPS · {gpsCount}</span>{/if}
+        {#if deviceCount > 0}<span class="pill" class:active={allStripped}>Device · {deviceCount}</span>{/if}
+        {#if datetimeCount > 0}<span class="pill" class:active={allStripped}>Date · {datetimeCount}</span>{/if}
+        {#if authorCount > 0}<span class="pill" class:active={allStripped}>Author · {authorCount}</span>{/if}
+        {#if techCount > 0}<span class="pill" class:active={allStripped}>Technical · {techCount}</span>{/if}
+      {/if}
     </div>
   </div>
+  <div class="control-group">
+    <span class="label">Output</span>
+    <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
+      <FolderOpen size={14} />
+      {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
+    </button>
+  </div>
+
 </ToolShell>
 
 <style>
@@ -225,7 +233,8 @@
     content: " · ";
   }
 
-  .control-group .pills :global(svg) {
-    flex-shrink: 0;
+  .meta-removed {
+    text-decoration: line-through;
+    opacity: 0.45;
   }
 </style>
