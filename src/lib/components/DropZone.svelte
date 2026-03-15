@@ -8,7 +8,7 @@
   let {
     onfiles,
     acceptedExtensions = IMAGE_EXTENSIONS_RE,
-    formatTags = ["JPEG", "PNG", "WebP", "HEIC", "TIFF", "BMP", "GIF", "JXL"],
+    formatTags = ["JPEG", "PNG", "WebP", "HEIC", "TIFF", "BMP", "AVIF", "JXL"],
   }: {
     onfiles: (paths: string[]) => void;
     acceptedExtensions?: RegExp;

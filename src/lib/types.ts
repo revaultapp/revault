@@ -5,7 +5,7 @@ export interface BaseFile {
 }
 
 export const IMAGE_EXTENSIONS = [
-  "jpg", "jpeg", "png", "webp", "heic", "heif", "tiff", "bmp", "gif", "jxl",
+  "jpg", "jpeg", "png", "webp", "heic", "heif", "tiff", "bmp", "avif", "jxl",
 ] as const;
 
-export const IMAGE_EXTENSIONS_RE = /\.(jpe?g|png|webp|heic|heif|tiff?|bmp|gif|jxl)$/i;
+export const IMAGE_EXTENSIONS_RE = /\.(jpe?g|png|webp|heic|heif|tiff?|bmp|avif|jxl)$/i;
