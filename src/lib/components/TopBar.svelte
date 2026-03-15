@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { Search, Bell } from "lucide-svelte";
+  import { Search } from "lucide-svelte";
   import { activePage } from "$lib/stores/nav";
 
   const titles: Record<string, [string, string]> = {
-    dashboard: ["Good morning, Mike", "Dashboard · 3 pending actions"],
+    dashboard: ["Dashboard", "Overview and quick actions"],
     tools: ["Tools", "Compress, convert and resize"],
     analyze: ["Analyze", "Scan your storage"],
     organize: ["Organize", "Sort and manage files"],
@@ -27,10 +27,6 @@
     <kbd>⌘K</kbd>
   </div>
 
-  <button class="bell" aria-label="Notifications">
-    <Bell size={18} strokeWidth={2} />
-    <span class="bell-dot"></span>
-  </button>
 </header>
 
 <style>
@@ -80,7 +76,7 @@
   }
 
   .search-box:hover {
-    background: var(--navy-border);
+    background: var(--navy-bg);
   }
 
   kbd {
@@ -88,32 +84,11 @@
     font-size: 10.5px;
     font-weight: 600;
     padding: 2px 6px;
-    background: var(--navy-border);
+    background: var(--navy-bg);
     border-radius: 5px;
     color: var(--navy);
     margin-left: 8px;
   }
 
-  .bell {
-    position: relative;
-    color: var(--navy-medium);
-    padding: 8px;
-    border-radius: var(--radius-sm);
-    transition: color 0.15s;
-  }
 
-  .bell:hover {
-    color: var(--navy);
-  }
-
-  .bell-dot {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--accent);
-    border: 2px solid var(--bg-card);
-  }
 </style>

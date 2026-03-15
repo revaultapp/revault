@@ -12,6 +12,7 @@ pub fn run() {
             commands::convert::convert_images,
             commands::privacy::read_metadata,
             commands::privacy::strip_files,
+            commands::privacy::strip_files_selective,
             commands::resize::resize_images,
             commands::scanner::scan_folder,
             commands::thumbnail::generate_thumbnail,

@@ -5,9 +5,10 @@
   import ToolShell from "./ToolShell.svelte";
   import BeforeAfterSlider from "./BeforeAfterSlider.svelte";
   import { formatBytes, runWithConcurrency, browseOutputDir, openOutputFolder } from "$lib/utils";
+  import ToggleSwitch from "./ToggleSwitch.svelte";
   import {
     files, quality, format, outputDir, isCompressing, summary,
-    compressMode, targetSize, targetUnit, activeProfile,
+    compressMode, targetSize, targetUnit, activeProfile, stripGps,
     addFiles, removeFile, clearFiles,
     type OutputFormat, type CompressFile, type CompressionProfile, type CompressMode,
   } from "$lib/stores/compress";
@@ -18,6 +19,7 @@
     { id: "Web", label: "Web" },
     { id: "Email", label: "Email" },
     { id: "Archive", label: "Archive" },
+    { id: "Share", label: "Share" },
     { id: "Custom", label: "Custom" },
   ];
 
@@ -30,9 +32,10 @@
 
   function applyProfile(p: CompressionProfile) {
     activeProfile.set(p);
-    if (p === "Web") { quality.set(75); format.set("Webp"); compressMode.set("quality"); }
-    else if (p === "Email") { quality.set(60); format.set("Jpeg"); compressMode.set("target"); targetSize.set(500); targetUnit.set("KB"); }
-    else if (p === "Archive") { quality.set(95); format.set(null); compressMode.set("quality"); }
+    if (p === "Web") { quality.set(75); format.set("Webp"); compressMode.set("quality"); stripGps.set(false); }
+    else if (p === "Email") { quality.set(60); format.set("Jpeg"); compressMode.set("target"); targetSize.set(500); targetUnit.set("KB"); stripGps.set(false); }
+    else if (p === "Archive") { quality.set(95); format.set(null); compressMode.set("quality"); stripGps.set(false); }
+    else if (p === "Share") { quality.set(80); format.set("Webp"); compressMode.set("quality"); stripGps.set(true); }
   }
 
   function onManualChange() { activeProfile.set("Custom"); }
@@ -86,15 +89,15 @@
     if (firstOutput) await openOutputFolder(firstOutput);
   }
 
-  async function compressFile(file: CompressFile, q: number, fmt: OutputFormat | null, mode: CompressMode, tb: number): Promise<void> {
+  async function compressFile(file: CompressFile, q: number, fmt: OutputFormat | null, mode: CompressMode, tb: number, gps: boolean): Promise<void> {
     files.update((all) =>
       all.map((f) => f.path === file.path ? { ...f, status: "compressing" as const } : f)
     );
     try {
       const cmd = mode === "target" ? "compress_to_target" : "compress_images";
       const args = mode === "target"
-        ? { paths: [file.path], targetBytes: tb, format: fmt, outputDir: $outputDir }
-        : { paths: [file.path], quality: q, format: fmt, outputDir: $outputDir };
+        ? { paths: [file.path], targetBytes: tb, format: fmt, outputDir: $outputDir, stripGps: gps }
+        : { paths: [file.path], quality: q, format: fmt, outputDir: $outputDir, stripGps: gps };
       const results = await invoke<CompressionResult[]>(cmd, args);
       const result = results[0];
       files.update((all) =>
@@ -120,8 +123,9 @@
     const fmt = $format;
     const mode = $compressMode;
     const tb = targetBytes();
+    const gps = $stripGps;
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
-    await runWithConcurrency(currentFiles, (file) => compressFile(file, q, fmt, mode, tb));
+    await runWithConcurrency(currentFiles, (file) => compressFile(file, q, fmt, mode, tb, gps));
     savings.add($summary.savedBytes);
     isCompressing.set(false);
   }
@@ -237,6 +241,10 @@
       <FolderOpen size={14} />
       {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
     </button>
+  </div>
+  <div class="control-group">
+    <span class="label">Strip GPS</span>
+    <ToggleSwitch bind:checked={$stripGps} />
   </div>
 </ToolShell>
 

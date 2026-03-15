@@ -283,6 +283,146 @@ pub fn strip_batch(paths: &[String], output_dir: Option<&str>) -> Vec<StripResul
     results
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct StripOptions {
+    pub gps: bool,
+    pub device: bool,
+    pub datetime: bool,
+    pub author: bool,
+}
+
+impl StripOptions {
+    fn any_selected(&self) -> bool {
+        self.gps || self.device || self.datetime || self.author
+    }
+}
+
+/// GPS tag hex IDs (all in GPS IFD group)
+const GPS_TAG_IDS: &[u16] = &[
+    0x0000, 0x0001, 0x0002, 0x0003, 0x0004, 0x0005, 0x0006, 0x0007, 0x0008, 0x0009, 0x000a, 0x000b,
+    0x000c, 0x000d, 0x000e, 0x000f, 0x0010, 0x0011, 0x0012, 0x0013, 0x0014, 0x0015, 0x0016, 0x0017,
+    0x0018, 0x0019, 0x001a, 0x001b, 0x001c, 0x001d, 0x001e, 0x001f,
+];
+
+/// Device tag hex IDs: Make, Model in GENERIC; LensMake, LensModel, SerialNumber, LensSerialNumber in EXIF
+const DEVICE_GENERIC_TAG_IDS: &[u16] = &[0x010f, 0x0110];
+const DEVICE_EXIF_TAG_IDS: &[u16] = &[0xa430, 0xa431, 0xa433, 0xa434, 0xa435];
+
+/// DateTime tag hex IDs: ModifyDate in GENERIC; DateTimeOriginal, CreateDate, OffsetTime* SubSec* in EXIF
+const DATETIME_GENERIC_TAG_IDS: &[u16] = &[0x0132];
+const DATETIME_EXIF_TAG_IDS: &[u16] = &[
+    0x9003, 0x9004, 0x9010, 0x9011, 0x9012, 0x9290, 0x9291, 0x9292,
+];
+
+/// Author tag hex IDs: Artist in GENERIC, Copyright in GENERIC; OwnerName in EXIF
+const AUTHOR_GENERIC_TAG_IDS: &[u16] = &[0x013b, 0x8298];
+const AUTHOR_EXIF_TAG_IDS: &[u16] = &[0xa430];
+
+fn remove_tags_by_group(
+    metadata: &mut little_exif::metadata::Metadata,
+    tag_ids: &[u16],
+    group: little_exif::ifd::ExifTagGroup,
+) {
+    for &tag_id in tag_ids {
+        metadata.remove_tag_by_hex_group(tag_id, group);
+    }
+}
+
+pub fn strip_metadata_selective(
+    input: &str,
+    output: &str,
+    opts: StripOptions,
+) -> Result<StripResult, Box<dyn Error>> {
+    if !opts.any_selected() {
+        return Err("no metadata categories selected for stripping".into());
+    }
+
+    let original_size = checked_size(input)?;
+    let mtime = filetime::FileTime::from_last_modification_time(&fs::metadata(input)?);
+
+    fs::copy(input, output)?;
+
+    let output_path = Path::new(output);
+    // Fall back to full strip (img-parts) if selective parsing fails — safer to over-strip
+    let mut metadata = match Metadata::new_from_path(output_path) {
+        Ok(m) => m,
+        Err(_) => {
+            return strip_metadata(input, output);
+        }
+    };
+
+    use little_exif::ifd::ExifTagGroup;
+
+    if opts.gps {
+        remove_tags_by_group(&mut metadata, GPS_TAG_IDS, ExifTagGroup::GPS);
+        metadata.remove_tag_by_hex_group(0x8825, ExifTagGroup::GENERIC);
+    }
+
+    if opts.device {
+        remove_tags_by_group(&mut metadata, DEVICE_GENERIC_TAG_IDS, ExifTagGroup::GENERIC);
+        remove_tags_by_group(&mut metadata, DEVICE_EXIF_TAG_IDS, ExifTagGroup::EXIF);
+    }
+
+    if opts.datetime {
+        remove_tags_by_group(
+            &mut metadata,
+            DATETIME_GENERIC_TAG_IDS,
+            ExifTagGroup::GENERIC,
+        );
+        remove_tags_by_group(&mut metadata, DATETIME_EXIF_TAG_IDS, ExifTagGroup::EXIF);
+    }
+
+    if opts.author {
+        remove_tags_by_group(&mut metadata, AUTHOR_GENERIC_TAG_IDS, ExifTagGroup::GENERIC);
+        remove_tags_by_group(&mut metadata, AUTHOR_EXIF_TAG_IDS, ExifTagGroup::EXIF);
+    }
+
+    metadata
+        .write_to_file(output_path)
+        .map_err(|e| format!("failed to write metadata: {e}"))?;
+
+    filetime::set_file_mtime(output, mtime)?;
+    let stripped_size = fs::metadata(output)?.len();
+
+    Ok(StripResult::ok(input, output, original_size, stripped_size))
+}
+
+pub fn strip_selective_batch(
+    paths: &[String],
+    opts: StripOptions,
+    output_dir: Option<&str>,
+) -> Vec<StripResult> {
+    paths
+        .iter()
+        .map(|input| {
+            let output = build_output_path(input, output_dir);
+            match strip_metadata_selective(input, &output, opts) {
+                Ok(r) => r,
+                Err(e) => StripResult::err(input, e.to_string()),
+            }
+        })
+        .collect()
+}
+
+/// Strip only GPS metadata from a file in-place (used by compression flow).
+pub fn strip_gps_in_place(path: &str) -> Result<(), Box<dyn Error>> {
+    let file_path = Path::new(path);
+    let mut metadata = match Metadata::new_from_path(file_path) {
+        Ok(m) => m,
+        Err(_) => return Ok(()), // No metadata to strip
+    };
+
+    use little_exif::ifd::ExifTagGroup;
+    remove_tags_by_group(&mut metadata, GPS_TAG_IDS, ExifTagGroup::GPS);
+    metadata.remove_tag_by_hex_group(0x8825, ExifTagGroup::GENERIC);
+
+    metadata
+        .write_to_file(file_path)
+        .map_err(|e| format!("failed to write metadata: {e}"))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -354,6 +494,76 @@ mod tests {
         assert_eq!(results.len(), 2);
         assert!(results[0].error.is_none());
         assert!(results[1].error.is_some());
+    }
+
+    #[test]
+    fn strip_selective_no_options_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("test.jpg");
+        fs::write(&input, &[0xFF, 0xD8, 0xFF, 0xD9]).unwrap();
+        let output = dir.path().join("test_stripped.jpg");
+        let opts = StripOptions {
+            gps: false,
+            device: false,
+            datetime: false,
+            author: false,
+        };
+        let result =
+            strip_metadata_selective(input.to_str().unwrap(), output.to_str().unwrap(), opts);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("no metadata"));
+    }
+
+    #[test]
+    fn strip_selective_gps_produces_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("test.jpg");
+        fs::write(&input, &[0xFF, 0xD8, 0xFF, 0xD9]).unwrap();
+        let output = dir.path().join("test_stripped.jpg");
+        let opts = StripOptions {
+            gps: true,
+            device: false,
+            datetime: false,
+            author: false,
+        };
+        let result =
+            strip_metadata_selective(input.to_str().unwrap(), output.to_str().unwrap(), opts)
+                .unwrap();
+        assert!(result.error.is_none());
+        assert!(output.exists());
+    }
+
+    #[test]
+    fn strip_selective_batch_mixed_results() {
+        let dir = tempfile::tempdir().unwrap();
+        let valid = dir.path().join("valid.jpg");
+        fs::write(&valid, &[0xFF, 0xD8, 0xFF, 0xD9]).unwrap();
+        let missing = dir.path().join("missing.jpg");
+
+        let paths = vec![
+            valid.to_str().unwrap().to_string(),
+            missing.to_str().unwrap().to_string(),
+        ];
+        let opts = StripOptions {
+            gps: true,
+            device: true,
+            datetime: false,
+            author: false,
+        };
+        let results = strip_selective_batch(&paths, opts, None);
+        assert_eq!(results.len(), 2);
+        assert!(results[0].error.is_none());
+        assert!(results[1].error.is_some());
+    }
+
+    #[test]
+    fn strip_gps_in_place_minimal_jpeg() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.jpg");
+        fs::write(&path, &[0xFF, 0xD8, 0xFF, 0xD9]).unwrap();
+        // Should succeed even on a minimal JPEG with no metadata
+        let result = strip_gps_in_place(path.to_str().unwrap());
+        assert!(result.is_ok());
     }
 
     #[test]

@@ -15,6 +15,7 @@ pub async fn convert_images(
             Some(format),
             output_dir.as_deref(),
             "_converted",
+            false,
         ))
     })
     .await

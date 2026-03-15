@@ -8,14 +8,14 @@
   import { savings } from "$lib/stores/savings";
   import { formatBytes } from "$lib/utils";
 
-  type NavItem = { icon: typeof Compass; id: string; label: string; badge?: string; dot?: boolean };
+  type NavItem = { icon: typeof Compass; id: string; label: string };
   const navItems: NavItem[] = [
     { icon: Compass, id: "dashboard", label: "Dashboard" },
     { icon: Wand2, id: "tools", label: "Tools" },
-    { icon: ScanSearch, id: "analyze", label: "Analyze", badge: "3" },
+    { icon: ScanSearch, id: "analyze", label: "Analyze" },
     { icon: Boxes, id: "organize", label: "Organize" },
     { icon: EyeOff, id: "privacy", label: "Privacy" },
-    { icon: CloudCog, id: "cloud", label: "Cloud", dot: true },
+    { icon: CloudCog, id: "cloud", label: "Cloud" },
   ];
 </script>
 
@@ -34,13 +34,6 @@
           {/if}
           <item.icon size={18} strokeWidth={1.8} />
           <span>{item.label}</span>
-          {#if item.badge}
-            <span class="nav-spacer"></span>
-            <span class="nav-badge">{item.badge}</span>
-          {:else if item.dot}
-            <span class="nav-spacer"></span>
-            <span class="nav-dot"></span>
-          {/if}
         </button>
       {/each}
 
@@ -62,13 +55,6 @@
       <span>Settings</span>
     </button>
 
-    <div class="user-section">
-      <div class="user-avatar">M</div>
-      <div class="user-info">
-        <span class="user-name">Mike</span>
-        <span class="user-role">Pro Plan</span>
-      </div>
-    </div>
   </div>
 </aside>
 
@@ -169,31 +155,6 @@
     flex-shrink: 0;
   }
 
-  .nav-item .nav-badge {
-    min-width: 20px;
-    height: 18px;
-    border-radius: 9px;
-    background: var(--accent);
-    color: #fff;
-    font-size: 9px;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .nav-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 4px;
-    background: var(--accent);
-    flex-shrink: 0;
-  }
-
-  .nav-spacer {
-    flex: 1;
-  }
-
   .spacer {
     flex: 1;
   }
@@ -225,45 +186,5 @@
     flex-shrink: 0;
   }
 
-  .user-section {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    height: 44px;
-    padding: 0 6px;
-    margin-top: 14px;
-    border-radius: 10px;
-  }
 
-  .user-avatar {
-    width: 32px;
-    height: 32px;
-    border-radius: 16px;
-    background: linear-gradient(135deg, #1e3a5f, #3b82f6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-size: 13px;
-    font-weight: 600;
-    flex-shrink: 0;
-  }
-
-  .user-info {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    min-width: 0;
-  }
-
-  .user-name {
-    color: #e0e0e0;
-    font-size: 13px;
-    font-weight: 500;
-  }
-
-  .user-role {
-    color: #64748b;
-    font-size: 11px;
-  }
 </style>

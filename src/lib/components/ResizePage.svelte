@@ -11,11 +11,30 @@
     type ResizeFile,
   } from "$lib/stores/resize";
 
-  const presets = [
-    { label: "Full HD", w: 1920, h: 1080 },
-    { label: "HD", w: 1280, h: 720 },
-    { label: "Instagram", w: 1080, h: 1080 },
-    { label: "Thumbnail", w: 300, h: 300 },
+  type Preset = { label: string; w: number; h: number };
+  type PresetGroup = { group: string; presets: Preset[] };
+
+  const presetGroups: PresetGroup[] = [
+    {
+      group: "General",
+      presets: [
+        { label: "Full HD", w: 1920, h: 1080 },
+        { label: "HD", w: 1280, h: 720 },
+        { label: "Thumbnail", w: 300, h: 300 },
+      ],
+    },
+    {
+      group: "Social Media",
+      presets: [
+        { label: "IG Post", w: 1080, h: 1350 },
+        { label: "IG Square", w: 1080, h: 1080 },
+        { label: "IG Story", w: 1080, h: 1920 },
+        { label: "YouTube", w: 1280, h: 720 },
+        { label: "Twitter/X", w: 1200, h: 675 },
+        { label: "LinkedIn", w: 1200, h: 1200 },
+        { label: "TikTok", w: 1080, h: 1920 },
+      ],
+    },
   ];
 
   let targetPct = $derived(
@@ -143,13 +162,21 @@
 
   <div class="control-group">
     <span class="label">Presets</span>
-    <div class="preset-grid">
-      {#each presets as p}
-        <button
-          class="pill"
-          class:active={$width === p.w && $height === p.h}
-          onclick={() => { width.set(p.w); height.set(p.h); }}
-        >{p.label}</button>
+    <div class="preset-sections">
+      {#each presetGroups as group}
+        <div class="preset-section">
+          <span class="preset-group-label">{group.group}</span>
+          <div class="preset-grid">
+            {#each group.presets as p}
+              <button
+                class="pill"
+                class:active={$width === p.w && $height === p.h}
+                onclick={() => { width.set(p.w); height.set(p.h); }}
+                title="{p.w}×{p.h}"
+              >{p.label}</button>
+            {/each}
+          </div>
+        </div>
       {/each}
     </div>
   </div>
@@ -181,9 +208,30 @@
 </ToolShell>
 
 <style>
+  .preset-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .preset-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .preset-group-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    opacity: 0.7;
+  }
+
   .preset-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    flex-wrap: wrap;
     gap: 4px;
   }
 

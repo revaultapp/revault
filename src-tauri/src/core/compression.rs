@@ -304,6 +304,7 @@ pub fn compress_batch(
     format: Option<OutputFormat>,
     output_dir: Option<&str>,
     suffix: &str,
+    strip_gps: bool,
 ) -> Vec<CompressionResult> {
     paths
         .iter()
@@ -314,7 +315,17 @@ pub fn compress_batch(
                 Err(e) => return CompressionResult::err(path, e),
             };
             match compress_image(path, &output, &fmt, quality) {
-                Ok(r) => r,
+                Ok(r) => {
+                    if strip_gps && r.error.is_none() {
+                        if let Err(e) = crate::core::privacy::strip_gps_in_place(&r.output_path) {
+                            return CompressionResult::err(
+                                path,
+                                format!("compression succeeded but GPS strip failed: {e}"),
+                            );
+                        }
+                    }
+                    r
+                }
                 Err(e) => CompressionResult::err(path, e.to_string()),
             }
         })
@@ -398,6 +409,7 @@ pub fn compress_to_target_batch(
     target_bytes: u64,
     format: Option<OutputFormat>,
     output_dir: Option<&str>,
+    strip_gps: bool,
 ) -> Vec<CompressionResult> {
     paths
         .iter()
@@ -408,7 +420,17 @@ pub fn compress_to_target_batch(
                 Err(e) => return CompressionResult::err(path, e),
             };
             match compress_to_target_size(path, &output, target_bytes, &fmt) {
-                Ok(r) => r,
+                Ok(r) => {
+                    if strip_gps && r.error.is_none() {
+                        if let Err(e) = crate::core::privacy::strip_gps_in_place(&r.output_path) {
+                            return CompressionResult::err(
+                                path,
+                                format!("compression succeeded but GPS strip failed: {e}"),
+                            );
+                        }
+                    }
+                    r
+                }
                 Err(e) => CompressionResult::err(path, e.to_string()),
             }
         })
@@ -531,7 +553,7 @@ mod tests {
             input.to_string_lossy().to_string(),
             "/nonexistent/fake.jpg".to_string(),
         ];
-        let results = compress_batch(&paths, 60.0, None, None, "_compressed");
+        let results = compress_batch(&paths, 60.0, None, None, "_compressed", false);
 
         assert_eq!(results.len(), 2);
         assert!(results[0].error.is_none());
