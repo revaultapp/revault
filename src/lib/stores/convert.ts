@@ -17,6 +17,8 @@ export const files = writable<ConvertFile[]>([]);
 export const targetFormat = writable<TargetFormat>("Jpeg");
 export const outputDir = writable<string | null>(null);
 export const isConverting = writable(false);
+export const activeProfile = writable<"Web" | "Email" | "Archive" | "Share" | "Custom">("Custom");
+export const selectedPlatforms = writable<string[]>([]);
 
 export const summary = derived(files, ($files) => {
   const done = $files.filter((f) => f.status === "done");
