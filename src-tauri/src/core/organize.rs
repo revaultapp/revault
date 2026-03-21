@@ -1,3 +1,4 @@
+use crate::core::date::civil_from_secs;
 use exif::{In, Reader};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -76,43 +77,6 @@ fn get_date_from_path(path: &Path) -> Option<(i32, u8, u8)> {
         let (year, month, day) = civil_from_secs(secs);
         Some((year, month, day))
     })
-}
-
-fn civil_from_secs(secs: u64) -> (i32, u8, u8) {
-    let days = secs / 86400;
-    let mut year = 1970;
-    let mut remaining_days = days as i64;
-
-    loop {
-        let days_in_year = if is_leap_year(year) { 366 } else { 365 };
-        if remaining_days < days_in_year {
-            break;
-        }
-        remaining_days -= days_in_year;
-        year += 1;
-    }
-
-    let month_days = if is_leap_year(year) {
-        &[31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    } else {
-        &[31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    };
-
-    let mut month = 1;
-    for &d in month_days {
-        if remaining_days < d as i64 {
-            break;
-        }
-        remaining_days -= d as i64;
-        month += 1;
-    }
-
-    let day = remaining_days + 1;
-    (year, month as u8, day as u8)
-}
-
-fn is_leap_year(year: i32) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
 }
 
 fn collect_images(dir: &Path, recursive: bool, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
@@ -209,7 +173,18 @@ pub fn organize_by_date(source_dir: &str, dest_dir: &str, mode: &OrganizeMode) -
         let move_ok = if mode.copy {
             fs::copy(&img_path, &dest_path).is_ok()
         } else {
-            fs::rename(&img_path, &dest_path).is_ok()
+            match fs::rename(&img_path, &dest_path) {
+                Ok(_) => true,
+                Err(e) => {
+                    if e.kind() == std::io::ErrorKind::CrossesDevices {
+                        // Cross-device rename fails silently; fall back to copy + delete
+                        fs::copy(&img_path, &dest_path).is_ok()
+                            && fs::remove_file(&img_path).is_ok()
+                    } else {
+                        false
+                    }
+                }
+            }
         };
 
         if move_ok {

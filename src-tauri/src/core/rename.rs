@@ -1,3 +1,4 @@
+use crate::core::date::civil_from_secs;
 use exif::{In, Reader};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -84,46 +85,6 @@ fn get_date_tokens(path: &str) -> Option<(String, String, String)> {
         format!("{:02}", month),
         format!("{:02}", day),
     ))
-}
-
-/// Convert seconds since UNIX_EPOCH to (year, month, day).
-fn civil_from_secs(secs: u64) -> (i32, u8, u8) {
-    let days = secs / 86400;
-    let mut year = 1970;
-    let mut remaining_days = days as i64;
-
-    // Advance year until we run out of days
-    loop {
-        let days_in_year = if is_leap_year(year) { 366 } else { 365 };
-        if remaining_days < days_in_year {
-            break;
-        }
-        remaining_days -= days_in_year;
-        year += 1;
-    }
-
-    // Days per month, adjusted for leap year
-    let month_days = if is_leap_year(year) {
-        &[31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    } else {
-        &[31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    };
-
-    let mut month = 1;
-    for &d in month_days {
-        if remaining_days < d as i64 {
-            break;
-        }
-        remaining_days -= d as i64;
-        month += 1;
-    }
-
-    let day = remaining_days + 1;
-    (year, month as u8, day as u8)
-}
-
-fn is_leap_year(year: i32) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
 }
 
 fn apply_template(template: &str, stem: &str, ext: &str, counter: u32, path: &str) -> String {

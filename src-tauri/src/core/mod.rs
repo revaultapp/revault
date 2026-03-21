@@ -1,4 +1,5 @@
 pub mod compression;
+pub mod date;
 pub mod dedupe;
 pub mod heic;
 pub mod image_io;
