@@ -10,6 +10,8 @@
     type TargetFormat, type ConvertFile,
   } from "$lib/stores/convert";
   import { IMAGE_EXTENSIONS } from "$lib/types";
+  import { savings } from "$lib/stores/savings";
+  import { activity } from "$lib/stores/activity";
 
   let quality = $state(90);
 
@@ -91,6 +93,13 @@
     const q = quality;
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
     await runWithConcurrency(currentFiles, (file) => convertFile(file, fmt, q));
+    const doneFiles = $files.filter((f) => f.status === "done");
+    if (doneFiles.length > 0) {
+      const savedBytes = doneFiles.reduce((acc, f) => acc + ((f.size ?? 0) - (f.outputSize ?? (f.size ?? 0))), 0);
+      savings.add(savedBytes);
+      savings.incrementOps(doneFiles.length);
+      activity.add({ type: "convert", fileCount: doneFiles.length, savedBytes });
+    }
     isConverting.set(false);
   }
 </script>
@@ -100,6 +109,7 @@
   isProcessing={$isConverting}
   {targetPct}
   progressLabel="{$summary.done + $summary.failed} of {$files.length} files"
+  progressSublabel={$summary.savedBytes > 0 ? `Saved ${formatBytes($summary.savedBytes)}` : undefined}
   onfiles={(paths) => addFiles(paths)}
   onbrowse={browseFiles}
   onclear={clearFiles}

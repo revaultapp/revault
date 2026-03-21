@@ -1,11 +1,14 @@
 <script lang="ts">
   import { activePage } from "$lib/stores/nav";
+  import DashboardPage from "$lib/components/DashboardPage.svelte";
   import SettingsPage from "$lib/components/SettingsPage.svelte";
   import ToolsPage from "$lib/components/ToolsPage.svelte";
   import PrivacyPage from "$lib/components/PrivacyPage.svelte";
 </script>
 
-{#if $activePage === "tools"}
+{#if $activePage === "dashboard"}
+  <DashboardPage />
+{:else if $activePage === "tools"}
   <ToolsPage />
 {:else if $activePage === "settings"}
   <SettingsPage />

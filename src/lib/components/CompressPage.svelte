@@ -13,6 +13,7 @@
     type OutputFormat, type CompressFile, type CompressionProfile, type CompressMode,
   } from "$lib/stores/compress";
   import { savings } from "$lib/stores/savings";
+  import { activity } from "$lib/stores/activity";
   import { IMAGE_EXTENSIONS } from "$lib/types";
 
   const profiles: { id: CompressionProfile; label: string }[] = [
@@ -125,7 +126,16 @@
     const gps = $stripGps;
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
     await runWithConcurrency(currentFiles, (file) => compressFile(file, q, fmt, mode, tb, gps));
-    savings.add($summary.savedBytes);
+    if ($summary.done > 0) {
+      const doneFiles = $files.filter((f) => f.status === "done");
+      const originalBytes = doneFiles.reduce((acc, f) => acc + f.size, 0);
+      const compressedBytes = doneFiles.reduce((acc, f) => acc + (f.compressedSize ?? f.size), 0);
+      savings.incrementOps($summary.done);
+      savings.addOriginalBytes(originalBytes);
+      savings.addCompressedBytes(compressedBytes);
+      savings.add($summary.savedBytes);
+      activity.add({ type: "compress", fileCount: $summary.done, savedBytes: $summary.savedBytes });
+    }
     isCompressing.set(false);
   }
 

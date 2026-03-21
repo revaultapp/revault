@@ -39,7 +39,7 @@
 
       <div class="saved-badge">
         <Database size={16} strokeWidth={1.8} />
-        <span>Saved: {formatBytes($savings)}</span>
+        <span>Saved: {formatBytes($savings.totalSavedBytes)}</span>
       </div>
     </nav>
 
