@@ -6,8 +6,10 @@ pub async fn convert_images(
     format: compression::OutputFormat,
     quality: Option<f32>,
     output_dir: Option<String>,
+    strip_gps: Option<bool>,
 ) -> Result<Vec<compression::CompressionResult>, String> {
     let quality = quality.unwrap_or(90.0);
+    let strip_gps = strip_gps.unwrap_or(false);
     tauri::async_runtime::spawn_blocking(move || {
         Ok(compression::compress_batch(
             &paths,
@@ -15,7 +17,7 @@ pub async fn convert_images(
             Some(format),
             output_dir.as_deref(),
             "_converted",
-            false,
+            strip_gps,
         ))
     })
     .await

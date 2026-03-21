@@ -143,15 +143,7 @@ fn encode_webp_bytes(
     let encoder = webp::Encoder::from_image(img)?;
     let mut config = webp::WebPConfig::new().map_err(|_| "failed to create WebP config")?;
     config.quality = quality;
-    // Scale encoding effort by image size — method 4 takes 30-60s on 12MP
-    let pixels = img.width() as u64 * img.height() as u64;
-    config.method = if pixels > 8_000_000 {
-        1
-    } else if pixels > 2_000_000 {
-        2
-    } else {
-        4
-    };
+    config.method = 0;
     let memory = encoder
         .encode_advanced(&config)
         .map_err(|e| format!("webp encoding failed: {e:?}"))?;
@@ -423,13 +415,14 @@ pub fn compress_to_target_batch(
     target_bytes: u64,
     format: Option<OutputFormat>,
     output_dir: Option<&str>,
+    suffix: &str,
     strip_gps: bool,
 ) -> Vec<CompressionResult> {
     paths
         .iter()
         .map(|path| {
             let fmt = format.unwrap_or_else(|| detect_format(path));
-            let output = match resolve_output_path(path, &fmt, output_dir, "_compressed") {
+            let output = match resolve_output_path(path, &fmt, output_dir, suffix) {
                 Ok(o) => o,
                 Err(e) => return CompressionResult::err(path, e),
             };

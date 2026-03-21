@@ -36,6 +36,7 @@ pub async fn compress_to_target(
             target_bytes,
             format,
             output_dir.as_deref(),
+            "_compressed",
             strip_gps.unwrap_or(false),
         ))
     })

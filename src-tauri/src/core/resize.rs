@@ -5,9 +5,11 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Cursor;
 use std::path::Path;
+use tempfile::NamedTempFile;
 
 use crate::core::compression::{detect_format, encode_jpeg_bytes, OutputFormat};
 use crate::core::image_io::{checked_size, ext_lowercase, open_image, write_preserving_timestamps};
+use crate::core::privacy;
 
 fn encode_jpeg_mozjpeg(
     img: &image::DynamicImage,
@@ -91,6 +93,7 @@ pub fn resize_image(
     height: u32,
     mode: &ResizeMode,
     quality: Option<f32>,
+    strip_gps: bool,
 ) -> Result<ResizeResult, Box<dyn std::error::Error>> {
     let original_size = checked_size(input)?;
     let img = open_image(input)?;
@@ -142,7 +145,22 @@ pub fn resize_image(
     };
 
     let resized_size = bytes.len() as u64;
-    write_preserving_timestamps(input, output, &bytes)?;
+
+    if strip_gps {
+        // Write to temp file in same directory as output (same filesystem for atomic rename)
+        let output_path = Path::new(output);
+        let parent = output_path
+            .parent()
+            .ok_or("output has no parent directory")?;
+        let tmp = NamedTempFile::new_in(parent)?;
+        write_preserving_timestamps(input, &tmp.path().to_string_lossy(), &bytes)?;
+        if let Err(e) = privacy::strip_gps_in_place(&tmp.path().to_string_lossy()) {
+            return Err(format!("resize succeeded but GPS strip failed: {e}").into());
+        }
+        tmp.persist(output_path)?;
+    } else {
+        write_preserving_timestamps(input, output, &bytes)?;
+    }
 
     Ok(ResizeResult {
         input_path: input.to_string(),
@@ -164,6 +182,7 @@ pub fn resize_batch(
     mode: ResizeMode,
     quality: Option<f32>,
     output_dir: Option<&str>,
+    strip_gps: bool,
 ) -> Vec<ResizeResult> {
     paths
         .iter()
@@ -189,6 +208,7 @@ pub fn resize_batch(
                 height,
                 &mode,
                 quality,
+                strip_gps,
             ) {
                 Ok(r) => r,
                 Err(e) => ResizeResult::err(path, e.to_string()),
@@ -222,6 +242,7 @@ mod tests {
             150,
             &ResizeMode::Exact,
             None,
+            false,
         )
         .unwrap();
 
@@ -241,6 +262,7 @@ mod tests {
             100,
             &ResizeMode::Fit,
             None,
+            false,
         );
         assert!(result.is_err());
     }
@@ -255,7 +277,7 @@ mod tests {
             input.to_string_lossy().to_string(),
             "/nonexistent/fake.png".to_string(),
         ];
-        let results = resize_batch(&paths, 200, 150, ResizeMode::Fit, None, None);
+        let results = resize_batch(&paths, 200, 150, ResizeMode::Fit, None, None, false);
 
         assert_eq!(results.len(), 2);
         assert!(results[0].error.is_none());

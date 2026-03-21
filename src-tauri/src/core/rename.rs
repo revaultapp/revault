@@ -144,7 +144,7 @@ fn apply_template(template: &str, stem: &str, ext: &str, counter: u32, path: &st
     }
 
     if let Some((year, month, day)) = get_date_tokens(path) {
-        result = result.replace("{date}", &format!("{}-{:02}-{:02}", year, month, day));
+        // Replace individual tokens BEFORE {date} to avoid corrupting already-substituted values
         result = result.replace("{year}", &year);
         result = result.replace("{month}", &format!("{:02}", month));
         result = result.replace("{day}", &format!("{:02}", day));
@@ -152,7 +152,9 @@ fn apply_template(template: &str, stem: &str, ext: &str, counter: u32, path: &st
         let metadata = fs::metadata(path).ok();
         let mtime = metadata.and_then(|m| m.modified().ok());
         if let Some(st) = mtime {
-            let dur = st.duration_since(std::time::UNIX_EPOCH).ok().unwrap();
+            let dur = st
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or(std::time::Duration::ZERO);
             let total_secs = dur.as_secs();
             let hour = (total_secs / 3600) % 24;
             let min = (total_secs / 60) % 60;
@@ -165,14 +167,15 @@ fn apply_template(template: &str, stem: &str, ext: &str, counter: u32, path: &st
                 ),
             );
         } else {
-            result = result.replace("{datetime}", &format!("{:03}", counter));
+            result = result.replace("{datetime}", "unknown");
         }
+        result = result.replace("{date}", &format!("{}-{:02}-{:02}", year, month, day));
     } else {
-        result = result.replace("{date}", &format!("{:03}", counter));
-        result = result.replace("{datetime}", &format!("{:03}", counter));
-        result = result.replace("{year}", &format!("{:03}", counter));
-        result = result.replace("{month}", &format!("{:03}", counter));
-        result = result.replace("{day}", &format!("{:03}", counter));
+        result = result.replace("{year}", "0000");
+        result = result.replace("{month}", "00");
+        result = result.replace("{day}", "00");
+        result = result.replace("{datetime}", "unknown");
+        result = result.replace("{date}", "unknown");
     }
 
     result

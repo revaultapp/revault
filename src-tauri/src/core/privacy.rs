@@ -408,8 +408,9 @@ pub fn strip_selective_batch(
 pub fn strip_gps_in_place(path: &str) -> Result<(), Box<dyn Error>> {
     let file_path = Path::new(path);
     let mut metadata = match Metadata::new_from_path(file_path) {
+        // File has no parseable metadata — nothing to strip
+        Err(_) => return Ok(()),
         Ok(m) => m,
-        Err(_) => return Ok(()), // No metadata to strip
     };
 
     use little_exif::ifd::ExifTagGroup;

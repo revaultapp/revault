@@ -26,7 +26,7 @@ export const summary = derived(files, ($files) => {
     done: done.length,
     failed: $files.filter((f) => f.status === "error").length,
     pending: $files.filter((f) => f.status === "pending" || f.status === "converting").length,
-    savedBytes: done.reduce((acc, f) => acc + ((f.size ?? 0) - (f.outputSize ?? (f.size ?? 0))), 0),
+    savedBytes: Math.max(0, done.reduce((acc, f) => acc + ((f.size ?? 0) - (f.outputSize ?? (f.size ?? 0))), 0)),
   };
 });
 

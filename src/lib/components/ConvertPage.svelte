@@ -110,6 +110,7 @@
         format: fmt,
         quality: q,
         outputDir: $outputDir,
+        stripGps: stripGps,
       });
       const result = results[0];
       files.update((all) =>
@@ -171,6 +172,7 @@
             mode: "Fit",
             quality: q,
             outputDir: $outputDir,
+            stripGps: stripGps,
           });
           const result = results[0];
           files.update((all) =>

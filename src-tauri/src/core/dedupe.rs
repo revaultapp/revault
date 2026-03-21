@@ -21,6 +21,13 @@ pub struct DuplicateGroup {
     pub files: Vec<DuplicateFile>,
 }
 
+#[derive(Serialize)]
+pub struct FindDuplicatesResult {
+    pub groups: Vec<DuplicateGroup>,
+    pub total_scanned: usize,
+    pub errors: Vec<String>,
+}
+
 fn is_image(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
@@ -29,9 +36,17 @@ fn is_image(path: &Path) -> bool {
 }
 
 fn hash_image(path: &str) -> Result<ImageHash, Box<dyn std::error::Error>> {
-    let img = image::open(path)?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(4096);
+    limits.max_image_height = Some(4096);
+    limits.max_alloc = Some(128 * 1024 * 1024);
+    let mut reader = image::ImageReader::open(path)?;
+    reader.limits(limits);
+    let img = reader.decode()?;
+    // Perceptual hash only needs a small thumbnail — resize before hashing to avoid OOM
+    let thumb = img.thumbnail(64, 64);
     let hasher = HasherConfig::new().to_hasher();
-    Ok(hasher.hash_image(&img))
+    Ok(hasher.hash_image(&thumb))
 }
 
 fn collect_images(paths: &[String]) -> Vec<String> {
@@ -58,14 +73,16 @@ fn collect_images(paths: &[String]) -> Vec<String> {
 
 pub fn find_duplicates(
     paths: &[String],
-) -> Result<Vec<DuplicateGroup>, Box<dyn std::error::Error>> {
+) -> Result<FindDuplicatesResult, Box<dyn std::error::Error>> {
     let image_paths = collect_images(paths);
+    let total_scanned = image_paths.len();
 
     let mut hashes: Vec<(String, ImageHash)> = Vec::with_capacity(image_paths.len());
+    let mut errors: Vec<String> = Vec::new();
     for path in &image_paths {
         match hash_image(path) {
             Ok(h) => hashes.push((path.clone(), h)),
-            Err(_) => continue,
+            Err(e) => errors.push(format!("{}: {}", path, e)),
         }
     }
 
@@ -79,19 +96,23 @@ pub fn find_duplicates(
         let (path_i, hash_i) = &hashes[i];
 
         let mut group_files: Vec<(String, u64, u64)> = vec![];
-        group_files.push((
-            path_i.clone(),
-            fs::metadata(path_i).map(|m| m.len()).unwrap_or(0),
-            fs::metadata(path_i)
-                .and_then(|m| m.modified())
-                .map(|t| {
-                    t.duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs()
-                })
-                .unwrap_or(0),
-        ));
+        let (size_i, modified_i) = fs::metadata(path_i)
+            .map(|m| {
+                let modified = m
+                    .modified()
+                    .map(|t| {
+                        t.duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs()
+                    })
+                    .unwrap_or(0);
+                (m.len(), modified)
+            })
+            .unwrap_or((0, 0));
+        group_files.push((path_i.clone(), size_i, modified_i));
         used.insert(i);
+
+        let mut min_dist: u32 = u32::MAX;
 
         for (j, _) in hashes.iter().enumerate().skip(i + 1) {
             if used.contains(&j) {
@@ -103,25 +124,28 @@ pub fn find_duplicates(
             if dist <= 5 {
                 let (path_j, _) = &hashes[j];
                 used.insert(j);
-                group_files.push((
-                    path_j.clone(),
-                    fs::metadata(path_j).map(|m| m.len()).unwrap_or(0),
-                    fs::metadata(path_j)
-                        .and_then(|m| m.modified())
-                        .map(|t| {
-                            t.duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs()
-                        })
-                        .unwrap_or(0),
-                ));
+                let (size_j, modified_j) = fs::metadata(path_j)
+                    .map(|m| {
+                        let modified = m
+                            .modified()
+                            .map(|t| {
+                                t.duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs()
+                            })
+                            .unwrap_or(0);
+                        (m.len(), modified)
+                    })
+                    .unwrap_or((0, 0));
+                group_files.push((path_j.clone(), size_j, modified_j));
+                min_dist = min_dist.min(dist);
             }
         }
 
         if group_files.len() > 1 {
             groups.push(DuplicateGroup {
                 hash: hash_i.to_base64(),
-                distance: 0,
+                distance: min_dist,
                 files: group_files
                     .into_iter()
                     .map(|(path, size, modified)| DuplicateFile {
@@ -135,24 +159,30 @@ pub fn find_duplicates(
     }
 
     groups.sort_by(|a, b| b.files.len().cmp(&a.files.len()));
-    Ok(groups)
+    Ok(FindDuplicatesResult {
+        groups,
+        total_scanned,
+        errors,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
 
     #[test]
     fn duplicate_grouping() {
+        use image::RgbaImage;
         let dir = tempfile::tempdir().unwrap();
         let a = dir.path().join("a.png");
         let b = dir.path().join("b.png");
-        fs::write(&a, b"\x89PNG\r\n\x1a\n").unwrap();
-        fs::write(&b, b"\x89PNG\r\n\x1a\n").unwrap();
+        let img: RgbaImage =
+            image::ImageBuffer::from_fn(4, 4, |_x, _y| image::Rgba([200, 200, 200, 255]));
+        img.save(&a).unwrap();
+        img.save(&b).unwrap();
 
-        let groups = find_duplicates(&[dir.path().to_str().unwrap().to_string()]).unwrap();
-        assert!(!groups.is_empty());
+        let result = find_duplicates(&[dir.path().to_str().unwrap().to_string()]).unwrap();
+        assert!(!result.groups.is_empty());
     }
 
     #[test]

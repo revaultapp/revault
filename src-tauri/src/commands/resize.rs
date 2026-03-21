@@ -8,7 +8,9 @@ pub async fn resize_images(
     mode: resize::ResizeMode,
     quality: Option<f32>,
     output_dir: Option<String>,
+    strip_gps: Option<bool>,
 ) -> Result<Vec<resize::ResizeResult>, String> {
+    let strip_gps = strip_gps.unwrap_or(false);
     tauri::async_runtime::spawn_blocking(move || {
         Ok(resize::resize_batch(
             &paths,
@@ -17,6 +19,7 @@ pub async fn resize_images(
             mode,
             quality,
             output_dir.as_deref(),
+            strip_gps,
         ))
     })
     .await
