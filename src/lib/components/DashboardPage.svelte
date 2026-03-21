@@ -194,7 +194,7 @@
     overflow: hidden;
   }
 
-  .stat-card.accent::before {
+  .stat-card::before {
     content: "";
     position: absolute;
     left: 0;
@@ -279,7 +279,7 @@
     outline-offset: 2px;
   }
 
-  .action-card.accent::before {
+  .action-card::before {
     content: "";
     position: absolute;
     left: 0;
@@ -336,6 +336,8 @@
     border: 1px solid var(--border);
     display: flex;
     flex-direction: column;
+    position: relative;
+    overflow: hidden;
   }
 
   .activity h3,
