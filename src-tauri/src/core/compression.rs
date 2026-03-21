@@ -1,3 +1,5 @@
+use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+use image::ImageEncoder;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Cursor;
@@ -141,7 +143,15 @@ fn encode_webp_bytes(
     let encoder = webp::Encoder::from_image(img)?;
     let mut config = webp::WebPConfig::new().map_err(|_| "failed to create WebP config")?;
     config.quality = quality;
-    config.method = 4;
+    // Scale encoding effort by image size — method 4 takes 30-60s on 12MP
+    let pixels = img.width() as u64 * img.height() as u64;
+    config.method = if pixels > 8_000_000 {
+        1
+    } else if pixels > 2_000_000 {
+        2
+    } else {
+        4
+    };
     let memory = encoder
         .encode_advanced(&config)
         .map_err(|e| format!("webp encoding failed: {e:?}"))?;
@@ -221,13 +231,17 @@ pub fn compress_png(
     let original_size = checked_size(input_path)?;
 
     let compressed = if matches!(ext_lowercase(input_path).as_deref(), Some("png")) {
-        // Already PNG: fast re-encode with oxipng preset 0
+        // Already PNG: lossless re-optimize with oxipng preset 2
         oxipng::optimize_from_memory(&fs::read(input_path)?, &oxipng::Options::from_preset(2))?
     } else {
+        // Non-PNG input: encode to PNG directly, skip oxipng (too slow on large images)
         let img = open_image(input_path)?;
-        let mut buf = Cursor::new(Vec::new());
-        img.write_to(&mut buf, image::ImageFormat::Png)?;
-        oxipng::optimize_from_memory(&buf.into_inner(), &oxipng::Options::from_preset(2))?
+        let rgba = img.to_rgba8();
+        let (w, h) = (rgba.width(), rgba.height());
+        let mut buf = Cursor::new(Vec::with_capacity((w * h * 4) as usize));
+        PngEncoder::new_with_quality(&mut buf, CompressionType::Fast, FilterType::Sub)
+            .write_image(rgba.as_raw(), w, h, image::ExtendedColorType::Rgba8)?;
+        buf.into_inner()
     };
 
     write_smallest(input_path, output_path, &compressed, original_size)
@@ -562,7 +576,7 @@ mod tests {
     }
 
     #[test]
-    fn compress_png_from_jpeg_input_applies_oxipng() {
+    fn compress_png_from_jpeg_input_produces_valid_png() {
         let dir = tempfile::tempdir().unwrap();
         let input = dir.path().join("photo.jpg");
         let output = dir.path().join("photo_out.png");

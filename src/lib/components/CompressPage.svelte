@@ -66,7 +66,6 @@
   const formats: { value: OutputFormat | null; label: string }[] = [
     { value: null, label: "Auto" },
     { value: "Jpeg", label: "JPEG" },
-    { value: "Png", label: "PNG" },
     { value: "Webp", label: "WebP" },
     { value: "Avif", label: "AVIF" },
   ];
@@ -134,7 +133,9 @@
     if (!file.compressedSize || file.size === 0) return "";
     if (file.alreadyOptimal) return "Already optimal";
     const pct = Math.round(((file.size - file.compressedSize) / file.size) * 100);
-    return pct > 0 ? `${pct}% smaller` : "Already optimal";
+    if (pct > 0) return `${pct}% smaller`;
+    if (pct < 0) return `${Math.abs(pct)}% larger`;
+    return "Same size";
   }
 
   let compareFile = $state<CompressFile | null>(null);

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { Search } from "lucide-svelte";
   import { activePage } from "$lib/stores/nav";
 
   const titles: Record<string, [string, string]> = {
@@ -20,13 +19,6 @@
     <h1>{current[0]}</h1>
     <p>{current[1]}</p>
   </div>
-
-  <div class="search-box">
-    <Search size={15} strokeWidth={2} />
-    <span>Jump to anything...</span>
-    <kbd>⌘K</kbd>
-  </div>
-
 </header>
 
 <style>
@@ -58,36 +50,6 @@
     font-size: 12.5px;
     color: var(--text-muted);
     font-weight: 400;
-  }
-
-  .search-box {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    height: 36px;
-    padding: 0 12px;
-    margin-left: auto;
-    background: var(--navy-bg);
-    border-radius: 10px;
-    color: var(--navy-medium);
-    font-size: 13px;
-    cursor: pointer;
-    transition: background 0.15s;
-  }
-
-  .search-box:hover {
-    background: var(--navy-bg);
-  }
-
-  kbd {
-    font-family: var(--font);
-    font-size: 10.5px;
-    font-weight: 600;
-    padding: 2px 6px;
-    background: var(--navy-bg);
-    border-radius: 5px;
-    color: var(--navy);
-    margin-left: 8px;
   }
 
 
