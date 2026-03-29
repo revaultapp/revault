@@ -1,7 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
-  import { CheckCircle, AlertCircle, X, FolderOpen } from "lucide-svelte";
+  import { CircleCheck, CircleAlert, X, FolderOpen } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
   import ToggleSwitch from "./ToggleSwitch.svelte";
   import { runWithConcurrency, browseOutputDir } from "$lib/utils";
@@ -152,11 +152,18 @@
     files.update((all) =>
       all.map((f) => f.status === "done" ? { ...f, status: "scanned" as const } : f)
     );
-    await runWithConcurrency(
-      currentFiles.filter((f) => f.status === "scanned" || f.status === "pending"),
-      (file) => stripFile(file, opts)
-    );
-    isProcessing.set(false);
+    try {
+      await runWithConcurrency(
+        currentFiles.filter((f) => f.status === "scanned" || f.status === "pending"),
+        (file) => stripFile(file, opts)
+      );
+    } catch (err) {
+      files.update((all) =>
+        all.map((f) => f.status === "stripping" ? { ...f, status: "error" as const, error: String(err) } : f)
+      );
+    } finally {
+      isProcessing.set(false);
+    }
   }
 </script>
 
@@ -199,9 +206,9 @@
 
   {#snippet fileStatus(file)}
     {#if file.status === "done"}
-      <CheckCircle size={18} />
+      <CircleCheck size={18} />
     {:else if file.status === "error"}
-      <AlertCircle size={18} />
+      <CircleAlert size={18} />
     {:else}
       <button class="btn-icon" onclick={() => removeFile(file.path)}>
         <X size={16} />
