@@ -195,7 +195,7 @@
   </div>
   <div class="control-group">
     <div class="toggle-row">
-      <div>
+      <div class="toggle-label">
         <span class="label">Strip GPS</span>
         <span class="control-hint">Remove location data from photos</span>
       </div>
@@ -233,6 +233,12 @@
     align-items: center;
     justify-content: space-between;
     width: 100%;
+    gap: 12px;
+  }
+
+  .toggle-label {
+    flex: 1;
+    min-width: 0;
   }
 
   .control-hint {
