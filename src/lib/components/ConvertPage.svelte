@@ -1,38 +1,21 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
-  import { FolderOpen, CircleCheck, CircleAlert, X, Eye } from "lucide-svelte";
+  import { FolderOpen, CheckCircle, AlertCircle, X, Eye } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
   import BeforeAfterSlider from "./BeforeAfterSlider.svelte";
   import ToggleSwitch from "./ToggleSwitch.svelte";
   import { formatBytes, browseOutputDir, openOutputFolder } from "$lib/utils";
   import {
     files, targetFormat, outputDir, isConverting, summary,
-    activeProfile, selectedPlatforms,
+    selectedPlatforms,
     addFiles, removeFile, clearFiles,
     type TargetFormat, type ConvertFile,
   } from "$lib/stores/convert";
-  import { type QualityPreset } from "$lib/stores/compress";
+  import { qualityPreset, stripGps } from "$lib/stores/compress";
   import { savings } from "$lib/stores/savings";
   import { activity } from "$lib/stores/activity";
   import { IMAGE_EXTENSIONS } from "$lib/types";
-
-  let quality = $state(90);
-  let stripGps = $state(false);
-
-  function qualityToPreset(q: number): QualityPreset {
-    if (q < 50) return "Smallest";
-    if (q <= 80) return "Balanced";
-    return "HighQuality";
-  }
-
-  const profiles: { id: "Web" | "Email" | "Archive" | "Share" | "Custom"; label: string }[] = [
-    { id: "Web", label: "Web" },
-    { id: "Email", label: "Email" },
-    { id: "Archive", label: "Archive" },
-    { id: "Share", label: "Share" },
-    { id: "Custom", label: "Custom" },
-  ];
 
   const socialPlatforms = [
     { id: "instagram-portrait", label: "Instagram Portrait", width: 1080, height: 1350 },
@@ -41,16 +24,6 @@
     { id: "linkedin", label: "LinkedIn", width: 1200, height: 627 },
     { id: "tiktok", label: "TikTok", width: 1080, height: 1920 },
   ];
-
-  function applyProfile(p: "Web" | "Email" | "Archive" | "Share" | "Custom") {
-    activeProfile.set(p);
-    if (p === "Web") { quality = 75; targetFormat.set("Webp"); }
-    else if (p === "Email") { quality = 60; targetFormat.set("Jpeg"); }
-    else if (p === "Archive") { quality = 95; targetFormat.set("Png"); }
-    else if (p === "Share") { quality = 80; targetFormat.set("Webp"); stripGps = true; }
-  }
-
-  function onManualChange() { activeProfile.set("Custom"); }
 
   let targetPct = $derived(
     $files.length === 0 ? 0 : (($summary.done + $summary.failed) / $files.length) * 100
@@ -118,9 +91,9 @@
       const results = await invoke<ConversionResult[]>("convert_images", {
         paths: allPaths,
         format: fmt,
-        quality_preset: qualityToPreset(quality),
+        quality_preset: $qualityPreset,
         output_dir: $outputDir,
-        strip_gps: stripGps,
+        strip_gps: $stripGps,
       });
       const resultMap = new Map(results.map((r) => [r.input_path, r]));
       files.update((all) =>
@@ -136,7 +109,7 @@
         const originalBytes = doneFiles.reduce((acc, f) => acc + f.size, 0);
         const compressedBytes = doneFiles.reduce((acc, f) => acc + (f.outputSize ?? f.size), 0);
         const savedBytes = originalBytes - compressedBytes;
-        savings.incrementOps($summary.done);
+        savings.incrementOps(doneFiles.length);
         savings.addOriginalBytes(originalBytes);
         savings.addCompressedBytes(compressedBytes);
         if (savedBytes > 0) savings.add(savedBytes);
@@ -151,7 +124,6 @@
     const platforms = $selectedPlatforms;
     if (platforms.length === 0 || $files.length === 0) return;
     isConverting.set(true);
-    const q = quality;
     try {
       files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
       for (const platformId of platforms) {
@@ -168,9 +140,9 @@
               width: platform.width,
               height: platform.height,
               mode: "Fit",
-              quality: q,
+              quality: null,
               output_dir: $outputDir,
-              strip_gps: stripGps,
+              strip_gps: $stripGps,
             });
             const result = results[0];
             files.update((all) =>
@@ -193,7 +165,7 @@
         const originalBytes = doneFiles.reduce((acc, f) => acc + f.size, 0);
         const compressedBytes = doneFiles.reduce((acc, f) => acc + (f.outputSize ?? f.size), 0);
         const savedBytes = originalBytes - compressedBytes;
-        savings.incrementOps($summary.done);
+        savings.incrementOps(doneFiles.length);
         savings.addOriginalBytes(originalBytes);
         savings.addCompressedBytes(compressedBytes);
         if (savedBytes > 0) savings.add(savedBytes);
@@ -208,7 +180,6 @@
     selectedPlatforms.update((current) =>
       current.includes(id) ? current.filter((p) => p !== id) : [...current, id]
     );
-    onManualChange();
   }
 
   let compareFile = $state<ConvertFile | null>(null);
@@ -255,9 +226,9 @@
       <button class="btn-icon compare-btn" onclick={() => compareFile = file} title="Compare">
         <Eye size={16} />
       </button>
-      <CircleCheck size={18} />
+      <CheckCircle size={18} />
     {:else if file.status === "error"}
-      <CircleAlert size={18} />
+      <AlertCircle size={18} />
     {:else}
       <button class="btn-icon" onclick={() => removeFile(file.path)}>
         <X size={16} />
@@ -266,20 +237,10 @@
   {/snippet}
 
   <div class="control-group">
-    <span class="label">Profile</span>
-    <div class="pills">
-      {#each profiles as p}
-        <button class="pill" class:active={$activeProfile === p.id} onclick={() => applyProfile(p.id)}>
-          {p.label}
-        </button>
-      {/each}
-    </div>
-  </div>
-  <div class="control-group">
     <span class="label">Format</span>
     <div class="pills">
       {#each formats as f}
-        <button class="pill" class:active={$targetFormat === f.value} onclick={() => { targetFormat.set(f.value); onManualChange(); }}>
+        <button class="pill" class:active={$targetFormat === f.value} onclick={() => targetFormat.set(f.value)}>
           {f.label}
         </button>
       {/each}
@@ -287,8 +248,15 @@
   </div>
   {#if $targetFormat !== "Png"}
     <div class="control-group">
-      <label for="quality-slider">Quality <span class="quality-value">{quality}%</span></label>
-      <input id="quality-slider" type="range" min="10" max="100" step="5" bind:value={quality} oninput={onManualChange} />
+      <span class="label">Quality</span>
+      <div class="pills">
+        <button class="pill" class:active={$qualityPreset === "Smallest"}
+          onclick={() => qualityPreset.set("Smallest")}>Smallest</button>
+        <button class="pill" class:active={$qualityPreset === "Balanced"}
+          onclick={() => qualityPreset.set("Balanced")}>Balanced</button>
+        <button class="pill" class:active={$qualityPreset === "HighQuality"}
+          onclick={() => qualityPreset.set("HighQuality")}>High quality</button>
+      </div>
     </div>
   {/if}
   <div class="control-group">
@@ -299,8 +267,13 @@
     </button>
   </div>
   <div class="control-group">
-    <span class="label">Strip GPS</span>
-    <ToggleSwitch bind:checked={stripGps} />
+    <div class="toggle-row">
+      <div class="toggle-label">
+        <span class="label">Strip GPS</span>
+        <span class="control-hint">Remove location data from photos</span>
+      </div>
+      <ToggleSwitch bind:checked={$stripGps} />
+    </div>
   </div>
   <div class="control-group">
     <span class="label">Social Export</span>
