@@ -123,7 +123,7 @@
 
   .seg.active {
     background: var(--bg-card);
-    color: var(--navy);
+    color: var(--accent);
     font-weight: 600;
     box-shadow: 0 0 0 1px var(--border);
   }

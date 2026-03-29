@@ -228,6 +228,7 @@
     font-weight: 700;
     color: var(--text-primary);
     line-height: 1.2;
+    font-variant-numeric: tabular-nums;
   }
 
   .stat-label {

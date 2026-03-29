@@ -16,11 +16,6 @@ pub fn civil_from_secs(secs: u64) -> (i32, u8, u8) {
     (y as i32, m as u8, d as u8)
 }
 
-#[allow(dead_code)]
-fn is_leap_year(y: i32) -> bool {
-    y % 4 == 0 && (y % 100 != 0 || y % 400 == 0)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -51,24 +46,5 @@ mod tests {
         assert_eq!(y, 2023);
         assert_eq!(m, 3);
         assert_eq!(d, 1);
-    }
-
-    #[test]
-    fn is_leap_year_divisible_by_4() {
-        assert!(is_leap_year(2024));
-        assert!(is_leap_year(2000));
-    }
-
-    #[test]
-    fn is_leap_year_not_divisible_by_4() {
-        assert!(!is_leap_year(2023));
-        assert!(!is_leap_year(1900)); // 1900 is not a leap year (divisible by 100 but not 400)
-    }
-
-    #[test]
-    fn is_leap_year_400_year_rule() {
-        assert!(is_leap_year(2000));
-        assert!(!is_leap_year(2100));
-        assert!(is_leap_year(2400));
     }
 }

@@ -60,7 +60,7 @@
 
 <style>
   .sidebar {
-    width: var(--sidebar-width);
+    width: 220px;
     height: 100vh;
     display: flex;
     flex-direction: column;
@@ -111,7 +111,7 @@
     height: 40px;
     padding: 0 14px;
     border-radius: var(--radius-sm);
-    color: #94a3b8;
+    color: var(--text-muted);
     font-size: 13.5px;
     font-weight: 500;
     transition: background 0.15s, color 0.15s;
@@ -122,16 +122,16 @@
   }
 
   .nav-item span {
-    color: #94a3b8;
+    color: var(--text-muted);
   }
 
   .nav-item:hover {
     background: rgba(255, 255, 255, 0.05);
-    color: #cbd5e1;
+    color: var(--text-secondary);
   }
 
   .nav-item:hover span {
-    color: #cbd5e1;
+    color: var(--text-secondary);
   }
 
   .nav-item.active {
@@ -143,7 +143,7 @@
   }
 
   .nav-item.active span {
-    color: #e2e8f0;
+    color: var(--text-primary);
     font-weight: 600;
   }
 
@@ -162,7 +162,7 @@
   .divider {
     height: 1px;
     margin: 16px 0;
-    background: linear-gradient(90deg, transparent, #1e293b 30%, #1e293b 70%, transparent);
+    background: linear-gradient(90deg, transparent, var(--border) 30%, var(--border) 70%, transparent);
   }
 
   .saved-badge {

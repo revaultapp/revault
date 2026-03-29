@@ -1,6 +1,6 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
-  import { Trash2, FolderOpen, Search, ChevronDown, ChevronRight, AlertCircle } from "lucide-svelte";
+  import { Trash2, FolderOpen, Search, ChevronDown, ChevronRight } from "lucide-svelte";
   import DropZone from "./DropZone.svelte";
   import ProgressRing from "./ProgressRing.svelte";
   import { duplicateGroups, isScanning, totalFound, scanForDuplicates, clearResults } from "$lib/stores/dedupe";

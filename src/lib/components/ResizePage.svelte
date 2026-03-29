@@ -3,7 +3,7 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { FolderOpen, CheckCircle, AlertCircle, X } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
-  import { runWithConcurrency, browseOutputDir, openOutputFolder } from "$lib/utils";
+  import { browseOutputDir, openOutputFolder } from "$lib/utils";
   import { IMAGE_EXTENSIONS } from "$lib/types";
   import {
     files, isResizing, outputDir, resizeMode, width, height, summary,
@@ -75,39 +75,6 @@
   async function handleOpenOutputFolder() {
     const firstOutput = $files.find((f) => f.outputPath)?.outputPath;
     if (firstOutput) await openOutputFolder(firstOutput);
-  }
-
-  async function resizeFile(file: ResizeFile, w: number, h: number, mode: string, outDir: string | null): Promise<void> {
-    files.update((all) =>
-      all.map((f) => f.path === file.path ? { ...f, status: "resizing" as const } : f)
-    );
-    try {
-      const results = await invoke<ResizeResult[]>("resize_images", {
-        paths: [file.path],
-        width: w,
-        height: h,
-        mode,
-        outputDir: outDir,
-      });
-      const result = results[0];
-      files.update((all) =>
-        all.map((f) => {
-          if (f.path !== file.path) return f;
-          if (!result) return { ...f, status: "error" as const, error: "No result returned" };
-          if (result.error) return { ...f, status: "error" as const, error: result.error };
-          return {
-            ...f, status: "done" as const,
-            outputPath: result.output_path,
-            outputWidth: result.new_width, outputHeight: result.new_height,
-            originalWidth: result.original_width, originalHeight: result.original_height,
-          };
-        })
-      );
-    } catch (err) {
-      files.update((all) =>
-        all.map((f) => f.path === file.path ? { ...f, status: "error" as const, error: String(err) } : f)
-      );
-    }
   }
 
   async function startResize() {

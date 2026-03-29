@@ -4,7 +4,7 @@
   import { FolderOpen, CheckCircle, AlertCircle, X, Eye } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
   import BeforeAfterSlider from "./BeforeAfterSlider.svelte";
-  import { formatBytes, runWithConcurrency, browseOutputDir, openOutputFolder } from "$lib/utils";
+  import { formatBytes, browseOutputDir, openOutputFolder } from "$lib/utils";
   import ToggleSwitch from "./ToggleSwitch.svelte";
   import {
     files, quality, format, outputDir, isCompressing, summary,
@@ -87,32 +87,6 @@
   async function handleOpenOutputFolder() {
     const firstOutput = $files.find((f) => f.outputPath)?.outputPath;
     if (firstOutput) await openOutputFolder(firstOutput);
-  }
-
-  async function compressFile(file: CompressFile, q: number, fmt: OutputFormat | null, mode: CompressMode, tb: number, gps: boolean): Promise<void> {
-    files.update((all) =>
-      all.map((f) => f.path === file.path ? { ...f, status: "compressing" as const } : f)
-    );
-    try {
-      const cmd = mode === "target" ? "compress_to_target" : "compress_images";
-      const args = mode === "target"
-        ? { paths: [file.path], targetBytes: tb, format: fmt, outputDir: $outputDir, stripGps: gps }
-        : { paths: [file.path], quality: q, format: fmt, outputDir: $outputDir, stripGps: gps };
-      const results = await invoke<CompressionResult[]>(cmd, args);
-      const result = results[0];
-      files.update((all) =>
-        all.map((f) => {
-          if (f.path !== file.path) return f;
-          if (!result) return { ...f, status: "error" as const, error: "No result returned" };
-          if (result.error) return { ...f, status: "error" as const, error: result.error, size: result.original_size };
-          return { ...f, status: "done" as const, compressedSize: result.compressed_size, outputPath: result.output_path, size: result.original_size, alreadyOptimal: result.already_optimal };
-        })
-      );
-    } catch (err) {
-      files.update((all) =>
-        all.map((f) => f.path === file.path ? { ...f, status: "error" as const, error: String(err) } : f)
-      );
-    }
   }
 
   async function startCompression() {

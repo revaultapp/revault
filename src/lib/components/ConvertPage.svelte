@@ -5,7 +5,7 @@
   import ToolShell from "./ToolShell.svelte";
   import BeforeAfterSlider from "./BeforeAfterSlider.svelte";
   import ToggleSwitch from "./ToggleSwitch.svelte";
-  import { formatBytes, runWithConcurrency, browseOutputDir, openOutputFolder } from "$lib/utils";
+  import { formatBytes, browseOutputDir, openOutputFolder } from "$lib/utils";
   import {
     files, targetFormat, outputDir, isConverting, summary,
     activeProfile, selectedPlatforms,
@@ -98,34 +98,6 @@
   async function handleOpenOutputFolder() {
     const firstOutput = $files.find((f) => f.outputPath)?.outputPath;
     if (firstOutput) await openOutputFolder(firstOutput);
-  }
-
-  async function convertFile(file: ConvertFile, fmt: TargetFormat, q: number): Promise<void> {
-    files.update((all) =>
-      all.map((f) => f.path === file.path ? { ...f, status: "converting" as const } : f)
-    );
-    try {
-      const results = await invoke<ConversionResult[]>("convert_images", {
-        paths: [file.path],
-        format: fmt,
-        quality: q,
-        outputDir: $outputDir,
-        stripGps: stripGps,
-      });
-      const result = results[0];
-      files.update((all) =>
-        all.map((f) => {
-          if (f.path !== file.path) return f;
-          if (!result) return { ...f, status: "error" as const, error: "No result returned" };
-          if (result.error) return { ...f, status: "error" as const, error: result.error };
-          return { ...f, status: "done" as const, outputPath: result.output_path, outputSize: result.compressed_size, size: result.original_size };
-        })
-      );
-    } catch (err) {
-      files.update((all) =>
-        all.map((f) => f.path === file.path ? { ...f, status: "error" as const, error: String(err) } : f)
-      );
-    }
   }
 
   async function startConversion() {
