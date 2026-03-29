@@ -1,5 +1,6 @@
 use crate::core::date::civil_from_secs;
 use exif::{In, Reader};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::BufReader;
@@ -144,7 +145,7 @@ fn apply_template(template: &str, stem: &str, ext: &str, counter: u32, path: &st
 
 pub fn rename_batch(requests: &[RenameRequest]) -> Vec<RenameResult> {
     requests
-        .iter()
+        .par_iter()
         .map(|req| {
             let input_path = Path::new(&req.original_path);
 

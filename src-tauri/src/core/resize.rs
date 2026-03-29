@@ -1,6 +1,7 @@
 use fast_image_resize::images::Image;
 use fast_image_resize::{ResizeAlg, ResizeOptions, Resizer};
 use image::DynamicImage;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Cursor;
@@ -185,7 +186,7 @@ pub fn resize_batch(
     strip_gps: bool,
 ) -> Vec<ResizeResult> {
     paths
-        .iter()
+        .par_iter()
         .map(|path| {
             let input = Path::new(path.as_str());
             let stem = match input.file_stem().and_then(|s| s.to_str()) {

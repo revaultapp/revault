@@ -2,6 +2,7 @@ use crate::core::image_io::{checked_size, ext_lowercase, write_preserving_timest
 use exif::{In, Reader, Tag, Value};
 use img_parts::ImageEXIF;
 use little_exif::metadata::Metadata;
+use rayon::prelude::*;
 use serde::Serialize;
 use std::error::Error;
 use std::fs;
@@ -272,15 +273,16 @@ fn build_output_path(input: &str, output_dir: Option<&str>) -> String {
 }
 
 pub fn strip_batch(paths: &[String], output_dir: Option<&str>) -> Vec<StripResult> {
-    let mut results = Vec::with_capacity(paths.len());
-    for input in paths {
-        let output = build_output_path(input, output_dir);
-        match strip_metadata(input, &output) {
-            Ok(r) => results.push(r),
-            Err(e) => results.push(StripResult::err(input, e.to_string())),
-        }
-    }
-    results
+    paths
+        .par_iter()
+        .map(|input| {
+            let output = build_output_path(input, output_dir);
+            match strip_metadata(input, &output) {
+                Ok(r) => r,
+                Err(e) => StripResult::err(input, e.to_string()),
+            }
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -393,7 +395,7 @@ pub fn strip_selective_batch(
     output_dir: Option<&str>,
 ) -> Vec<StripResult> {
     paths
-        .iter()
+        .par_iter()
         .map(|input| {
             let output = build_output_path(input, output_dir);
             match strip_metadata_selective(input, &output, opts) {

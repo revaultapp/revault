@@ -4169,6 +4169,7 @@ dependencies = [
  "mozjpeg",
  "oxipng",
  "ravif",
+ "rayon",
  "serde",
  "tauri",
  "tauri-build",

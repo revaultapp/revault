@@ -1,5 +1,6 @@
 use image::codecs::png::{CompressionType, FilterType, PngEncoder};
 use image::ImageEncoder;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Cursor;
@@ -313,7 +314,7 @@ pub fn compress_batch(
     strip_gps: bool,
 ) -> Vec<CompressionResult> {
     paths
-        .iter()
+        .par_iter()
         .map(|path| {
             let fmt = format.unwrap_or_else(|| detect_format(path));
             let output = match resolve_output_path(path, &fmt, output_dir, suffix) {
@@ -419,7 +420,7 @@ pub fn compress_to_target_batch(
     strip_gps: bool,
 ) -> Vec<CompressionResult> {
     paths
-        .iter()
+        .par_iter()
         .map(|path| {
             let fmt = format.unwrap_or_else(|| detect_format(path));
             let output = match resolve_output_path(path, &fmt, output_dir, suffix) {
