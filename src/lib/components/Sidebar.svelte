@@ -111,7 +111,7 @@
     height: 40px;
     padding: 0 14px;
     border-radius: var(--radius-sm);
-    color: var(--text-muted);
+    color: #94a3b8;
     font-size: 13.5px;
     font-weight: 500;
     transition: background 0.15s, color 0.15s;
@@ -122,16 +122,16 @@
   }
 
   .nav-item span {
-    color: var(--text-muted);
+    color: #94a3b8;
   }
 
   .nav-item:hover {
     background: rgba(255, 255, 255, 0.05);
-    color: var(--text-secondary);
+    color: #cbd5e1;
   }
 
   .nav-item:hover span {
-    color: var(--text-secondary);
+    color: #cbd5e1;
   }
 
   .nav-item.active {
@@ -143,7 +143,7 @@
   }
 
   .nav-item.active span {
-    color: var(--text-primary);
+    color: #e2e8f0;
     font-weight: 600;
   }
 
