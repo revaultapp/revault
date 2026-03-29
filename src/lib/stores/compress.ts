@@ -3,6 +3,7 @@ import type { BaseFile } from "$lib/types";
 
 export type FileStatus = "pending" | "compressing" | "done" | "error";
 export type OutputFormat = "Jpeg" | "Png" | "Webp" | "Avif";
+export type QualityPreset = "Smallest" | "Balanced" | "HighQuality";
 
 export interface CompressFile extends BaseFile {
   size: number;
@@ -13,19 +14,20 @@ export interface CompressFile extends BaseFile {
   error?: string;
 }
 
-export type CompressMode = "quality" | "target";
-export type CompressionProfile = "Web" | "Email" | "Archive" | "Share" | "Custom";
+function persisted<T>(key: string, initial: T) {
+  const stored = localStorage.getItem(key);
+  const value: T = stored !== null ? (JSON.parse(stored) as T) : initial;
+  const store = writable<T>(value);
+  store.subscribe((v) => localStorage.setItem(key, JSON.stringify(v)));
+  return store;
+}
 
 export const files = writable<CompressFile[]>([]);
-export const quality = writable(80);
-export const format = writable<OutputFormat | null>(null);
+export const qualityPreset = persisted<QualityPreset>("compress_quality_preset", "Balanced");
+export const format = persisted<OutputFormat | null>("compress_format", null);
 export const outputDir = writable<string | null>(null);
 export const isCompressing = writable(false);
-export const compressMode = writable<CompressMode>("quality");
-export const targetSize = writable<number>(500);
-export const targetUnit = writable<"KB" | "MB">("KB");
-export const activeProfile = writable<CompressionProfile>("Custom");
-export const stripGps = writable(false);
+export const stripGps = persisted<boolean>("compress_strip_gps", false);
 
 export const summary = derived(files, ($files) => {
   const done = $files.filter((f) => f.status === "done");

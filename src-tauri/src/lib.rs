@@ -8,7 +8,6 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             commands::compress::compress_images,
-            commands::compress::compress_to_target,
             commands::convert::convert_images,
             commands::dedupe::find_duplicates,
             commands::organize::organize_by_date,

@@ -12,12 +12,19 @@
     addFiles, removeFile, clearFiles,
     type TargetFormat, type ConvertFile,
   } from "$lib/stores/convert";
+  import { type QualityPreset } from "$lib/stores/compress";
   import { savings } from "$lib/stores/savings";
   import { activity } from "$lib/stores/activity";
   import { IMAGE_EXTENSIONS } from "$lib/types";
 
   let quality = $state(90);
   let stripGps = $state(false);
+
+  function qualityToPreset(q: number): QualityPreset {
+    if (q < 50) return "Smallest";
+    if (q <= 80) return "Balanced";
+    return "HighQuality";
+  }
 
   const profiles: { id: "Web" | "Email" | "Archive" | "Share" | "Custom"; label: string }[] = [
     { id: "Web", label: "Web" },
@@ -105,16 +112,15 @@
     if (currentFiles.length === 0) return;
     isConverting.set(true);
     const fmt = $targetFormat;
-    const q = quality;
     try {
       files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
       const allPaths = currentFiles.map((f) => f.path);
       const results = await invoke<ConversionResult[]>("convert_images", {
         paths: allPaths,
         format: fmt,
-        quality: q,
-        outputDir: $outputDir,
-        stripGps: stripGps,
+        quality_preset: qualityToPreset(quality),
+        output_dir: $outputDir,
+        strip_gps: stripGps,
       });
       const resultMap = new Map(results.map((r) => [r.input_path, r]));
       files.update((all) =>
@@ -163,8 +169,8 @@
               height: platform.height,
               mode: "Fit",
               quality: q,
-              outputDir: $outputDir,
-              stripGps: stripGps,
+              output_dir: $outputDir,
+              strip_gps: stripGps,
             });
             const result = results[0];
             files.update((all) =>

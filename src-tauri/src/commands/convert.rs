@@ -4,16 +4,15 @@ use crate::core::compression;
 pub async fn convert_images(
     paths: Vec<String>,
     format: compression::OutputFormat,
-    quality: Option<f32>,
+    quality_preset: Option<compression::QualityPreset>,
     output_dir: Option<String>,
     strip_gps: Option<bool>,
 ) -> Result<Vec<compression::CompressionResult>, String> {
-    let quality = quality.unwrap_or(90.0);
     let strip_gps = strip_gps.unwrap_or(false);
     tauri::async_runtime::spawn_blocking(move || {
         Ok(compression::compress_batch(
             &paths,
-            quality,
+            quality_preset.unwrap_or(compression::QualityPreset::Balanced),
             Some(format),
             output_dir.as_deref(),
             "_converted",

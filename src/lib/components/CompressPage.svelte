@@ -7,43 +7,14 @@
   import { formatBytes, browseOutputDir, openOutputFolder } from "$lib/utils";
   import ToggleSwitch from "./ToggleSwitch.svelte";
   import {
-    files, quality, format, outputDir, isCompressing, summary,
-    compressMode, targetSize, targetUnit, activeProfile, stripGps,
+    files, qualityPreset, format, outputDir, isCompressing, summary,
+    stripGps,
     addFiles, removeFile, clearFiles,
-    type OutputFormat, type CompressFile, type CompressionProfile, type CompressMode,
+    type QualityPreset, type OutputFormat, type CompressFile,
   } from "$lib/stores/compress";
   import { savings } from "$lib/stores/savings";
   import { activity } from "$lib/stores/activity";
   import { IMAGE_EXTENSIONS } from "$lib/types";
-
-  const profiles: { id: CompressionProfile; label: string }[] = [
-    { id: "Web", label: "Web" },
-    { id: "Email", label: "Email" },
-    { id: "Archive", label: "Archive" },
-    { id: "Share", label: "Share" },
-    { id: "Custom", label: "Custom" },
-  ];
-
-  const targetPresets = [
-    { label: "500 KB", size: 500, unit: "KB" as const },
-    { label: "1 MB", size: 1, unit: "MB" as const },
-    { label: "2 MB", size: 2, unit: "MB" as const },
-    { label: "5 MB", size: 5, unit: "MB" as const },
-  ];
-
-  function applyProfile(p: CompressionProfile) {
-    activeProfile.set(p);
-    if (p === "Web") { quality.set(75); format.set("Webp"); compressMode.set("quality"); stripGps.set(false); }
-    else if (p === "Email") { quality.set(60); format.set("Jpeg"); compressMode.set("target"); targetSize.set(500); targetUnit.set("KB"); stripGps.set(false); }
-    else if (p === "Archive") { quality.set(95); format.set(null); compressMode.set("quality"); stripGps.set(false); }
-    else if (p === "Share") { quality.set(80); format.set("Webp"); compressMode.set("quality"); stripGps.set(true); }
-  }
-
-  function onManualChange() { activeProfile.set("Custom"); }
-
-  function targetBytes(): number {
-    return $targetUnit === "MB" ? $targetSize * 1024 * 1024 : $targetSize * 1024;
-  }
 
   let targetPct = $derived(
     $files.length === 0 ? 0 : (($summary.done + $summary.failed) / $files.length) * 100
@@ -65,7 +36,7 @@
   }
 
   const formats: { value: OutputFormat | null; label: string }[] = [
-    { value: null, label: "Auto" },
+    { value: null, label: "Auto (smallest)" },
     { value: "Jpeg", label: "JPEG" },
     { value: "Webp", label: "WebP" },
     { value: "Avif", label: "AVIF" },
@@ -93,19 +64,18 @@
     const currentFiles = $files;
     if (currentFiles.length === 0) return;
     isCompressing.set(true);
-    const q = $quality;
     const fmt = $format;
-    const mode = $compressMode;
-    const tb = targetBytes();
     const gps = $stripGps;
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
     try {
       const allPaths = currentFiles.map((f) => f.path);
-      const cmd = mode === "target" ? "compress_to_target" : "compress_images";
-      const args = mode === "target"
-        ? { paths: allPaths, targetBytes: tb, format: fmt, outputDir: $outputDir, stripGps: gps }
-        : { paths: allPaths, quality: q, format: fmt, outputDir: $outputDir, stripGps: gps };
-      const results = await invoke<CompressionResult[]>(cmd, args);
+      const results = await invoke<CompressionResult[]>("compress_images", {
+        paths: allPaths,
+        qualityPreset: $qualityPreset,
+        format: fmt,
+        outputDir: $outputDir,
+        stripGps: gps,
+      });
       const resultMap = new Map(results.map((r) => [r.input_path, r]));
       files.update((all) =>
         all.map((f) => {
@@ -196,50 +166,26 @@
   {/snippet}
 
   <div class="control-group">
-    <span class="label">Profile</span>
-    <div class="pills">
-      {#each profiles as p}
-        <button class="pill" class:active={$activeProfile === p.id} onclick={() => applyProfile(p.id)}>
-          {p.label}
-        </button>
-      {/each}
-    </div>
-  </div>
-  <div class="control-group">
     <span class="label">Format</span>
     <div class="pills">
       {#each formats as f}
-        <button class="pill" class:active={$format === f.value} onclick={() => { format.set(f.value); onManualChange(); }}>
+        <button class="pill" class:active={$format === f.value} onclick={() => format.set(f.value)}>
           {f.label}
         </button>
       {/each}
     </div>
   </div>
   <div class="control-group">
-    <span class="label">Mode</span>
+    <span class="label">Quality</span>
     <div class="pills">
-      <button class="pill" class:active={$compressMode === "quality"} onclick={() => { compressMode.set("quality"); onManualChange(); }}>Quality</button>
-      <button class="pill" class:active={$compressMode === "target"} onclick={() => { compressMode.set("target"); onManualChange(); }}>Target Size</button>
+      <button class="pill" class:active={$qualityPreset === "Smallest"}
+        onclick={() => qualityPreset.set("Smallest")}>Smallest</button>
+      <button class="pill" class:active={$qualityPreset === "Balanced"}
+        onclick={() => qualityPreset.set("Balanced")}>Balanced</button>
+      <button class="pill" class:active={$qualityPreset === "HighQuality"}
+        onclick={() => qualityPreset.set("HighQuality")}>High quality</button>
     </div>
   </div>
-  {#if $compressMode === "quality"}
-    <div class="control-group">
-      <label for="quality-slider">Quality <span class="quality-value">{$quality}%</span></label>
-      <input id="quality-slider" type="range" min="10" max="100" step="5" bind:value={$quality} oninput={onManualChange} />
-    </div>
-  {:else}
-    <div class="control-group">
-      <span class="label">Target</span>
-      <div class="pills">
-        {#each targetPresets as tp}
-          <button class="pill" class:active={$targetSize === tp.size && $targetUnit === tp.unit}
-            onclick={() => { targetSize.set(tp.size); targetUnit.set(tp.unit); onManualChange(); }}>
-            {tp.label}
-          </button>
-        {/each}
-      </div>
-    </div>
-  {/if}
   <div class="control-group">
     <span class="label">Output</span>
     <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
@@ -248,8 +194,13 @@
     </button>
   </div>
   <div class="control-group">
-    <span class="label">Strip GPS</span>
-    <ToggleSwitch bind:checked={$stripGps} />
+    <div class="toggle-row">
+      <div>
+        <span class="label">Strip GPS</span>
+        <span class="control-hint">Remove location data from photos</span>
+      </div>
+      <ToggleSwitch bind:checked={$stripGps} />
+    </div>
   </div>
 </ToolShell>
 
@@ -276,4 +227,18 @@
     transition: color 0.15s;
   }
   .compare-btn:hover { color: var(--accent); }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .control-hint {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
 </style>

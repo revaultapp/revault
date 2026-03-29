@@ -111,7 +111,7 @@
     height: 40px;
     padding: 0 14px;
     border-radius: var(--radius-sm);
-    color: var(--text-muted);
+    color: #64748b;
     font-size: 13.5px;
     font-weight: 500;
     transition: background 0.15s, color 0.15s;
@@ -122,16 +122,16 @@
   }
 
   .nav-item span {
-    color: var(--text-muted);
+    color: #64748b;
   }
 
   .nav-item:hover {
     background: rgba(255, 255, 255, 0.05);
-    color: var(--text-secondary);
+    color: #94a3b8;
   }
 
   .nav-item:hover span {
-    color: var(--text-secondary);
+    color: #94a3b8;
   }
 
   .nav-item.active {
@@ -143,7 +143,7 @@
   }
 
   .nav-item.active span {
-    color: var(--text-primary);
+    color: #e2e8f0;
     font-weight: 600;
   }
 
@@ -162,7 +162,7 @@
   .divider {
     height: 1px;
     margin: 16px 0;
-    background: linear-gradient(90deg, transparent, var(--border) 30%, var(--border) 70%, transparent);
+    background: linear-gradient(90deg, transparent, #293548 30%, #293548 70%, transparent);
   }
 
   .saved-badge {

@@ -3,7 +3,7 @@ use crate::core::compression;
 #[tauri::command]
 pub async fn compress_images(
     paths: Vec<String>,
-    quality: f32,
+    quality_preset: Option<compression::QualityPreset>,
     format: Option<compression::OutputFormat>,
     output_dir: Option<String>,
     strip_gps: Option<bool>,
@@ -11,29 +11,7 @@ pub async fn compress_images(
     tauri::async_runtime::spawn_blocking(move || {
         Ok(compression::compress_batch(
             &paths,
-            quality,
-            format,
-            output_dir.as_deref(),
-            "_compressed",
-            strip_gps.unwrap_or(false),
-        ))
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-pub async fn compress_to_target(
-    paths: Vec<String>,
-    target_bytes: u64,
-    format: Option<compression::OutputFormat>,
-    output_dir: Option<String>,
-    strip_gps: Option<bool>,
-) -> Result<Vec<compression::CompressionResult>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        Ok(compression::compress_to_target_batch(
-            &paths,
-            target_bytes,
+            quality_preset.unwrap_or(compression::QualityPreset::Balanced),
             format,
             output_dir.as_deref(),
             "_compressed",
