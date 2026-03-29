@@ -14,7 +14,7 @@ export interface CompressFile extends BaseFile {
 }
 
 export type CompressMode = "quality" | "target";
-export type CompressionProfile = "Web" | "Email" | "Archive" | "Custom";
+export type CompressionProfile = "Web" | "Email" | "Archive" | "Share" | "Custom";
 
 export const files = writable<CompressFile[]>([]);
 export const quality = writable(80);
@@ -25,6 +25,7 @@ export const compressMode = writable<CompressMode>("quality");
 export const targetSize = writable<number>(500);
 export const targetUnit = writable<"KB" | "MB">("KB");
 export const activeProfile = writable<CompressionProfile>("Custom");
+export const stripGps = writable(false);
 
 export const summary = derived(files, ($files) => {
   const done = $files.filter((f) => f.status === "done");

@@ -2,7 +2,7 @@ import { writable } from "svelte/store";
 
 const stored = typeof localStorage !== "undefined" ? localStorage.getItem("theme") : null;
 
-export const theme = writable<"light" | "dark">((stored as "light" | "dark") ?? "light");
+export const theme = writable<"light" | "dark">((stored as "light" | "dark") ?? "dark");
 
 theme.subscribe((t) => {
   if (typeof document === "undefined") return;

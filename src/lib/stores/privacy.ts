@@ -19,6 +19,10 @@ export interface PrivacyFile extends BaseFile {
 
 export const files = writable<PrivacyFile[]>([]);
 export const isProcessing = writable(false);
+export const stripGps = writable(true);
+export const stripDevice = writable(true);
+export const stripDatetime = writable(false);
+export const stripAuthor = writable(true);
 
 export const summary = derived(files, ($f) => ({
   scanned: $f.filter((f) => f.status === "scanned" || f.status === "done").length,

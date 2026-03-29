@@ -3,7 +3,7 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { FolderOpen, CheckCircle, AlertCircle, X } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
-  import { runWithConcurrency, browseOutputDir, openOutputFolder } from "$lib/utils";
+  import { browseOutputDir, openOutputFolder } from "$lib/utils";
   import { IMAGE_EXTENSIONS } from "$lib/types";
   import {
     files, isResizing, outputDir, resizeMode, width, height, summary,
@@ -11,11 +11,30 @@
     type ResizeFile,
   } from "$lib/stores/resize";
 
-  const presets = [
-    { label: "Full HD", w: 1920, h: 1080 },
-    { label: "HD", w: 1280, h: 720 },
-    { label: "Instagram", w: 1080, h: 1080 },
-    { label: "Thumbnail", w: 300, h: 300 },
+  type Preset = { label: string; w: number; h: number };
+  type PresetGroup = { group: string; presets: Preset[] };
+
+  const presetGroups: PresetGroup[] = [
+    {
+      group: "General",
+      presets: [
+        { label: "Full HD", w: 1920, h: 1080 },
+        { label: "HD", w: 1280, h: 720 },
+        { label: "Thumbnail", w: 300, h: 300 },
+      ],
+    },
+    {
+      group: "Social Media",
+      presets: [
+        { label: "IG Post", w: 1080, h: 1350 },
+        { label: "IG Square", w: 1080, h: 1080 },
+        { label: "IG Story", w: 1080, h: 1920 },
+        { label: "YouTube", w: 1280, h: 720 },
+        { label: "Twitter/X", w: 1200, h: 675 },
+        { label: "LinkedIn", w: 1200, h: 1200 },
+        { label: "TikTok", w: 1080, h: 1920 },
+      ],
+    },
   ];
 
   let targetPct = $derived(
@@ -58,39 +77,6 @@
     if (firstOutput) await openOutputFolder(firstOutput);
   }
 
-  async function resizeFile(file: ResizeFile, w: number, h: number, mode: string, outDir: string | null): Promise<void> {
-    files.update((all) =>
-      all.map((f) => f.path === file.path ? { ...f, status: "resizing" as const } : f)
-    );
-    try {
-      const results = await invoke<ResizeResult[]>("resize_images", {
-        paths: [file.path],
-        width: w,
-        height: h,
-        mode,
-        outputDir: outDir,
-      });
-      const result = results[0];
-      files.update((all) =>
-        all.map((f) => {
-          if (f.path !== file.path) return f;
-          if (!result) return { ...f, status: "error" as const, error: "No result returned" };
-          if (result.error) return { ...f, status: "error" as const, error: result.error };
-          return {
-            ...f, status: "done" as const,
-            outputPath: result.output_path,
-            outputWidth: result.new_width, outputHeight: result.new_height,
-            originalWidth: result.original_width, originalHeight: result.original_height,
-          };
-        })
-      );
-    } catch (err) {
-      files.update((all) =>
-        all.map((f) => f.path === file.path ? { ...f, status: "error" as const, error: String(err) } : f)
-      );
-    }
-  }
-
   async function startResize() {
     const currentFiles = $files;
     if (currentFiles.length === 0) return;
@@ -100,7 +86,34 @@
     const outDir = $outputDir;
     isResizing.set(true);
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
-    await runWithConcurrency(currentFiles, (file) => resizeFile(file, w, h, mode, outDir));
+    try {
+      const allPaths = currentFiles.map((f) => f.path);
+      const results = await invoke<ResizeResult[]>("resize_images", {
+        paths: allPaths,
+        width: w,
+        height: h,
+        mode,
+        outputDir: outDir,
+      });
+      const resultMap = new Map(results.map((r) => [r.input_path, r]));
+      files.update((all) =>
+        all.map((f) => {
+          const r = resultMap.get(f.path);
+          if (!r) return f;
+          if (r.error) return { ...f, status: "error" as const, error: r.error };
+          return {
+            ...f, status: "done" as const,
+            outputPath: r.output_path,
+            outputWidth: r.new_width, outputHeight: r.new_height,
+            originalWidth: r.original_width, originalHeight: r.original_height,
+          };
+        })
+      );
+    } catch (err) {
+      files.update((all) =>
+        all.map((f) => f.status === "pending" ? { ...f, status: "error" as const, error: String(err) } : f)
+      );
+    }
     isResizing.set(false);
   }
 
@@ -143,13 +156,21 @@
 
   <div class="control-group">
     <span class="label">Presets</span>
-    <div class="preset-grid">
-      {#each presets as p}
-        <button
-          class="pill"
-          class:active={$width === p.w && $height === p.h}
-          onclick={() => { width.set(p.w); height.set(p.h); }}
-        >{p.label}</button>
+    <div class="preset-sections">
+      {#each presetGroups as group}
+        <div class="preset-section">
+          <span class="preset-group-label">{group.group}</span>
+          <div class="preset-grid">
+            {#each group.presets as p}
+              <button
+                class="pill"
+                class:active={$width === p.w && $height === p.h}
+                onclick={() => { width.set(p.w); height.set(p.h); }}
+                title="{p.w}×{p.h}"
+              >{p.label}</button>
+            {/each}
+          </div>
+        </div>
       {/each}
     </div>
   </div>
@@ -181,9 +202,30 @@
 </ToolShell>
 
 <style>
+  .preset-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .preset-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .preset-group-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    opacity: 0.7;
+  }
+
   .preset-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    flex-wrap: wrap;
     gap: 4px;
   }
 

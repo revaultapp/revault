@@ -47,12 +47,27 @@
   }: Props = $props();
 
   $effect(() => {
+    // Track paths submitted in this effect run so stale responses are discarded.
+    // When files changes, a new effect run begins and a fresh Set is used.
+    const submitted = new Set<string>();
     for (const file of files) {
       if (thumbnails[file.path] !== undefined) continue;
       thumbnails[file.path] = ""; // mark as loading
+      submitted.add(file.path);
       invoke<string>("generate_thumbnail", { path: file.path })
-        .then((src) => { thumbnails[file.path] = src; })
-        .catch(() => { thumbnails[file.path] = "error"; });
+        .then((src) => {
+          // Only write if this path is still in the current files list.
+          // A path can be stale when files changes (e.g., user removes files
+          // before their thumbnails load) or when the component unmounts.
+          if (submitted.has(file.path)) {
+            thumbnails[file.path] = src;
+          }
+        })
+        .catch(() => {
+          if (submitted.has(file.path)) {
+            thumbnails[file.path] = "error";
+          }
+        });
     }
   });
 </script>

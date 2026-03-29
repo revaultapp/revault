@@ -4,9 +4,7 @@
   --accent: #10b981;
 
   --navy: #1e3a5f;
-  --navy-medium: #2d5a8a;
   --navy-bg: #e1eaf4;
-  --navy-border: #c5d5e8;
 
   --text-primary: #0f1729;
   --text-secondary: #1e3a5f;
@@ -23,10 +21,7 @@
   --danger: #ef4444;
   --danger-bg: rgba(239, 68, 68, 0.1);
 
-  --accent-hover: #0ea472;
   --accent-subtle: rgba(16, 185, 129, 0.1);
-
-  --sidebar-width: 220px;
   --topbar-height: 64px;
 
   --font: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
@@ -37,9 +32,7 @@
   --bg-card: #111827;
 
   --navy: #60a5fa;
-  --navy-medium: #3b82f6;
   --navy-bg: #1e293b;
-  --navy-border: #293548;
 
   --text-primary: #e2e8f0;
   --text-secondary: #94a3b8;
@@ -49,7 +42,6 @@
   --toggle-off: #374151;
 
   --danger-bg: rgba(239, 68, 68, 0.15);
-  --accent-subtle: rgba(16, 185, 129, 0.12);
 }
 
 *,

@@ -1,16 +1,25 @@
 <script lang="ts">
   import { activePage } from "$lib/stores/nav";
+  import DashboardPage from "$lib/components/DashboardPage.svelte";
   import SettingsPage from "$lib/components/SettingsPage.svelte";
   import ToolsPage from "$lib/components/ToolsPage.svelte";
   import PrivacyPage from "$lib/components/PrivacyPage.svelte";
+  import AnalyzePage from "$lib/components/AnalyzePage.svelte";
+  import OrganizePage from "$lib/components/OrganizePage.svelte";
 </script>
 
-{#if $activePage === "tools"}
+{#if $activePage === "dashboard"}
+  <DashboardPage />
+{:else if $activePage === "tools"}
   <ToolsPage />
-{:else if $activePage === "settings"}
-  <SettingsPage />
+{:else if $activePage === "analyze"}
+  <AnalyzePage />
+{:else if $activePage === "organize"}
+  <OrganizePage />
 {:else if $activePage === "privacy"}
   <PrivacyPage />
+{:else if $activePage === "settings"}
+  <SettingsPage />
 {:else}
   <div class="placeholder">
     <p>This section is not yet available.</p>

@@ -1,10 +1,6 @@
 <script lang="ts">
-  import { FolderOpen, Sun, Moon, ChevronDown } from "lucide-svelte";
-  import ToggleSwitch from "$lib/components/ToggleSwitch.svelte";
+  import { Sun, Moon } from "lucide-svelte";
   import { theme } from "$lib/stores/theme";
-
-  let overwrite = $state(false);
-  let autostrip = $state(true);
 </script>
 
 <div class="sections">
@@ -15,23 +11,6 @@
       <p>Basic app preferences</p>
     </div>
     <hr />
-    <div class="row">
-      <div class="label">
-        <span class="name">Output folder</span>
-        <span class="desc">Where processed files are saved</span>
-      </div>
-      <button class="pill">
-        <FolderOpen size={14} strokeWidth={2} />
-        <span>~/Pictures/Revault</span>
-      </button>
-    </div>
-    <div class="row">
-      <div class="label">
-        <span class="name">Overwrite originals</span>
-        <span class="desc">Replace files instead of creating copies</span>
-      </div>
-      <ToggleSwitch bind:checked={overwrite} />
-    </div>
     <div class="row">
       <div class="label">
         <span class="name">Theme</span>
@@ -50,51 +29,6 @@
     </div>
   </section>
 
-  <!-- Compression -->
-  <section class="section">
-    <div class="section-header">
-      <h2>Compression</h2>
-      <p>Default compression behavior</p>
-    </div>
-    <hr />
-    <div class="row">
-      <div class="label">
-        <span class="name">Default quality</span>
-        <span class="desc">Balance between size and quality</span>
-      </div>
-      <div class="quality-val">
-        <span class="quality-num">80</span>
-        <span class="quality-unit">%</span>
-      </div>
-    </div>
-    <div class="row">
-      <div class="label">
-        <span class="name">Default format</span>
-        <span class="desc">Output format for conversions</span>
-      </div>
-      <button class="pill">
-        <span>WebP</span>
-        <ChevronDown size={12} strokeWidth={2} />
-      </button>
-    </div>
-  </section>
-
-  <!-- Privacy -->
-  <section class="section">
-    <div class="section-header">
-      <h2>Privacy</h2>
-      <p>Metadata and sensitive data</p>
-    </div>
-    <hr />
-    <div class="row">
-      <div class="label">
-        <span class="name">Auto-strip on import</span>
-        <span class="desc">Remove metadata when files are added</span>
-      </div>
-      <ToggleSwitch bind:checked={autostrip} />
-    </div>
-  </section>
-
   <!-- About -->
   <section class="section">
     <div class="section-header">
@@ -105,10 +39,6 @@
     <div class="row small">
       <span class="name">Version</span>
       <span class="version-val">0.1.0</span>
-    </div>
-    <div class="row small">
-      <span class="name">Source code</span>
-      <button class="pill">GitHub &rarr;</button>
     </div>
   </section>
 </div>
@@ -173,23 +103,6 @@
     color: var(--text-muted);
   }
 
-  .pill {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border-radius: 8px;
-    background: var(--navy-bg);
-    color: var(--navy);
-    font-size: 12px;
-    font-weight: 500;
-    transition: background 0.15s;
-  }
-
-  .pill:hover {
-    background: var(--navy-border);
-  }
-
   .segmented {
     display: flex;
     border-radius: 8px;
@@ -210,26 +123,9 @@
 
   .seg.active {
     background: var(--bg-card);
-    color: var(--navy);
+    color: var(--accent);
     font-weight: 600;
     box-shadow: 0 0 0 1px var(--border);
-  }
-
-  .quality-val {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .quality-num {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--accent);
-  }
-
-  .quality-unit {
-    font-size: 12px;
-    color: var(--text-muted);
   }
 
   .version-val {

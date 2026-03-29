@@ -4,20 +4,23 @@
   import { FolderOpen, CheckCircle, AlertCircle, X, Eye } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
   import BeforeAfterSlider from "./BeforeAfterSlider.svelte";
-  import { formatBytes, runWithConcurrency, browseOutputDir, openOutputFolder } from "$lib/utils";
+  import { formatBytes, browseOutputDir, openOutputFolder } from "$lib/utils";
+  import ToggleSwitch from "./ToggleSwitch.svelte";
   import {
     files, quality, format, outputDir, isCompressing, summary,
-    compressMode, targetSize, targetUnit, activeProfile,
+    compressMode, targetSize, targetUnit, activeProfile, stripGps,
     addFiles, removeFile, clearFiles,
     type OutputFormat, type CompressFile, type CompressionProfile, type CompressMode,
   } from "$lib/stores/compress";
   import { savings } from "$lib/stores/savings";
+  import { activity } from "$lib/stores/activity";
   import { IMAGE_EXTENSIONS } from "$lib/types";
 
   const profiles: { id: CompressionProfile; label: string }[] = [
     { id: "Web", label: "Web" },
     { id: "Email", label: "Email" },
     { id: "Archive", label: "Archive" },
+    { id: "Share", label: "Share" },
     { id: "Custom", label: "Custom" },
   ];
 
@@ -30,9 +33,10 @@
 
   function applyProfile(p: CompressionProfile) {
     activeProfile.set(p);
-    if (p === "Web") { quality.set(75); format.set("Webp"); compressMode.set("quality"); }
-    else if (p === "Email") { quality.set(60); format.set("Jpeg"); compressMode.set("target"); targetSize.set(500); targetUnit.set("KB"); }
-    else if (p === "Archive") { quality.set(95); format.set(null); compressMode.set("quality"); }
+    if (p === "Web") { quality.set(75); format.set("Webp"); compressMode.set("quality"); stripGps.set(false); }
+    else if (p === "Email") { quality.set(60); format.set("Jpeg"); compressMode.set("target"); targetSize.set(500); targetUnit.set("KB"); stripGps.set(false); }
+    else if (p === "Archive") { quality.set(95); format.set(null); compressMode.set("quality"); stripGps.set(false); }
+    else if (p === "Share") { quality.set(80); format.set("Webp"); compressMode.set("quality"); stripGps.set(true); }
   }
 
   function onManualChange() { activeProfile.set("Custom"); }
@@ -63,7 +67,6 @@
   const formats: { value: OutputFormat | null; label: string }[] = [
     { value: null, label: "Auto" },
     { value: "Jpeg", label: "JPEG" },
-    { value: "Png", label: "PNG" },
     { value: "Webp", label: "WebP" },
     { value: "Avif", label: "AVIF" },
   ];
@@ -86,32 +89,6 @@
     if (firstOutput) await openOutputFolder(firstOutput);
   }
 
-  async function compressFile(file: CompressFile, q: number, fmt: OutputFormat | null, mode: CompressMode, tb: number): Promise<void> {
-    files.update((all) =>
-      all.map((f) => f.path === file.path ? { ...f, status: "compressing" as const } : f)
-    );
-    try {
-      const cmd = mode === "target" ? "compress_to_target" : "compress_images";
-      const args = mode === "target"
-        ? { paths: [file.path], targetBytes: tb, format: fmt, outputDir: $outputDir }
-        : { paths: [file.path], quality: q, format: fmt, outputDir: $outputDir };
-      const results = await invoke<CompressionResult[]>(cmd, args);
-      const result = results[0];
-      files.update((all) =>
-        all.map((f) => {
-          if (f.path !== file.path) return f;
-          if (!result) return { ...f, status: "error" as const, error: "No result returned" };
-          if (result.error) return { ...f, status: "error" as const, error: result.error, size: result.original_size };
-          return { ...f, status: "done" as const, compressedSize: result.compressed_size, outputPath: result.output_path, size: result.original_size, alreadyOptimal: result.already_optimal };
-        })
-      );
-    } catch (err) {
-      files.update((all) =>
-        all.map((f) => f.path === file.path ? { ...f, status: "error" as const, error: String(err) } : f)
-      );
-    }
-  }
-
   async function startCompression() {
     const currentFiles = $files;
     if (currentFiles.length === 0) return;
@@ -120,9 +97,39 @@
     const fmt = $format;
     const mode = $compressMode;
     const tb = targetBytes();
+    const gps = $stripGps;
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
-    await runWithConcurrency(currentFiles, (file) => compressFile(file, q, fmt, mode, tb));
-    savings.add($summary.savedBytes);
+    try {
+      const allPaths = currentFiles.map((f) => f.path);
+      const cmd = mode === "target" ? "compress_to_target" : "compress_images";
+      const args = mode === "target"
+        ? { paths: allPaths, targetBytes: tb, format: fmt, outputDir: $outputDir, stripGps: gps }
+        : { paths: allPaths, quality: q, format: fmt, outputDir: $outputDir, stripGps: gps };
+      const results = await invoke<CompressionResult[]>(cmd, args);
+      const resultMap = new Map(results.map((r) => [r.input_path, r]));
+      files.update((all) =>
+        all.map((f) => {
+          const r = resultMap.get(f.path);
+          if (!r) return f;
+          if (r.error) return { ...f, status: "error" as const, error: r.error, size: r.original_size };
+          return { ...f, status: "done" as const, compressedSize: r.compressed_size, outputPath: r.output_path, size: r.original_size, alreadyOptimal: r.already_optimal };
+        })
+      );
+    } catch (err) {
+      files.update((all) =>
+        all.map((f) => f.status === "pending" ? { ...f, status: "error" as const, error: String(err) } : f)
+      );
+    }
+    if ($summary.done > 0) {
+      const doneFiles = $files.filter((f) => f.status === "done");
+      const originalBytes = doneFiles.reduce((acc, f) => acc + f.size, 0);
+      const compressedBytes = doneFiles.reduce((acc, f) => acc + (f.compressedSize ?? f.size), 0);
+      savings.incrementOps($summary.done);
+      savings.addOriginalBytes(originalBytes);
+      savings.addCompressedBytes(compressedBytes);
+      savings.add($summary.savedBytes);
+      activity.add({ type: "compress", fileCount: $summary.done, savedBytes: $summary.savedBytes });
+    }
     isCompressing.set(false);
   }
 
@@ -130,7 +137,9 @@
     if (!file.compressedSize || file.size === 0) return "";
     if (file.alreadyOptimal) return "Already optimal";
     const pct = Math.round(((file.size - file.compressedSize) / file.size) * 100);
-    return pct > 0 ? `${pct}% smaller` : "Already optimal";
+    if (pct > 0) return `${pct}% smaller`;
+    if (pct < 0) return `${Math.abs(pct)}% larger`;
+    return "Same size";
   }
 
   let compareFile = $state<CompressFile | null>(null);
@@ -237,6 +246,10 @@
       <FolderOpen size={14} />
       {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
     </button>
+  </div>
+  <div class="control-group">
+    <span class="label">Strip GPS</span>
+    <ToggleSwitch bind:checked={$stripGps} />
   </div>
 </ToolShell>
 

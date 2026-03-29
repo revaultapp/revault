@@ -8,14 +8,14 @@
   import { savings } from "$lib/stores/savings";
   import { formatBytes } from "$lib/utils";
 
-  type NavItem = { icon: typeof Compass; id: string; label: string; badge?: string; dot?: boolean };
+  type NavItem = { icon: typeof Compass; id: string; label: string };
   const navItems: NavItem[] = [
     { icon: Compass, id: "dashboard", label: "Dashboard" },
     { icon: Wand2, id: "tools", label: "Tools" },
-    { icon: ScanSearch, id: "analyze", label: "Analyze", badge: "3" },
+    { icon: ScanSearch, id: "analyze", label: "Analyze" },
     { icon: Boxes, id: "organize", label: "Organize" },
     { icon: EyeOff, id: "privacy", label: "Privacy" },
-    { icon: CloudCog, id: "cloud", label: "Cloud", dot: true },
+    { icon: CloudCog, id: "cloud", label: "Cloud" },
   ];
 </script>
 
@@ -34,19 +34,12 @@
           {/if}
           <item.icon size={18} strokeWidth={1.8} />
           <span>{item.label}</span>
-          {#if item.badge}
-            <span class="nav-spacer"></span>
-            <span class="nav-badge">{item.badge}</span>
-          {:else if item.dot}
-            <span class="nav-spacer"></span>
-            <span class="nav-dot"></span>
-          {/if}
         </button>
       {/each}
 
       <div class="saved-badge">
         <Database size={16} strokeWidth={1.8} />
-        <span>Saved: {formatBytes($savings)}</span>
+        <span>Saved: {formatBytes($savings.totalSavedBytes)}</span>
       </div>
     </nav>
 
@@ -62,19 +55,12 @@
       <span>Settings</span>
     </button>
 
-    <div class="user-section">
-      <div class="user-avatar">M</div>
-      <div class="user-info">
-        <span class="user-name">Mike</span>
-        <span class="user-role">Pro Plan</span>
-      </div>
-    </div>
   </div>
 </aside>
 
 <style>
   .sidebar {
-    width: var(--sidebar-width);
+    width: 220px;
     height: 100vh;
     display: flex;
     flex-direction: column;
@@ -125,7 +111,7 @@
     height: 40px;
     padding: 0 14px;
     border-radius: var(--radius-sm);
-    color: #475569;
+    color: var(--text-muted);
     font-size: 13.5px;
     font-weight: 500;
     transition: background 0.15s, color 0.15s;
@@ -136,16 +122,16 @@
   }
 
   .nav-item span {
-    color: #64748b;
+    color: var(--text-muted);
   }
 
   .nav-item:hover {
     background: rgba(255, 255, 255, 0.05);
-    color: #7b8da6;
+    color: var(--text-secondary);
   }
 
   .nav-item:hover span {
-    color: #94a3b8;
+    color: var(--text-secondary);
   }
 
   .nav-item.active {
@@ -157,7 +143,7 @@
   }
 
   .nav-item.active span {
-    color: #e8e8e8;
+    color: var(--text-primary);
     font-weight: 600;
   }
 
@@ -169,31 +155,6 @@
     flex-shrink: 0;
   }
 
-  .nav-item .nav-badge {
-    min-width: 20px;
-    height: 18px;
-    border-radius: 9px;
-    background: var(--accent);
-    color: #fff;
-    font-size: 9px;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .nav-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 4px;
-    background: var(--accent);
-    flex-shrink: 0;
-  }
-
-  .nav-spacer {
-    flex: 1;
-  }
-
   .spacer {
     flex: 1;
   }
@@ -201,7 +162,7 @@
   .divider {
     height: 1px;
     margin: 16px 0;
-    background: linear-gradient(90deg, transparent, #1e293b 30%, #1e293b 70%, transparent);
+    background: linear-gradient(90deg, transparent, var(--border) 30%, var(--border) 70%, transparent);
   }
 
   .saved-badge {
@@ -225,45 +186,5 @@
     flex-shrink: 0;
   }
 
-  .user-section {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    height: 44px;
-    padding: 0 6px;
-    margin-top: 14px;
-    border-radius: 10px;
-  }
 
-  .user-avatar {
-    width: 32px;
-    height: 32px;
-    border-radius: 16px;
-    background: linear-gradient(135deg, #1e3a5f, #3b82f6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-size: 13px;
-    font-weight: 600;
-    flex-shrink: 0;
-  }
-
-  .user-info {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    min-width: 0;
-  }
-
-  .user-name {
-    color: #e0e0e0;
-    font-size: 13px;
-    font-weight: 500;
-  }
-
-  .user-role {
-    color: #64748b;
-    font-size: 11px;
-  }
 </style>

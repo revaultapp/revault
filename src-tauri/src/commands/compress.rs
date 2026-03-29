@@ -6,6 +6,7 @@ pub async fn compress_images(
     quality: f32,
     format: Option<compression::OutputFormat>,
     output_dir: Option<String>,
+    strip_gps: Option<bool>,
 ) -> Result<Vec<compression::CompressionResult>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         Ok(compression::compress_batch(
@@ -14,6 +15,7 @@ pub async fn compress_images(
             format,
             output_dir.as_deref(),
             "_compressed",
+            strip_gps.unwrap_or(false),
         ))
     })
     .await
@@ -26,6 +28,7 @@ pub async fn compress_to_target(
     target_bytes: u64,
     format: Option<compression::OutputFormat>,
     output_dir: Option<String>,
+    strip_gps: Option<bool>,
 ) -> Result<Vec<compression::CompressionResult>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         Ok(compression::compress_to_target_batch(
@@ -33,6 +36,8 @@ pub async fn compress_to_target(
             target_bytes,
             format,
             output_dir.as_deref(),
+            "_compressed",
+            strip_gps.unwrap_or(false),
         ))
     })
     .await

@@ -1,12 +1,14 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
-  import { CheckCircle, AlertCircle, X, FolderOpen } from "lucide-svelte";
+  import { CircleCheck, CircleAlert, X, FolderOpen } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
+  import ToggleSwitch from "./ToggleSwitch.svelte";
   import { runWithConcurrency, browseOutputDir } from "$lib/utils";
   import { IMAGE_EXTENSIONS } from "$lib/types";
   import {
     files, isProcessing, summary, outputDir,
+    stripGps, stripDevice, stripDatetime, stripAuthor,
     addFiles, removeFile, clearFiles,
     type PrivacyFile,
   } from "$lib/stores/privacy";
@@ -106,14 +108,20 @@
     runWithConcurrency(newFiles, scanFile);
   }
 
-  async function stripFile(file: PrivacyFile): Promise<void> {
+  interface StripOpts { gps: boolean; device: boolean; datetime: boolean; author: boolean; }
+
+  async function stripFile(file: PrivacyFile, opts: StripOpts): Promise<void> {
     files.update((all) =>
       all.map((f) => f.path === file.path ? { ...f, status: "stripping" as const } : f)
     );
     try {
-      const results = await invoke<StripResult[]>("strip_files", {
+      const results = await invoke<StripResult[]>("strip_files_selective", {
         paths: [file.path],
         outputDir: $outputDir,
+        stripGps: opts.gps,
+        stripDevice: opts.device,
+        stripDatetime: opts.datetime,
+        stripAuthor: opts.author,
       });
       const result = results[0];
       files.update((all) =>
@@ -140,14 +148,44 @@
     const currentFiles = $files;
     if (currentFiles.length === 0) return;
     isProcessing.set(true);
+    const opts: StripOpts = { gps: $stripGps, device: $stripDevice, datetime: $stripDatetime, author: $stripAuthor };
     files.update((all) =>
       all.map((f) => f.status === "done" ? { ...f, status: "scanned" as const } : f)
     );
-    await runWithConcurrency(
-      currentFiles.filter((f) => f.status === "scanned" || f.status === "pending"),
-      stripFile
-    );
-    isProcessing.set(false);
+    try {
+      const toStrip = currentFiles.filter((f) => f.status === "scanned" || f.status === "pending");
+      if (toStrip.length === 0) return;
+      const allPaths = toStrip.map((f) => f.path);
+      const results = await invoke<StripResult[]>("strip_files_selective", {
+        paths: allPaths,
+        outputDir: $outputDir,
+        stripGps: opts.gps,
+        stripDevice: opts.device,
+        stripDatetime: opts.datetime,
+        stripAuthor: opts.author,
+      });
+      const resultMap = new Map(results.map((r) => [r.input_path, r]));
+      files.update((all) =>
+        all.map((f) => {
+          const r = resultMap.get(f.path);
+          if (!r) return f;
+          if (r.error) return { ...f, status: "error" as const, error: r.error };
+          return {
+            ...f,
+            status: "done" as const,
+            outputPath: r.output_path,
+            originalSize: r.original_size,
+            strippedSize: r.stripped_size,
+          };
+        })
+      );
+    } catch (err) {
+      files.update((all) =>
+        all.map((f) => f.status === "stripping" ? { ...f, status: "error" as const, error: String(err) } : f)
+      );
+    } finally {
+      isProcessing.set(false);
+    }
   }
 </script>
 
@@ -190,9 +228,9 @@
 
   {#snippet fileStatus(file)}
     {#if file.status === "done"}
-      <CheckCircle size={18} />
+      <CircleCheck size={18} />
     {:else if file.status === "error"}
-      <AlertCircle size={18} />
+      <CircleAlert size={18} />
     {:else}
       <button class="btn-icon" onclick={() => removeFile(file.path)}>
         <X size={16} />
@@ -215,6 +253,15 @@
     </div>
   </div>
   <div class="control-group">
+    <span class="label">Strip</span>
+    <div class="strip-options">
+      <label><ToggleSwitch bind:checked={$stripGps} /> GPS</label>
+      <label><ToggleSwitch bind:checked={$stripDevice} /> Device</label>
+      <label><ToggleSwitch bind:checked={$stripDatetime} /> Date &amp; Time</label>
+      <label><ToggleSwitch bind:checked={$stripAuthor} /> Author</label>
+    </div>
+  </div>
+  <div class="control-group">
     <span class="label">Output</span>
     <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
       <FolderOpen size={14} />
@@ -225,6 +272,21 @@
 </ToolShell>
 
 <style>
+  .strip-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .strip-options label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
   .meta-tag {
     display: inline;
   }

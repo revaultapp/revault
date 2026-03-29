@@ -1,3 +1,6 @@
+use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+use image::ImageEncoder;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Cursor;
@@ -141,7 +144,7 @@ fn encode_webp_bytes(
     let encoder = webp::Encoder::from_image(img)?;
     let mut config = webp::WebPConfig::new().map_err(|_| "failed to create WebP config")?;
     config.quality = quality;
-    config.method = 4;
+    config.method = 0;
     let memory = encoder
         .encode_advanced(&config)
         .map_err(|e| format!("webp encoding failed: {e:?}"))?;
@@ -221,13 +224,17 @@ pub fn compress_png(
     let original_size = checked_size(input_path)?;
 
     let compressed = if matches!(ext_lowercase(input_path).as_deref(), Some("png")) {
-        // Already PNG: fast re-encode with oxipng preset 0
+        // Already PNG: lossless re-optimize with oxipng preset 2
         oxipng::optimize_from_memory(&fs::read(input_path)?, &oxipng::Options::from_preset(2))?
     } else {
+        // Non-PNG input: encode to PNG directly, skip oxipng (too slow on large images)
         let img = open_image(input_path)?;
-        let mut buf = Cursor::new(Vec::new());
-        img.write_to(&mut buf, image::ImageFormat::Png)?;
-        oxipng::optimize_from_memory(&buf.into_inner(), &oxipng::Options::from_preset(2))?
+        let rgba = img.to_rgba8();
+        let (w, h) = (rgba.width(), rgba.height());
+        let mut buf = Cursor::new(Vec::with_capacity((w * h * 4) as usize));
+        PngEncoder::new_with_quality(&mut buf, CompressionType::Fast, FilterType::Sub)
+            .write_image(rgba.as_raw(), w, h, image::ExtendedColorType::Rgba8)?;
+        buf.into_inner()
     };
 
     write_smallest(input_path, output_path, &compressed, original_size)
@@ -304,9 +311,10 @@ pub fn compress_batch(
     format: Option<OutputFormat>,
     output_dir: Option<&str>,
     suffix: &str,
+    strip_gps: bool,
 ) -> Vec<CompressionResult> {
     paths
-        .iter()
+        .par_iter()
         .map(|path| {
             let fmt = format.unwrap_or_else(|| detect_format(path));
             let output = match resolve_output_path(path, &fmt, output_dir, suffix) {
@@ -314,7 +322,17 @@ pub fn compress_batch(
                 Err(e) => return CompressionResult::err(path, e),
             };
             match compress_image(path, &output, &fmt, quality) {
-                Ok(r) => r,
+                Ok(r) => {
+                    if strip_gps && r.error.is_none() {
+                        if let Err(e) = crate::core::privacy::strip_gps_in_place(&r.output_path) {
+                            return CompressionResult::err(
+                                path,
+                                format!("compression succeeded but GPS strip failed: {e}"),
+                            );
+                        }
+                    }
+                    r
+                }
                 Err(e) => CompressionResult::err(path, e.to_string()),
             }
         })
@@ -398,17 +416,29 @@ pub fn compress_to_target_batch(
     target_bytes: u64,
     format: Option<OutputFormat>,
     output_dir: Option<&str>,
+    suffix: &str,
+    strip_gps: bool,
 ) -> Vec<CompressionResult> {
     paths
-        .iter()
+        .par_iter()
         .map(|path| {
             let fmt = format.unwrap_or_else(|| detect_format(path));
-            let output = match resolve_output_path(path, &fmt, output_dir, "_compressed") {
+            let output = match resolve_output_path(path, &fmt, output_dir, suffix) {
                 Ok(o) => o,
                 Err(e) => return CompressionResult::err(path, e),
             };
             match compress_to_target_size(path, &output, target_bytes, &fmt) {
-                Ok(r) => r,
+                Ok(r) => {
+                    if strip_gps && r.error.is_none() {
+                        if let Err(e) = crate::core::privacy::strip_gps_in_place(&r.output_path) {
+                            return CompressionResult::err(
+                                path,
+                                format!("compression succeeded but GPS strip failed: {e}"),
+                            );
+                        }
+                    }
+                    r
+                }
                 Err(e) => CompressionResult::err(path, e.to_string()),
             }
         })
@@ -531,7 +561,7 @@ mod tests {
             input.to_string_lossy().to_string(),
             "/nonexistent/fake.jpg".to_string(),
         ];
-        let results = compress_batch(&paths, 60.0, None, None, "_compressed");
+        let results = compress_batch(&paths, 60.0, None, None, "_compressed", false);
 
         assert_eq!(results.len(), 2);
         assert!(results[0].error.is_none());
@@ -540,7 +570,7 @@ mod tests {
     }
 
     #[test]
-    fn compress_png_from_jpeg_input_applies_oxipng() {
+    fn compress_png_from_jpeg_input_produces_valid_png() {
         let dir = tempfile::tempdir().unwrap();
         let input = dir.path().join("photo.jpg");
         let output = dir.path().join("photo_out.png");
