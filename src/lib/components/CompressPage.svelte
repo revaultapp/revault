@@ -125,7 +125,27 @@
     const tb = targetBytes();
     const gps = $stripGps;
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
-    await runWithConcurrency(currentFiles, (file) => compressFile(file, q, fmt, mode, tb, gps));
+    try {
+      const allPaths = currentFiles.map((f) => f.path);
+      const cmd = mode === "target" ? "compress_to_target" : "compress_images";
+      const args = mode === "target"
+        ? { paths: allPaths, targetBytes: tb, format: fmt, outputDir: $outputDir, stripGps: gps }
+        : { paths: allPaths, quality: q, format: fmt, outputDir: $outputDir, stripGps: gps };
+      const results = await invoke<CompressionResult[]>(cmd, args);
+      const resultMap = new Map(results.map((r) => [r.input_path, r]));
+      files.update((all) =>
+        all.map((f) => {
+          const r = resultMap.get(f.path);
+          if (!r) return f;
+          if (r.error) return { ...f, status: "error" as const, error: r.error, size: r.original_size };
+          return { ...f, status: "done" as const, compressedSize: r.compressed_size, outputPath: r.output_path, size: r.original_size, alreadyOptimal: r.already_optimal };
+        })
+      );
+    } catch (err) {
+      files.update((all) =>
+        all.map((f) => f.status === "pending" ? { ...f, status: "error" as const, error: String(err) } : f)
+      );
+    }
     if ($summary.done > 0) {
       const doneFiles = $files.filter((f) => f.status === "done");
       const originalBytes = doneFiles.reduce((acc, f) => acc + f.size, 0);

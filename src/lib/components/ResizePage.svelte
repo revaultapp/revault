@@ -119,7 +119,34 @@
     const outDir = $outputDir;
     isResizing.set(true);
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
-    await runWithConcurrency(currentFiles, (file) => resizeFile(file, w, h, mode, outDir));
+    try {
+      const allPaths = currentFiles.map((f) => f.path);
+      const results = await invoke<ResizeResult[]>("resize_images", {
+        paths: allPaths,
+        width: w,
+        height: h,
+        mode,
+        outputDir: outDir,
+      });
+      const resultMap = new Map(results.map((r) => [r.input_path, r]));
+      files.update((all) =>
+        all.map((f) => {
+          const r = resultMap.get(f.path);
+          if (!r) return f;
+          if (r.error) return { ...f, status: "error" as const, error: r.error };
+          return {
+            ...f, status: "done" as const,
+            outputPath: r.output_path,
+            outputWidth: r.new_width, outputHeight: r.new_height,
+            originalWidth: r.original_width, originalHeight: r.original_height,
+          };
+        })
+      );
+    } catch (err) {
+      files.update((all) =>
+        all.map((f) => f.status === "pending" ? { ...f, status: "error" as const, error: String(err) } : f)
+      );
+    }
     isResizing.set(false);
   }
 

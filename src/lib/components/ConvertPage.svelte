@@ -136,7 +136,23 @@
     const q = quality;
     try {
       files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
-      await runWithConcurrency(currentFiles, (file) => convertFile(file, fmt, q));
+      const allPaths = currentFiles.map((f) => f.path);
+      const results = await invoke<ConversionResult[]>("convert_images", {
+        paths: allPaths,
+        format: fmt,
+        quality: q,
+        outputDir: $outputDir,
+        stripGps: stripGps,
+      });
+      const resultMap = new Map(results.map((r) => [r.input_path, r]));
+      files.update((all) =>
+        all.map((f) => {
+          const r = resultMap.get(f.path);
+          if (!r) return f;
+          if (r.error) return { ...f, status: "error" as const, error: r.error };
+          return { ...f, status: "done" as const, outputPath: r.output_path, outputSize: r.compressed_size, size: r.original_size };
+        })
+      );
       const doneFiles = $files.filter((f) => f.status === "done");
       if (doneFiles.length > 0) {
         const originalBytes = doneFiles.reduce((acc, f) => acc + f.size, 0);

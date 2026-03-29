@@ -153,9 +153,31 @@
       all.map((f) => f.status === "done" ? { ...f, status: "scanned" as const } : f)
     );
     try {
-      await runWithConcurrency(
-        currentFiles.filter((f) => f.status === "scanned" || f.status === "pending"),
-        (file) => stripFile(file, opts)
+      const toStrip = currentFiles.filter((f) => f.status === "scanned" || f.status === "pending");
+      if (toStrip.length === 0) return;
+      const allPaths = toStrip.map((f) => f.path);
+      const results = await invoke<StripResult[]>("strip_files_selective", {
+        paths: allPaths,
+        outputDir: $outputDir,
+        stripGps: opts.gps,
+        stripDevice: opts.device,
+        stripDatetime: opts.datetime,
+        stripAuthor: opts.author,
+      });
+      const resultMap = new Map(results.map((r) => [r.input_path, r]));
+      files.update((all) =>
+        all.map((f) => {
+          const r = resultMap.get(f.path);
+          if (!r) return f;
+          if (r.error) return { ...f, status: "error" as const, error: r.error };
+          return {
+            ...f,
+            status: "done" as const,
+            outputPath: r.output_path,
+            originalSize: r.original_size,
+            strippedSize: r.stripped_size,
+          };
+        })
       );
     } catch (err) {
       files.update((all) =>
