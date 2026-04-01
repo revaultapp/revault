@@ -3,7 +3,7 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { FolderOpen, CheckCircle, AlertCircle, X } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
-  import { browseOutputDir, openOutputFolder } from "$lib/utils";
+  import { browseOutputDir } from "$lib/utils";
   import { IMAGE_EXTENSIONS } from "$lib/types";
   import {
     files, isResizing, outputDir, resizeMode, width, height, summary,
@@ -72,11 +72,6 @@
     if (dir) outputDir.set(dir);
   }
 
-  async function handleOpenOutputFolder() {
-    const firstOutput = $files.find((f) => f.outputPath)?.outputPath;
-    if (firstOutput) await openOutputFolder(firstOutput);
-  }
-
   async function startResize() {
     const currentFiles = $files;
     if (currentFiles.length === 0) return;
@@ -127,7 +122,6 @@
   onfiles={(paths) => addFiles(paths)}
   onbrowse={browseFiles}
   onclear={clearFiles}
-  onopenfolder={$summary.done > 0 && $summary.pending === 0 ? handleOpenOutputFolder : undefined}
   actionLabel="Resize {$files.length > 1 ? 'All' : ''}"
   onaction={startResize}
   {headerText}

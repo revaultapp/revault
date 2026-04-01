@@ -5,7 +5,7 @@
   import ToolShell from "./ToolShell.svelte";
   import BeforeAfterSlider from "./BeforeAfterSlider.svelte";
   import ToggleSwitch from "./ToggleSwitch.svelte";
-  import { formatBytes, browseOutputDir, openOutputFolder } from "$lib/utils";
+  import { formatBytes, browseOutputDir } from "$lib/utils";
   import {
     files, targetFormat, outputDir, isConverting, summary,
     selectedPlatforms,
@@ -73,11 +73,6 @@
   async function handleBrowseOutputDir() {
     const dir = await browseOutputDir();
     if (dir) outputDir.set(dir);
-  }
-
-  async function handleOpenOutputFolder() {
-    const firstOutput = $files.find((f) => f.outputPath)?.outputPath;
-    if (firstOutput) await openOutputFolder(firstOutput);
   }
 
   async function startConversion() {
@@ -199,7 +194,6 @@
   onfiles={(paths) => addFiles(paths)}
   onbrowse={browseFiles}
   onclear={handleClear}
-  onopenfolder={$summary.done > 0 && $summary.pending === 0 ? handleOpenOutputFolder : undefined}
   actionLabel="Convert {$files.length > 1 ? 'All' : ''}"
   onaction={startConversion}
   {headerText}
@@ -236,65 +230,80 @@
     {/if}
   {/snippet}
 
-  <div class="control-group">
-    <span class="label">Format</span>
-    <div class="pills">
-      {#each formats as f}
-        <button class="pill" class:active={$targetFormat === f.value} onclick={() => targetFormat.set(f.value)}>
-          {f.label}
-        </button>
-      {/each}
-    </div>
-  </div>
-  {#if $targetFormat !== "Png"}
+  <div class="controls-row">
     <div class="control-group">
-      <span class="label">Quality</span>
+      <span class="label">Format</span>
       <div class="pills">
-        <button class="pill" class:active={$qualityPreset === "Smallest"}
-          onclick={() => qualityPreset.set("Smallest")}>Smallest</button>
-        <button class="pill" class:active={$qualityPreset === "Balanced"}
-          onclick={() => qualityPreset.set("Balanced")}>Balanced</button>
-        <button class="pill" class:active={$qualityPreset === "HighQuality"}
-          onclick={() => qualityPreset.set("HighQuality")}>High quality</button>
+        {#each formats as f}
+          <button class="pill" class:active={$targetFormat === f.value} onclick={() => targetFormat.set(f.value)}>
+            {f.label}
+          </button>
+        {/each}
       </div>
     </div>
-  {/if}
-  <div class="control-group">
-    <span class="label">Output</span>
-    <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
-      <FolderOpen size={14} />
-      {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
-    </button>
-  </div>
-  <div class="control-group">
-    <div class="toggle-row">
-      <div class="toggle-label">
-        <span class="label">Strip GPS</span>
-        <span class="control-hint">Remove location data from photos</span>
+    {#if $targetFormat !== "Png"}
+      <div class="control-group">
+        <span class="label">Quality</span>
+        <div class="pills">
+          <button class="pill" class:active={$qualityPreset === "Smallest"}
+            onclick={() => qualityPreset.set("Smallest")}>Smallest</button>
+          <button class="pill" class:active={$qualityPreset === "Balanced"}
+            onclick={() => qualityPreset.set("Balanced")}>Balanced</button>
+          <button class="pill" class:active={$qualityPreset === "HighQuality"}
+            onclick={() => qualityPreset.set("HighQuality")}>High quality</button>
+        </div>
       </div>
-      <ToggleSwitch bind:checked={$stripGps} />
-    </div>
-  </div>
-  <div class="control-group">
-    <span class="label">Social Export</span>
-    <div class="social-platforms">
-      {#each socialPlatforms as platform}
-        <label class="platform-check">
-          <input
-            type="checkbox"
-            checked={$selectedPlatforms.includes(platform.id)}
-            onchange={() => handleTogglePlatform(platform.id)}
-          />
-          <span class="platform-label">{platform.label}</span>
-          <span class="platform-res">{platform.width}×{platform.height}</span>
-        </label>
-      {/each}
-    </div>
-    {#if $selectedPlatforms.length > 0}
-      <button class="btn-primary social-btn" onclick={startSocialExport}>
-        Export to {$selectedPlatforms.length} platform{$selectedPlatforms.length > 1 ? "s" : ""}
-      </button>
     {/if}
+    <div class="control-group">
+      <span class="label">Output</span>
+      <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
+        <FolderOpen size={14} />
+        {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
+      </button>
+    </div>
+  </div>
+
+  <div class="controls-divider"></div>
+
+  <div class="controls-row">
+    <div class="control-group">
+      <div class="toggle-row">
+        <div class="toggle-label">
+          <span class="label">Strip GPS</span>
+          <span class="control-hint">Remove location data from photos</span>
+        </div>
+        <ToggleSwitch bind:checked={$stripGps} />
+      </div>
+    </div>
+  </div>
+
+  <div class="controls-divider"></div>
+
+  <div class="controls-row">
+    <div class="social-row">
+      <div class="control-group">
+        <span class="label">Social export</span>
+        <div class="social-platforms">
+          {#each socialPlatforms as platform}
+            <button
+              class="pill platform-pill"
+              class:active={$selectedPlatforms.includes(platform.id)}
+              onclick={() => handleTogglePlatform(platform.id)}
+            >
+              {platform.label}
+              <span class="platform-res">{platform.width}×{platform.height}</span>
+            </button>
+          {/each}
+        </div>
+      </div>
+      {#if $selectedPlatforms.length > 0}
+        <div class="social-action">
+          <button class="social-export-btn" onclick={startSocialExport}>
+            Export to {$selectedPlatforms.length} platform{$selectedPlatforms.length > 1 ? "s" : ""}
+          </button>
+        </div>
+      {/if}
+    </div>
   </div>
 </ToolShell>
 
@@ -325,37 +334,55 @@
   .social-platforms {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 4px;
   }
 
-  .platform-check {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 10px;
-    border-radius: 6px;
+  .platform-pill {
+    gap: 4px;
+  }
+
+  .platform-res {
+    font-size: 10px;
+    opacity: 0.45;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .platform-pill.active .platform-res {
+    opacity: 0.65;
+  }
+
+  .social-export-btn {
+    margin-top: 4px;
+    padding: 5px 14px;
     font-size: 12px;
-    cursor: pointer;
-    background: var(--navy-bg);
-    transition: background 0.15s;
+    font-weight: 500;
+    border-radius: 6px;
+    color: var(--accent);
+    border: 1px solid color-mix(in oklch, var(--accent) 40%, transparent);
+    background: var(--accent-subtle);
+    width: fit-content;
+    transition: background 0.15s, border-color 0.15s;
   }
 
-  .platform-check:hover { background: var(--border); }
-
-  .platform-check input[type="checkbox"] {
-    accent-color: var(--accent);
-    width: 14px;
-    height: 14px;
+  .social-export-btn:hover {
+    background: color-mix(in oklch, var(--accent) 18%, transparent);
+    border-color: var(--accent);
   }
 
-  .platform-label { font-weight: 500; color: var(--text-secondary); }
-  .platform-res { color: var(--text-muted); font-size: 11px; }
-
-  .social-btn {
-    margin-top: 8px;
-    padding: 8px 20px;
-    font-size: 13px;
+  .social-export-btn:active {
+    transform: scale(0.98);
   }
 
+  .social-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    width: 100%;
+  }
 
+  .social-action {
+    margin-left: auto;
+    flex-shrink: 0;
+    align-self: center;
+  }
 </style>

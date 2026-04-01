@@ -4,7 +4,7 @@
   import { FolderOpen, CheckCircle, AlertCircle, X, Eye } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
   import BeforeAfterSlider from "./BeforeAfterSlider.svelte";
-  import { formatBytes, browseOutputDir, openOutputFolder } from "$lib/utils";
+  import { formatBytes, browseOutputDir } from "$lib/utils";
   import ToggleSwitch from "./ToggleSwitch.svelte";
   import {
     files, qualityPreset, format, outputDir, isCompressing, summary,
@@ -53,11 +53,6 @@
   async function handleBrowseOutputDir() {
     const dir = await browseOutputDir();
     if (dir) outputDir.set(dir);
-  }
-
-  async function handleOpenOutputFolder() {
-    const firstOutput = $files.find((f) => f.outputPath)?.outputPath;
-    if (firstOutput) await openOutputFolder(firstOutput);
   }
 
   async function startCompression() {
@@ -129,7 +124,6 @@
   onfiles={(paths) => addFiles(paths)}
   onbrowse={browseFiles}
   onclear={handleClear}
-  onopenfolder={$summary.done > 0 && $summary.pending === 0 ? handleOpenOutputFolder : undefined}
   actionLabel="Compress {$files.length > 1 ? 'All' : ''}"
   onaction={startCompression}
   {headerText}
@@ -228,23 +222,5 @@
   }
   .compare-btn:hover { color: var(--accent); }
 
-  .toggle-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    gap: 12px;
-  }
-
-  .toggle-label {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .control-hint {
-    display: block;
-    font-size: 12px;
-    color: var(--text-muted);
-    margin-top: 2px;
-  }
+  /* .toggle-row, .toggle-label, .control-hint — styled globally in ToolShell */
 </style>
