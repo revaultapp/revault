@@ -18,6 +18,7 @@ pub fn run() {
             commands::resize::resize_images,
             commands::scanner::scan_folder,
             commands::thumbnail::generate_thumbnail,
+            commands::thumbnail::get_file_sizes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

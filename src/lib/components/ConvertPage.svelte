@@ -82,23 +82,32 @@
     const fmt = $targetFormat;
     try {
       files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
-      const allPaths = currentFiles.map((f) => f.path);
-      const results = await invoke<ConversionResult[]>("convert_images", {
-        paths: allPaths,
-        format: fmt,
-        quality_preset: $qualityPreset,
-        output_dir: $outputDir,
-        strip_gps: $stripGps,
-      });
-      const resultMap = new Map(results.map((r) => [r.input_path, r]));
-      files.update((all) =>
-        all.map((f) => {
-          const r = resultMap.get(f.path);
-          if (!r) return f;
-          if (r.error) return { ...f, status: "error" as const, error: r.error };
-          return { ...f, status: "done" as const, outputPath: r.output_path, outputSize: r.compressed_size, size: r.original_size };
-        })
-      );
+      for (const file of currentFiles) {
+        files.update((all) =>
+          all.map((f) => f.path === file.path ? { ...f, status: "converting" as const } : f)
+        );
+        try {
+          const results = await invoke<ConversionResult[]>("convert_images", {
+            paths: [file.path],
+            format: fmt,
+            quality_preset: $qualityPreset,
+            output_dir: $outputDir,
+            strip_gps: $stripGps,
+          });
+          const r = results[0];
+          files.update((all) =>
+            all.map((f) => {
+              if (f.path !== file.path) return f;
+              if (!r || r.error) return { ...f, status: "error" as const, error: r?.error ?? "No result" };
+              return { ...f, status: "done" as const, outputPath: r.output_path, outputSize: r.compressed_size, size: r.original_size };
+            })
+          );
+        } catch (err) {
+          files.update((all) =>
+            all.map((f) => f.path === file.path ? { ...f, status: "error" as const, error: String(err) } : f)
+          );
+        }
+      }
       const doneFiles = $files.filter((f) => f.status === "done");
       if (doneFiles.length > 0) {
         const originalBytes = doneFiles.reduce((acc, f) => acc + f.size, 0);
