@@ -3,12 +3,12 @@
   import { Trash2, FolderOpen, Search, ChevronDown, ChevronRight } from "lucide-svelte";
   import DropZone from "./DropZone.svelte";
   import ProgressRing from "./ProgressRing.svelte";
-  import { duplicateGroups, isScanning, totalFound, scanForDuplicates, clearResults } from "$lib/stores/dedupe";
+  import { duplicateGroups, isScanning, totalFound, scanError, scanForDuplicates, clearResults } from "$lib/stores/dedupe";
   import { formatBytes } from "$lib/utils";
   import { activity } from "$lib/stores/activity";
 
   let selectedFolders = $state<string[]>([]);
-  let expandedGroups = $state<Set<number>>(new Set());
+  let expandedGroups = $state<Set<string>>(new Set());
   let deletedPaths = $state<Set<string>>(new Set());
 
   let totalWastedSpace = $derived(
@@ -25,7 +25,7 @@
     )
   );
 
-  let visibleTotal = $derived(
+  let visibleFileCount = $derived(
     visibleGroups.reduce((acc, g) => acc + g.files.length, 0)
   );
 
@@ -55,11 +55,11 @@
     }
   }
 
-  function toggleGroup(i: number) {
-    if (expandedGroups.has(i)) {
-      expandedGroups.delete(i);
+  function toggleGroup(hash: string) {
+    if (expandedGroups.has(hash)) {
+      expandedGroups.delete(hash);
     } else {
-      expandedGroups.add(i);
+      expandedGroups.add(hash);
     }
     expandedGroups = new Set(expandedGroups);
   }
@@ -100,10 +100,16 @@
   </div>
 {:else if visibleGroups.length > 0}
   <div class="results-view">
+    {#if $scanError}
+      <div class="error-banner">
+        <span class="error-text">{$scanError}</span>
+        <button class="error-dismiss" onclick={() => scanError.set(null)}>×</button>
+      </div>
+    {/if}
     <div class="header">
       <div class="header-left">
         <h2>{visibleGroups.length} duplicate group{visibleGroups.length > 1 ? "s" : ""} found</h2>
-        <span class="sub">{visibleTotal} files · {formatBytes(totalWastedSpace)} wasted</span>
+        <span class="sub">{visibleFileCount} files · {formatBytes(totalWastedSpace)} wasted</span>
       </div>
       <div class="header-actions">
         <button class="btn-ghost" onclick={browseFolders}>
@@ -126,7 +132,7 @@
         </span>
       {/each}
       {#if selectedFolders.length > 0}
-        <button class="btn-primary scan-btn" onclick={startScan}>
+        <button class="btn-primary scan-btn" onclick={startScan} disabled={$isScanning}>
           <Search size={14} />
           Scan
         </button>
@@ -137,9 +143,9 @@
       {#each visibleGroups as group, i}
         {@const sortedFiles = [...group.files].sort((a, b) => b.size - a.size)}
         {@const wasted = sortedFiles.slice(1).reduce((a, f) => a + f.size, 0)}
-        {@const isExpanded = expandedGroups.has(i)}
+        {@const isExpanded = expandedGroups.has(group.hash)}
         <div class="group-card">
-          <button class="group-header" onclick={() => toggleGroup(i)}>
+          <button class="group-header" onclick={() => toggleGroup(group.hash)}>
             <div class="group-info">
               {#if isExpanded}
                 <ChevronDown size={16} />
@@ -168,7 +174,7 @@
                     {#if fi === 0}
                       <span class="original-tag">Original</span>
                     {:else if !isDeleted}
-                      <button class="btn-icon delete-btn" onclick={() => deleteDuplicate(file.path)} title="Move to trash">
+                      <button class="btn-icon delete-btn" onclick={() => deleteDuplicate(file.path)} title="Coming soon" disabled>
                         <Trash2 size={14} />
                       </button>
                     {:else}
@@ -231,6 +237,37 @@
     overflow: hidden;
   }
 
+  .error-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--danger-bg);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-sm);
+    color: var(--danger);
+    font-size: 13px;
+  }
+
+  .error-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .error-dismiss {
+    background: none;
+    border: none;
+    color: var(--danger);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    padding: 0;
+    flex-shrink: 0;
+  }
+
   .header {
     display: flex;
     justify-content: space-between;
@@ -246,6 +283,7 @@
   .header h2 {
     font-size: 18px;
     font-weight: 600;
+    letter-spacing: -0.02em;
   }
 
   .sub {
@@ -291,7 +329,7 @@
   }
 
   .chip-remove:hover {
-    color: #ef4444;
+    color: var(--danger);
   }
 
   .scan-btn {
@@ -306,11 +344,21 @@
     font-weight: 600;
     border: none;
     cursor: pointer;
-    transition: opacity 0.15s;
+    transition: transform 0.1s, opacity 0.15s;
   }
 
   .scan-btn:hover {
     opacity: 0.9;
+    transform: translateY(-1px);
+  }
+
+  .scan-btn:active {
+    transform: translateY(0) scale(0.98);
+  }
+
+  .scan-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .groups-list {
@@ -371,9 +419,10 @@
     font-size: 12px;
     font-weight: 600;
     color: var(--accent);
-    background: rgba(16, 185, 129, 0.1);
+    background: var(--accent-subtle);
     padding: 2px 8px;
     border-radius: 4px;
+    font-variant-numeric: tabular-nums;
   }
 
   .group-files {
@@ -434,13 +483,14 @@
     font-size: 13px;
     font-weight: 600;
     color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
   }
 
   .original-tag {
     font-size: 11px;
     font-weight: 600;
     color: var(--accent);
-    background: rgba(16, 185, 129, 0.1);
+    background: var(--accent-subtle);
     padding: 2px 8px;
     border-radius: 4px;
   }
@@ -461,7 +511,16 @@
   }
 
   .delete-btn:hover {
-    color: #ef4444;
+    color: var(--danger);
+  }
+
+  .delete-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .delete-btn:disabled:hover {
+    color: var(--text-muted);
   }
 
   .no-dupes {
@@ -504,11 +563,15 @@
     border: 1px solid var(--border);
     background: none;
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background 0.15s, transform 0.1s;
   }
 
   .btn-ghost:hover {
     background: var(--navy-bg);
+  }
+
+  .btn-ghost:active {
+    transform: scale(0.98);
   }
 
   .btn-primary {
@@ -523,10 +586,15 @@
     font-weight: 600;
     border: none;
     cursor: pointer;
-    transition: opacity 0.15s;
+    transition: transform 0.1s, opacity 0.15s;
   }
 
   .btn-primary:hover {
     opacity: 0.9;
+    transform: translateY(-1px);
+  }
+
+  .btn-primary:active {
+    transform: translateY(0) scale(0.98);
   }
 </style>

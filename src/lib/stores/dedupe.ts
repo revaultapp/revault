@@ -24,13 +24,13 @@ export const isScanning = writable(false);
 export const totalFound = writable(0);
 export const scanError = writable<string | null>(null);
 
-export async function scanForDuplicates(paths: string[]) {
+export async function scanForDuplicates(paths: string[], recursive = true) {
   isScanning.set(true);
   duplicateGroups.set([]);
   totalFound.set(0);
   scanError.set(null);
   try {
-    const result = await invoke<FindDuplicatesResult>("find_duplicates", { paths });
+    const result = await invoke<FindDuplicatesResult>("find_duplicates", { paths, recursive });
     const total = result.groups.reduce((acc, g) => acc + g.files.length - 1, 0);
     duplicateGroups.set(result.groups);
     totalFound.set(total);
@@ -44,4 +44,5 @@ export async function scanForDuplicates(paths: string[]) {
 export function clearResults() {
   duplicateGroups.set([]);
   totalFound.set(0);
+  scanError.set(null);
 }
