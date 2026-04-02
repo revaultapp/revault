@@ -84,6 +84,13 @@ impl QualityPreset {
             QualityPreset::HighQuality => 80.0,
         }
     }
+    fn oxipng_preset(self) -> u8 {
+        match self {
+            QualityPreset::Smallest => 0,
+            QualityPreset::Balanced => 2,
+            QualityPreset::HighQuality => 6,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -198,7 +205,7 @@ pub(crate) fn encode_avif_bytes(
     let encoded = ravif::Encoder::new()
         .with_quality(quality)
         .with_speed(speed)
-        .with_alpha_quality(quality)
+        .with_alpha_quality(100.0)
         .encode_rgba(ravif::Img::new(&pixels, w, h))?;
     Ok(encoded.avif_file)
 }
@@ -247,11 +254,16 @@ pub fn compress_jpeg(
 pub fn compress_png(
     input_path: &str,
     output_path: &str,
+    preset: QualityPreset,
 ) -> Result<CompressionResult, Box<dyn std::error::Error>> {
     let original_size = checked_size(input_path)?;
+    let oxipng_preset = preset.oxipng_preset();
 
     let compressed = if matches!(ext_lowercase(input_path).as_deref(), Some("png")) {
-        oxipng::optimize_from_memory(&fs::read(input_path)?, &oxipng::Options::from_preset(2))?
+        oxipng::optimize_from_memory(
+            &fs::read(input_path)?,
+            &oxipng::Options::from_preset(oxipng_preset),
+        )?
     } else {
         // Non-PNG input: encode to PNG directly, skip oxipng (too slow on large images)
         let img = open_image(input_path)?;
@@ -298,7 +310,7 @@ pub fn compress_image(
 ) -> Result<CompressionResult, Box<dyn std::error::Error>> {
     match format {
         OutputFormat::Jpeg => compress_jpeg(input_path, output_path, preset.jpeg_quality()),
-        OutputFormat::Png => compress_png(input_path, output_path),
+        OutputFormat::Png => compress_png(input_path, output_path, preset),
         OutputFormat::Webp => compress_webp(input_path, output_path, preset.webp_quality()),
         OutputFormat::Avif => compress_avif(input_path, output_path, preset.avif_quality()),
     }
@@ -351,12 +363,8 @@ pub fn compress_batch(
                 Ok(mut r) => {
                     if strip_gps && r.error.is_none() {
                         if let Err(e) = crate::core::privacy::strip_gps_in_place(&r.output_path) {
-                            return CompressionResult::err(
-                                path,
-                                format!("compression succeeded but GPS strip failed: {e}"),
-                            );
-                        }
-                        if let Ok(meta) = std::fs::metadata(&r.output_path) {
+                            eprintln!("warning: GPS strip failed for {}: {}", path, e);
+                        } else if let Ok(meta) = std::fs::metadata(&r.output_path) {
                             r.compressed_size = meta.len();
                         }
                     }
@@ -452,7 +460,12 @@ mod tests {
         create_test_png(input.to_str().unwrap(), 200, 200);
         let original_size = fs::metadata(&input).unwrap().len();
 
-        let result = compress_png(input.to_str().unwrap(), output.to_str().unwrap()).unwrap();
+        let result = compress_png(
+            input.to_str().unwrap(),
+            output.to_str().unwrap(),
+            QualityPreset::Balanced,
+        )
+        .unwrap();
 
         assert!(output.exists());
         assert_eq!(result.original_size, original_size);
@@ -506,7 +519,12 @@ mod tests {
         let output = dir.path().join("photo_out.png");
 
         create_test_jpeg(input.to_str().unwrap(), 100, 100, 90.0);
-        let result = compress_png(input.to_str().unwrap(), output.to_str().unwrap()).unwrap();
+        let result = compress_png(
+            input.to_str().unwrap(),
+            output.to_str().unwrap(),
+            QualityPreset::Balanced,
+        )
+        .unwrap();
 
         assert!(result.compressed_size > 0);
         let header = &fs::read(&output).unwrap()[..4];

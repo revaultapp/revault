@@ -39,6 +39,7 @@ function createActivity() {
   return {
     subscribe,
     add(entry: Omit<ActivityItem, "id" | "timestamp">) {
+      if (entry.savedBytes < 0) return;
       update((items) => {
         const next: ActivityItem[] = [
           { ...entry, id: crypto.randomUUID(), timestamp: Date.now() },

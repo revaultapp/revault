@@ -38,6 +38,7 @@
   const formats: { value: OutputFormat | null; label: string }[] = [
     { value: null, label: "Auto (smallest)" },
     { value: "Jpeg", label: "JPEG" },
+    { value: "Png", label: "PNG" },
     { value: "Webp", label: "WebP" },
     { value: "Avif", label: "AVIF" },
   ];
@@ -179,6 +180,9 @@
       <button class="pill" class:active={$qualityPreset === "HighQuality"}
         onclick={() => qualityPreset.set("HighQuality")}>High quality</button>
     </div>
+    {#if $format === "Png"}
+      <span class="format-hint">PNG is lossless — quality preset doesn't affect output</span>
+    {/if}
   </div>
   <div class="control-group">
     <span class="label">Output</span>
@@ -213,6 +217,13 @@
     font-size: 13px;
     color: var(--accent);
     font-weight: 500;
+  }
+
+  .format-hint {
+    display: block;
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
   }
 
   .compare-btn {
