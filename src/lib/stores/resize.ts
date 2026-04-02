@@ -13,6 +13,7 @@ export interface ResizeFile extends BaseFile {
   outputHeight?: number;
   originalWidth?: number;
   originalHeight?: number;
+  outputSize?: number;
   error?: string;
 }
 

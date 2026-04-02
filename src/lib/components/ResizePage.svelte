@@ -7,6 +7,7 @@
   import { browseOutputDir } from "$lib/utils";
   import { stripGps } from "$lib/stores/compress";
   import { IMAGE_EXTENSIONS } from "$lib/types";
+  import { formatBytes } from "$lib/utils";
   import {
     files, isResizing, outputDir, resizeMode, width, height, summary,
     addFiles, removeFile, clearFiles,
@@ -104,6 +105,7 @@
             outputPath: r.output_path,
             outputWidth: r.new_width, outputHeight: r.new_height,
             originalWidth: r.original_width, originalHeight: r.original_height,
+            size: r.original_size, outputSize: r.resized_size,
           };
         })
       );
@@ -132,7 +134,7 @@
 >
   {#snippet fileDetail(file)}
     {#if file.status === "done"}
-      {file.originalWidth}×{file.originalHeight} → {file.outputWidth}×{file.outputHeight}
+      {file.size ? formatBytes(file.size) : '—'} → {file.outputSize ? formatBytes(file.outputSize) : '—'} ({file.originalWidth}×{file.originalHeight} → {file.outputWidth}×{file.outputHeight})
     {:else if file.status === "error"}
       {file.error}
     {:else}
@@ -244,7 +246,7 @@
 
   .dimension-inputs input {
     width: 72px;
-    padding: 5px 8px;
+    padding: 6px 8px;
     border-radius: 6px;
     font-size: 13px;
     border: 1px solid var(--border);

@@ -147,7 +147,7 @@
 
   {#snippet fileStatus(file)}
     {#if file.status === "done"}
-      <button class="btn-icon compare-btn" onclick={() => compareFile = file} title="Compare">
+      <button class="btn-icon compare-btn" onclick={() => compareFile = file} title="Compare" aria-label="Compare before and after">
         <Eye size={16} />
       </button>
       <CheckCircle size={18} />
