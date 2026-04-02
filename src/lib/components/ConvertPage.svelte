@@ -80,60 +80,55 @@
     if (currentFiles.length === 0) return;
     isConverting.set(true);
     const fmt = $targetFormat;
+    files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
     try {
-      files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
-      for (const file of currentFiles) {
-        files.update((all) =>
-          all.map((f) => f.path === file.path ? { ...f, status: "converting" as const } : f)
-        );
-        try {
-          const results = await invoke<ConversionResult[]>("convert_images", {
-            paths: [file.path],
-            format: fmt,
-            quality_preset: $qualityPreset,
-            output_dir: $outputDir,
-            strip_gps: $stripGps,
-          });
-          const r = results[0];
-          files.update((all) =>
-            all.map((f) => {
-              if (f.path !== file.path) return f;
-              if (!r || r.error) return { ...f, status: "error" as const, error: r?.error ?? "No result" };
-              return { ...f, status: "done" as const, outputPath: r.output_path, outputSize: r.compressed_size, size: r.original_size };
-            })
-          );
-        } catch (err) {
-          files.update((all) =>
-            all.map((f) => f.path === file.path ? { ...f, status: "error" as const, error: String(err) } : f)
-          );
-        }
-      }
-      const doneFiles = $files.filter((f) => f.status === "done");
-      if (doneFiles.length > 0) {
-        const originalBytes = doneFiles.reduce((acc, f) => acc + f.size, 0);
-        const compressedBytes = doneFiles.reduce((acc, f) => acc + (f.outputSize ?? f.size), 0);
-        const savedBytes = originalBytes - compressedBytes;
-        savings.incrementOps(doneFiles.length);
-        savings.addOriginalBytes(originalBytes);
-        savings.addCompressedBytes(compressedBytes);
-        if (savedBytes > 0) savings.add(savedBytes);
-        activity.add({ type: "convert", fileCount: doneFiles.length, savedBytes });
-      }
-    } finally {
-      isConverting.set(false);
+      const allPaths = currentFiles.map((f) => f.path);
+      const results = await invoke<ConversionResult[]>("convert_images", {
+        paths: allPaths,
+        format: fmt,
+        qualityPreset: $qualityPreset,
+        outputDir: $outputDir,
+        stripGps: $stripGps,
+      });
+      const resultMap = new Map(results.map((r) => [r.input_path, r]));
+      files.update((all) =>
+        all.map((f) => {
+          const r = resultMap.get(f.path);
+          if (!r) return f;
+          if (r.error) return { ...f, status: "error" as const, error: r.error };
+          return { ...f, status: "done" as const, outputPath: r.output_path, outputSize: r.compressed_size, size: r.original_size };
+        })
+      );
+    } catch (err) {
+      files.update((all) =>
+        all.map((f) => f.status === "pending" ? { ...f, status: "error" as const, error: String(err) } : f)
+      );
     }
+    const doneFiles = $files.filter((f) => f.status === "done");
+    if (doneFiles.length > 0) {
+      const originalBytes = doneFiles.reduce((acc, f) => acc + f.size, 0);
+      const compressedBytes = doneFiles.reduce((acc, f) => acc + (f.outputSize ?? f.size), 0);
+      const savedBytes = originalBytes - compressedBytes;
+      savings.incrementOps(doneFiles.length);
+      savings.addOriginalBytes(originalBytes);
+      savings.addCompressedBytes(compressedBytes);
+      if (savedBytes > 0) savings.add(savedBytes);
+      activity.add({ type: "convert", fileCount: doneFiles.length, savedBytes });
+    }
+    isConverting.set(false);
   }
 
   async function startSocialExport() {
     const platforms = $selectedPlatforms;
     if (platforms.length === 0 || $files.length === 0) return;
+    const filesToProcess = [...$files];
     isConverting.set(true);
     try {
       files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
       for (const platformId of platforms) {
         const platform = socialPlatforms.find((p) => p.id === platformId);
         if (!platform) continue;
-        const platformFiles = $files.filter((f) => f.status === "pending");
+        const platformFiles = filesToProcess.filter((f) => f.status === "pending");
         for (const file of platformFiles) {
           files.update((all) =>
             all.map((f) => f.path === file.path ? { ...f, status: "converting" as const } : f)
@@ -145,8 +140,8 @@
               height: platform.height,
               mode: "Fit",
               quality: null,
-              output_dir: $outputDir,
-              strip_gps: $stripGps,
+              outputDir: $outputDir,
+              stripGps: $stripGps,
             });
             const result = results[0];
             files.update((all) =>
@@ -351,7 +346,7 @@
   }
 
   .platform-res {
-    font-size: 10px;
+    font-size: 11px;
     opacity: 0.45;
     font-variant-numeric: tabular-nums;
   }
@@ -365,7 +360,7 @@
     padding: 5px 14px;
     font-size: 12px;
     font-weight: 500;
-    border-radius: 6px;
+    border-radius: 8px;
     color: var(--accent);
     border: 1px solid color-mix(in oklch, var(--accent) 40%, transparent);
     background: var(--accent-subtle);

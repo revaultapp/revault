@@ -49,7 +49,7 @@
     <div class="slider-container" bind:this={container}
       onpointerdown={onpointerdown} onpointermove={onpointermove} onpointerup={onpointerup} onpointercancel={onpointerup}>
       <img src={beforeSrc} alt="Original" class="slider-img" draggable="false" />
-      <img src={afterSrc} alt="Compressed" class="slider-img" draggable="false"
+      <img src={afterSrc} alt="Processed" class="slider-img" draggable="false"
         style="clip-path: inset(0 {100 - position}% 0 0);" />
       <div class="slider-divider" style="left: {position}%;">
         <div class="slider-handle"></div>
@@ -64,7 +64,7 @@
   .overlay {
     position: fixed;
     inset: 0;
-    z-index: 100;
+    z-index: 10;
     display: flex;
     align-items: center;
     justify-content: center;

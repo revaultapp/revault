@@ -132,7 +132,7 @@
   .header-left {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
   }
 
   .header h2 {
@@ -201,7 +201,7 @@
   .file-info {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
     flex: 1;
     min-width: 0;
   }

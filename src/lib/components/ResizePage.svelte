@@ -3,7 +3,9 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { FolderOpen, CheckCircle, AlertCircle, X } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
+  import ToggleSwitch from "./ToggleSwitch.svelte";
   import { browseOutputDir } from "$lib/utils";
+  import { stripGps } from "$lib/stores/compress";
   import { IMAGE_EXTENSIONS } from "$lib/types";
   import {
     files, isResizing, outputDir, resizeMode, width, height, summary,
@@ -89,6 +91,7 @@
         height: h,
         mode,
         outputDir: outDir,
+        stripGps: $stripGps,
       });
       const resultMap = new Map(results.map((r) => [r.input_path, r]));
       files.update((all) =>
@@ -108,8 +111,9 @@
       files.update((all) =>
         all.map((f) => f.status === "pending" ? { ...f, status: "error" as const, error: String(err) } : f)
       );
+    } finally {
+      isResizing.set(false);
     }
-    isResizing.set(false);
   }
 
 </script>
@@ -193,6 +197,15 @@
       {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
     </button>
   </div>
+  <div class="control-group">
+    <div class="toggle-row">
+      <div class="toggle-label">
+        <span class="label">Strip GPS</span>
+        <span class="control-hint">Remove location data from photos</span>
+      </div>
+      <ToggleSwitch bind:checked={$stripGps} />
+    </div>
+  </div>
 </ToolShell>
 
 <style>
@@ -209,10 +222,10 @@
   }
 
   .preset-group-label {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.04em;
     color: var(--text-muted);
     opacity: 0.7;
   }

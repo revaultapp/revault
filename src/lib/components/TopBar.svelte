@@ -47,7 +47,7 @@
   }
 
   .title-area p {
-    font-size: 12.5px;
+    font-size: 12px;
     color: var(--text-muted);
     font-weight: 400;
   }

@@ -56,6 +56,18 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
+      - name: Rust format check
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
+      - name: Rust clippy
+        working-directory: src-tauri
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test --workspace
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

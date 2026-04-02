@@ -8,7 +8,9 @@ use std::io::Cursor;
 use std::path::Path;
 use tempfile::NamedTempFile;
 
-use crate::core::compression::{detect_format, encode_jpeg_bytes, OutputFormat};
+use crate::core::compression::{
+    detect_format, encode_avif_bytes, encode_jpeg_bytes, encode_webp_bytes, OutputFormat,
+};
 use crate::core::image_io::{checked_size, ext_lowercase, open_image, write_preserving_timestamps};
 use crate::core::privacy;
 
@@ -96,6 +98,9 @@ pub fn resize_image(
     quality: Option<f32>,
     strip_gps: bool,
 ) -> Result<ResizeResult, Box<dyn std::error::Error>> {
+    if width == 0 || height == 0 {
+        return Err("target width and height must be greater than zero".into());
+    }
     let original_size = checked_size(input)?;
     let img = open_image(input)?;
     let (ow, oh) = (img.width(), img.height());
@@ -117,35 +122,9 @@ pub fn resize_image(
             resized.write_to(&mut buf, image::ImageFormat::Png)?;
             buf.into_inner()
         }
-        OutputFormat::Webp => {
-            let encoder = webp::Encoder::from_image(&resized)?;
-            let mut config = webp::WebPConfig::new().map_err(|_| "failed to create WebP config")?;
-            config.quality = quality;
-            config.method = 0;
-            let memory = encoder
-                .encode_advanced(&config)
-                .map_err(|e| format!("webp encoding failed: {e:?}"))?;
-            memory.to_vec()
-        }
-        OutputFormat::Avif => {
-            let rgba = resized.to_rgba8();
-            let (w, h) = (rgba.width() as usize, rgba.height() as usize);
-            let pixels: Vec<ravif::RGBA8> = rgba
-                .as_raw()
-                .chunks_exact(4)
-                .map(|c| ravif::RGBA8::new(c[0], c[1], c[2], c[3]))
-                .collect();
-            let encoded = ravif::Encoder::new()
-                .with_quality(quality)
-                .with_speed(6)
-                .with_alpha_quality(quality)
-                .encode_rgba(ravif::Img::new(&pixels, w, h))
-                .map_err(|e| format!("avif encoding failed: {e}"))?;
-            encoded.avif_file
-        }
+        OutputFormat::Webp => encode_webp_bytes(&resized, quality)?,
+        OutputFormat::Avif => encode_avif_bytes(&resized, quality)?,
     };
-
-    let resized_size = bytes.len() as u64;
 
     if strip_gps {
         // Write to temp file in same directory as output (same filesystem for atomic rename)
@@ -162,6 +141,8 @@ pub fn resize_image(
     } else {
         write_preserving_timestamps(input, output, &bytes)?;
     }
+
+    let resized_size = fs::metadata(output)?.len();
 
     Ok(ResizeResult {
         input_path: input.to_string(),

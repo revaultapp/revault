@@ -460,7 +460,7 @@
     transition: color 0.15s;
   }
 
-  .btn-icon:hover { color: #ef4444; }
+  .btn-icon:hover { color: var(--accent); }
 
   /* Organize tab */
   .organize-panel {
@@ -563,8 +563,8 @@
   }
 
   .result-card.has-errors {
-    border-color: #ef4444;
-    background: rgba(239, 68, 68, 0.06);
+    border-color: var(--danger);
+    background: var(--danger-bg);
   }
 
   .result-stat {
@@ -579,7 +579,7 @@
     color: var(--accent);
   }
 
-  .has-errors .stat-value { color: #ef4444; }
+  .has-errors .stat-value { color: var(--danger); }
 
   .stat-label {
     font-size: 12px;
@@ -595,7 +595,7 @@
 
   .error-item {
     font-size: 12px;
-    color: #ef4444;
+    color: var(--danger);
     margin: 0;
   }
 

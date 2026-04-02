@@ -1,4 +1,5 @@
 import { writable, derived } from "svelte/store";
+import { invoke } from "@tauri-apps/api/core";
 import type { BaseFile } from "$lib/types";
 
 export type FileStatus = "pending" | "resizing" | "done" | "error";
@@ -28,7 +29,8 @@ export const summary = derived(files, ($files) => ({
   pending: $files.filter((f) => f.status === "pending" || f.status === "resizing").length,
 }));
 
-export function addFiles(paths: string[]) {
+export async function addFiles(paths: string[]) {
+  let newPaths: string[] = [];
   files.update((current) => {
     const existing = new Set(current.map((f) => f.path));
     const newFiles: ResizeFile[] = paths
@@ -39,8 +41,21 @@ export function addFiles(paths: string[]) {
         size: 0,
         status: "pending" as const,
       }));
+    newPaths = newFiles.map((f) => f.path);
     return [...current, ...newFiles];
   });
+  if (newPaths.length === 0) return;
+  try {
+    const sizes = await invoke<number[]>("get_file_sizes", { paths: newPaths });
+    files.update((current) =>
+      current.map((f) => {
+        const idx = newPaths.indexOf(f.path);
+        return idx >= 0 && sizes[idx] > 0 ? { ...f, size: sizes[idx] } : f;
+      })
+    );
+  } catch {
+    // sizes stay at 0, not critical
+  }
 }
 
 export function removeFile(path: string) {

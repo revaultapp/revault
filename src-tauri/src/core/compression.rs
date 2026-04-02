@@ -169,7 +169,7 @@ fn encode_jpeg_bytes_inner(
     .map_err(|_| "mozjpeg encoder panicked")?
 }
 
-fn encode_webp_bytes(
+pub(crate) fn encode_webp_bytes(
     img: &image::DynamicImage,
     quality: f32,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -183,7 +183,7 @@ fn encode_webp_bytes(
     Ok(memory.to_vec())
 }
 
-fn encode_avif_bytes(
+pub(crate) fn encode_avif_bytes(
     img: &image::DynamicImage,
     quality: f32,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -240,11 +240,7 @@ pub fn compress_jpeg(
     let quality = quality.clamp(0.0, 100.0);
     let original_size = checked_size(input_path)?;
     let (width, height, pixels) = decode_input_rgb(input_path)?;
-    let is_jpeg_input = matches!(
-        ext_lowercase(input_path).as_deref(),
-        Some("jpg") | Some("jpeg")
-    );
-    let compressed = encode_jpeg_bytes_inner(width, height, &pixels, quality, is_jpeg_input)?;
+    let compressed = encode_jpeg_bytes(width, height, &pixels, quality)?;
     write_smallest(input_path, output_path, &compressed, original_size)
 }
 
@@ -352,13 +348,16 @@ pub fn compress_batch(
                 Err(e) => return CompressionResult::err(path, e),
             };
             match compress_image(path, &output, &fmt, preset) {
-                Ok(r) => {
+                Ok(mut r) => {
                     if strip_gps && r.error.is_none() {
                         if let Err(e) = crate::core::privacy::strip_gps_in_place(&r.output_path) {
                             return CompressionResult::err(
                                 path,
                                 format!("compression succeeded but GPS strip failed: {e}"),
                             );
+                        }
+                        if let Ok(meta) = std::fs::metadata(&r.output_path) {
+                            r.compressed_size = meta.len();
                         }
                     }
                     r

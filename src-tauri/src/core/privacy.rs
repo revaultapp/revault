@@ -409,6 +409,9 @@ pub fn strip_selective_batch(
 /// Strip only GPS metadata from a file in-place (used by compression flow).
 pub fn strip_gps_in_place(path: &str) -> Result<(), Box<dyn Error>> {
     let file_path = Path::new(path);
+
+    let mtime = filetime::FileTime::from_last_modification_time(&fs::metadata(file_path)?);
+
     let mut metadata = match Metadata::new_from_path(file_path) {
         // File has no parseable metadata — nothing to strip
         Err(_) => return Ok(()),
@@ -422,6 +425,8 @@ pub fn strip_gps_in_place(path: &str) -> Result<(), Box<dyn Error>> {
     metadata
         .write_to_file(file_path)
         .map_err(|e| format!("failed to write metadata: {e}"))?;
+
+    filetime::set_file_mtime(path, mtime)?;
 
     Ok(())
 }

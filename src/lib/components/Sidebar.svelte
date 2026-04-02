@@ -111,7 +111,7 @@
     height: 40px;
     padding: 0 14px;
     border-radius: var(--radius-sm);
-    color: #64748b;
+    color: var(--text-muted);
     font-size: 13.5px;
     font-weight: 500;
     transition: background 0.15s, color 0.15s;
@@ -122,7 +122,7 @@
   }
 
   .nav-item span {
-    color: #64748b;
+    color: var(--text-muted);
   }
 
   .nav-item:hover {

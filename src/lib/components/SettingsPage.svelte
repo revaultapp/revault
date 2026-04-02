@@ -105,7 +105,7 @@
 
   .segmented {
     display: flex;
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     background: var(--navy-bg);
     overflow: hidden;
   }
@@ -117,7 +117,7 @@
     padding: 6px 12px;
     font-size: 12px;
     color: var(--text-muted);
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     transition: background-color 0.15s, border-color 0.15s;
   }
 
