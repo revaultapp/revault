@@ -157,6 +157,7 @@ pub fn resize_image(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn resize_batch(
     paths: &[String],
     width: u32,
@@ -165,7 +166,9 @@ pub fn resize_batch(
     quality: Option<f32>,
     output_dir: Option<&str>,
     strip_gps: bool,
+    suffix: Option<&str>,
 ) -> Vec<ResizeResult> {
+    let suffix = suffix.unwrap_or("_resized");
     paths
         .par_iter()
         .map(|path| {
@@ -181,7 +184,7 @@ pub fn resize_batch(
             };
 
             let out_base = output_dir.map(Path::new).unwrap_or(parent);
-            let output = out_base.join(format!("{stem}_resized.{ext}"));
+            let output = out_base.join(format!("{stem}{suffix}.{ext}"));
 
             match resize_image(
                 path,
@@ -259,7 +262,7 @@ mod tests {
             input.to_string_lossy().to_string(),
             "/nonexistent/fake.png".to_string(),
         ];
-        let results = resize_batch(&paths, 200, 150, ResizeMode::Fit, None, None, false);
+        let results = resize_batch(&paths, 200, 150, ResizeMode::Fit, None, None, false, None);
 
         assert_eq!(results.len(), 2);
         assert!(results[0].error.is_none());

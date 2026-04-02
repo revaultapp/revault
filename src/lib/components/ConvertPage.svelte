@@ -128,8 +128,7 @@
       for (const platformId of platforms) {
         const platform = socialPlatforms.find((p) => p.id === platformId);
         if (!platform) continue;
-        const platformFiles = filesToProcess.filter((f) => f.status === "pending");
-        for (const file of platformFiles) {
+        for (const file of filesToProcess) {
           files.update((all) =>
             all.map((f) => f.path === file.path ? { ...f, status: "converting" as const } : f)
           );
@@ -142,6 +141,7 @@
               quality: null,
               outputDir: $outputDir,
               stripGps: $stripGps,
+              suffix: `_${platform.id}`,
             });
             const result = results[0];
             files.update((all) =>
