@@ -266,8 +266,6 @@
     cursor: pointer;
     transition: border-color 0.15s, box-shadow 0.15s;
     text-align: left;
-    position: relative;
-    overflow: hidden;
   }
 
   .action-card:hover {
@@ -278,16 +276,6 @@
   .action-card:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
-  }
-
-  .action-card::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    background: var(--accent);
   }
 
   .action-icon {
