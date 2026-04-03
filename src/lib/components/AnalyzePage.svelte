@@ -16,7 +16,13 @@
     const unlisten = getCurrentWebview().onDragDropEvent((event) => {
       if (event.payload.type === "drop") {
         const paths = event.payload.paths;
-        const newFolders = paths.filter((p: string) => !selectedFolders.includes(p));
+        // Filter to only paths that don't look like image files (Analyze expects folders)
+        const newFolders = paths.filter((p: string) => {
+          if (selectedFolders.includes(p)) return false;
+          const ext = p.split('.').pop()?.toLowerCase();
+          const imageExts = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'tiff', 'tif', 'bmp', 'gif', 'avif', 'jxl'];
+          return !ext || !imageExts.includes(ext);
+        });
         if (newFolders.length > 0) {
           selectedFolders = [...selectedFolders, ...newFolders];
         }
@@ -98,7 +104,7 @@
   }
 </script>
 
-{#if selectedFolders.length === 0 && visibleGroups.length === 0}
+{#if selectedFolders.length === 0}
   <div class="empty-view">
     <div class="folder-drop-zone">
       <div class="drop-icon">
@@ -106,7 +112,7 @@
       </div>
       <h2 class="drop-title">Add folders to scan for duplicates</h2>
       <p class="drop-subtitle">Drop folders here or click to browse</p>
-      <button class="btn-primary" onclick={browseFolders}>
+      <button class="btn-primary" onclick={browseFolders} aria-label="Choose folders to scan">
         <FolderOpen size={16} />
         Choose folders
       </button>
@@ -120,7 +126,28 @@
       sublabel={`${selectedFolders.length} folder${selectedFolders.length > 1 ? "s" : ""} · ${$duplicateGroups.length} groups found`}
     />
   </div>
-{:else if visibleGroups.length > 0}
+{:else if $duplicateGroups.length === 0}
+  <div class="empty-view">
+    <div class="no-dupes">
+      <Search size={40} strokeWidth={1.5} />
+      <p class="no-dupes-title">No duplicates found</p>
+      <p class="no-dupes-sub">Try adding more folders or rescanning</p>
+      <div class="folders-added">
+        {#each selectedFolders as folder}
+          <span class="folder-chip">
+            <FolderOpen size={12} />
+            {folderName(folder)}
+            <button class="chip-remove" onclick={() => removeFolder(folder)} aria-label="Remove folder {folderName(folder)}">×</button>
+          </span>
+        {/each}
+      </div>
+      <button class="btn-primary" onclick={startScan}>
+        <Search size={14} />
+        Rescan
+      </button>
+    </div>
+  </div>
+{:else}
   <div class="results-view">
     {#if $scanError}
       <div class="error-banner">
@@ -134,11 +161,11 @@
         <span class="sub">{visibleFileCount} files · {formatBytes(totalWastedSpace)} wasted</span>
       </div>
       <div class="header-actions">
-        <button class="btn-ghost" onclick={browseFolders}>
+        <button class="btn-ghost" onclick={browseFolders} aria-label="Add more folders">
           <FolderOpen size={14} />
           Add folders
         </button>
-        <button class="btn-ghost" onclick={clearAll}>
+        <button class="btn-ghost" onclick={clearAll} aria-label="Clear all results">
           <Trash2 size={14} />
           Clear
         </button>
@@ -150,7 +177,7 @@
         <span class="folder-chip">
           <FolderOpen size={12} />
           {folderName(folder)}
-          <button class="chip-remove" onclick={() => removeFolder(folder)}>×</button>
+          <button class="chip-remove" onclick={() => removeFolder(folder)} aria-label="Remove folder {folderName(folder)}">×</button>
         </span>
       {/each}
       {#if selectedFolders.length > 0}
@@ -167,7 +194,7 @@
         {@const wasted = sortedFiles.slice(1).reduce((a, f) => a + f.size, 0)}
         {@const isExpanded = expandedGroups.has(group.hash)}
         <div class="group-card">
-          <button class="group-header" onclick={() => toggleGroup(group.hash)}>
+          <button class="group-header" onclick={() => toggleGroup(group.hash)} aria-expanded={isExpanded}>
             <div class="group-info">
               {#if isExpanded}
                 <ChevronDown size={16} />
@@ -196,7 +223,7 @@
                     {#if fi === 0}
                       <span class="original-tag">Original</span>
                     {:else if !isDeleted}
-                      <button class="btn-icon delete-btn" onclick={() => deleteDuplicate(file.path)} title="Coming soon" disabled>
+                      <button class="btn-icon delete-btn" onclick={() => deleteDuplicate(file.path)} title="Coming soon" aria-label="Mark duplicate for deletion" disabled>
                         <Trash2 size={14} />
                       </button>
                     {:else}
@@ -209,27 +236,6 @@
           {/if}
         </div>
       {/each}
-    </div>
-  </div>
-{:else}
-  <div class="empty-view">
-    <div class="no-dupes">
-      <Search size={40} strokeWidth={1.5} />
-      <p class="no-dupes-title">No duplicates found</p>
-      <p class="no-dupes-sub">Try adding more folders or rescanning</p>
-      <div class="folders-added">
-        {#each selectedFolders as folder}
-          <span class="folder-chip">
-            <FolderOpen size={12} />
-            {folderName(folder)}
-            <button class="chip-remove" onclick={() => removeFolder(folder)}>×</button>
-          </span>
-        {/each}
-      </div>
-      <button class="btn-primary" onclick={startScan}>
-        <Search size={14} />
-        Rescan
-      </button>
     </div>
   </div>
 {/if}

@@ -150,7 +150,7 @@ pub fn find_duplicates(
             let (_, hash_j) = &hashes[j];
             let dist = hash_i.dist(hash_j);
 
-            if dist <= 5 {
+            if dist <= 2 {
                 let (path_j, _) = &hashes[j];
                 let meta_j = match fs::metadata(path_j) {
                     Ok(m) => m,
