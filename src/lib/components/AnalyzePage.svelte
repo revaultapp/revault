@@ -1,7 +1,8 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
-  import { Trash2, FolderOpen, Search, ChevronDown, ChevronRight } from "lucide-svelte";
-  import DropZone from "./DropZone.svelte";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
+  import { onMount } from "svelte";
+  import { Trash2, FolderOpen, Search, ChevronDown, ChevronRight, FolderSearch } from "lucide-svelte";
   import ProgressRing from "./ProgressRing.svelte";
   import { duplicateGroups, isScanning, totalFound, scanError, scanForDuplicates, clearResults } from "$lib/stores/dedupe";
   import { formatBytes } from "$lib/utils";
@@ -10,6 +11,21 @@
   let selectedFolders = $state<string[]>([]);
   let expandedGroups = $state<Set<string>>(new Set());
   let deletedPaths = $state<Set<string>>(new Set());
+
+  onMount(() => {
+    const unlisten = getCurrentWebview().onDragDropEvent((event) => {
+      if (event.payload.type === "drop") {
+        const paths = event.payload.paths;
+        const newFolders = paths.filter((p: string) => !selectedFolders.includes(p));
+        if (newFolders.length > 0) {
+          selectedFolders = [...selectedFolders, ...newFolders];
+        }
+      }
+    });
+    return () => {
+      unlisten.then((fn: () => void) => fn());
+    };
+  });
 
   let totalWastedSpace = $derived(
     $duplicateGroups.reduce((acc, group) => {
@@ -84,11 +100,17 @@
 
 {#if selectedFolders.length === 0 && visibleGroups.length === 0}
   <div class="empty-view">
-    <DropZone
-      onfiles={(paths) => { selectedFolders = [...selectedFolders, ...paths.filter(p => !selectedFolders.includes(p))]; }}
-      acceptedExtensions={/.*/}
-      formatTags={["JPEG", "PNG", "WebP", "HEIC", "TIFF", "BMP", "AVIF", "JXL", "Folder"]}
-    />
+    <div class="folder-drop-zone">
+      <div class="drop-icon">
+        <FolderSearch size={48} strokeWidth={1.5} />
+      </div>
+      <h2 class="drop-title">Add folders to scan for duplicates</h2>
+      <p class="drop-subtitle">Drop folders here or click to browse</p>
+      <button class="btn-primary" onclick={browseFolders}>
+        <FolderOpen size={16} />
+        Choose folders
+      </button>
+    </div>
   </div>
 {:else if $isScanning}
   <div class="scanning-view">
@@ -219,6 +241,37 @@
     justify-content: center;
     height: 100%;
     padding: 28px;
+  }
+
+  .folder-drop-zone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 64px 48px;
+    background: var(--bg-card);
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-xl);
+    text-align: center;
+    max-width: 400px;
+  }
+
+  .drop-icon {
+    color: var(--text-muted);
+    opacity: 0.6;
+  }
+
+  .drop-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+  }
+
+  .drop-subtitle {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: -8px;
   }
 
   .scanning-view {

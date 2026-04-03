@@ -1,8 +1,10 @@
 <script lang="ts">
+  import type { ComponentType } from 'svelte';
+
   interface Segment {
     id: string;
     label: string;
-    icon?: any;
+    icon?: ComponentType;
   }
 
   let { segments, selected = $bindable() }: {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { open } from "@tauri-apps/plugin-dialog";
   import { FolderOpen, CheckCircle, AlertCircle, X, Files, FolderInput, FolderOutput } from "lucide-svelte";
   import {
@@ -12,6 +13,20 @@
   import { activity } from "$lib/stores/activity";
   import { IMAGE_EXTENSIONS_RE } from "$lib/types";
   import ToolShell from "./ToolShell.svelte";
+
+  // Tauri drag-and-drop adds a non-standard .path property to File objects
+  interface FileWithPath extends File {
+    path?: string;
+  }
+
+  // Progress state for streaming organize
+  let progress = $state<{ processed: number; total: number; currentFile: string; moved: number; skipped: number } | null>(null);
+
+  let progressPct = $derived(
+    progress && progress.total > 0
+      ? Math.round((progress.processed / progress.total) * 100)
+      : 0
+  );
 
   const tokens = [
     { label: "{name}", desc: "Original filename" },
@@ -107,20 +122,44 @@
     if (!$sourceDir || !$destDir) return;
     isOrganizing.set(true);
     clearOrganizeResult();
+    progress = null;
+
+    let unlistenProgress: UnlistenFn | undefined;
+    let unlistenComplete: UnlistenFn | undefined;
+
     try {
-      const result = await invoke<OrganizeRes>("organize_by_date", {
+      // Listen to organize-progress events
+      unlistenProgress = await listen<{ processed: number; total: number; current_file: string; moved: number; skipped: number }>("organize-progress", (event) => {
+        progress = {
+          processed: event.payload.processed,
+          total: event.payload.total,
+          currentFile: event.payload.current_file,
+          moved: event.payload.moved,
+          skipped: event.payload.skipped,
+        };
+      });
+
+      // Listen to organize-complete event
+      unlistenComplete = await listen<OrganizeRes>("organize-complete", (event) => {
+        setOrganizeResult({ moved: event.payload.moved, skipped: event.payload.skipped, errors: event.payload.errors });
+        if (event.payload.moved > 0) {
+          activity.add({ type: "organize", fileCount: event.payload.moved, savedBytes: 0 });
+        }
+      });
+
+      // Call the streaming command (fire-and-forget, results come via events)
+      await invoke("organize_by_date_stream", {
         source: $sourceDir,
         dest: $destDir,
         copy: $organizeMode === "copy",
       });
-      setOrganizeResult(result);
-      if (result.moved > 0) {
-        activity.add({ type: "organize", fileCount: result.moved, savedBytes: 0 });
-      }
     } catch (err) {
       setOrganizeResult({ moved: 0, skipped: 0, errors: [String(err)] });
     } finally {
       isOrganizing.set(false);
+      progress = null;
+      unlistenProgress?.();
+      unlistenComplete?.();
     }
   }
 
@@ -161,7 +200,7 @@
       <div class="empty-state">
         <div class="drop-zone" role="button" tabindex="0"
           ondragover={(e) => e.preventDefault()}
-          ondrop={(e) => { e.preventDefault(); const files = e.dataTransfer?.files; if (files) addRenameFiles(Array.from(files).map((f) => (f as any).path).filter((p: string) => IMAGE_EXTENSIONS_RE.test(p))); }}
+          ondrop={(e) => { e.preventDefault(); const files = e.dataTransfer?.files; if (files) { addRenameFiles(Array.from(files as unknown as FileWithPath[]).map((f) => f.path).filter((p): p is string => !!p && IMAGE_EXTENSIONS_RE.test(p))); } }}
           onclick={browseRenameFiles}
           onkeydown={(e) => e.key === "Enter" && browseRenameFiles()}>
           <Files size={40} strokeWidth={1.5} />
@@ -228,8 +267,24 @@
   {:else}
     <div class="organize-panel">
       <div class="organize-header">
-        <h2>{headerText}</h2>
+        <h2>{progress ? `Processing ${progress.processed} of ${progress.total}` : headerText}</h2>
       </div>
+
+      {#if progress}
+        <div class="organize-progress">
+          <div class="progress-bar-wrap">
+            <div class="progress-bar" style="width: {progressPct}%"></div>
+          </div>
+          <p class="progress-detail">
+            {#if progress.currentFile}
+              <span class="progress-filename">{progress.currentFile.split(/[\\/]/).pop()}</span>
+            {/if}
+            {#if progress.moved > 0 || progress.skipped > 0}
+              <span class="progress-stats">{progress.moved} moved · {progress.skipped} skipped</span>
+            {/if}
+          </p>
+        </div>
+      {/if}
 
       <div class="organize-controls">
         <div class="folder-row">
@@ -614,4 +669,52 @@
 
   .btn-primary:hover:not(:disabled) { opacity: 0.9; }
   .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Organize progress */
+  .organize-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px 20px;
+    background: var(--bg-card);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    max-width: 600px;
+  }
+
+  .progress-bar-wrap {
+    height: 8px;
+    background: var(--navy-bg);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .progress-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 4px;
+    transition: width 0.2s ease;
+  }
+
+  .progress-detail {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .progress-filename {
+    color: var(--text-secondary);
+    font-family: monospace;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .progress-stats {
+    margin-left: auto;
+  }
 </style>
