@@ -1,3 +1,4 @@
+use crate::core::image_io;
 use image_hasher::{HasherConfig, ImageHash};
 use serde::Serialize;
 use std::fs;
@@ -36,15 +37,15 @@ fn is_image(path: &Path) -> bool {
 }
 
 fn hash_image(path: &str) -> Result<ImageHash, Box<dyn std::error::Error>> {
-    let mut limits = image::Limits::default();
-    limits.max_image_width = Some(4096);
-    limits.max_image_height = Some(4096);
-    limits.max_alloc = Some(128 * 1024 * 1024);
-    let mut reader = image::ImageReader::open(path)?;
-    reader.limits(limits);
-    let img = reader.decode()?;
+    // Use platform-native decoder via image_io (handles HEIC properly on macOS/Windows)
+    let (_width, _height, pixels) = image_io::decode_rgb(path)?;
+
+    // Convert RGB bytes to RgbImage for hashing
+    let img = image::RgbImage::from_raw(_width as u32, _height as u32, pixels)
+        .ok_or("failed to create image from decoded pixels")?;
+
     // Perceptual hash only needs a small thumbnail — resize before hashing to avoid OOM
-    let thumb = img.thumbnail(64, 64);
+    let thumb = image::DynamicImage::ImageRgb8(img).thumbnail(64, 64);
     let hasher = HasherConfig::new().to_hasher();
     Ok(hasher.hash_image(&thumb))
 }
