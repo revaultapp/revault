@@ -11,6 +11,7 @@ pub fn run() {
             commands::convert::convert_images,
             commands::dedupe::find_duplicates,
             commands::organize::organize_by_date,
+            commands::organize::organize_by_date_stream,
             commands::organize::rename_batch,
             commands::privacy::read_metadata,
             commands::privacy::strip_files,

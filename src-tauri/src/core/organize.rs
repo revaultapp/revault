@@ -11,6 +11,15 @@ pub struct OrganizeMode {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrganizeProgress {
+    pub processed: usize,
+    pub total: usize,
+    pub current_file: String,
+    pub moved: u32,
+    pub skipped: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrganizeResult {
     pub moved: u32,
     pub skipped: u32,
@@ -79,7 +88,7 @@ fn get_date_from_path(path: &Path) -> Option<(i32, u8, u8)> {
     })
 }
 
-fn collect_images(dir: &Path, recursive: bool, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+pub fn collect_images(dir: &Path, recursive: bool, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let ft = entry.file_type()?;
@@ -198,6 +207,168 @@ pub fn organize_by_date(source_dir: &str, dest_dir: &str, mode: &OrganizeMode) -
     }
 
     result
+}
+
+pub fn organize_by_date_stream<F>(
+    source_dir: &str,
+    dest_dir: &str,
+    mode: &OrganizeMode,
+    mut on_progress: F,
+) where
+    F: FnMut(OrganizeProgress),
+{
+    let source = match Path::new(source_dir).canonicalize() {
+        Ok(p) => p,
+        Err(_e) => {
+            on_progress(OrganizeProgress {
+                processed: 0,
+                total: 0,
+                current_file: String::new(),
+                moved: 0,
+                skipped: 0,
+            });
+            return;
+        }
+    };
+    let dest = Path::new(dest_dir);
+
+    let mut images = Vec::new();
+    if collect_images(&source, true, &mut images).is_err() {
+        on_progress(OrganizeProgress {
+            processed: 0,
+            total: 0,
+            current_file: String::new(),
+            moved: 0,
+            skipped: 0,
+        });
+        return;
+    }
+
+    let total = images.len();
+    let mut result = OrganizeResult::new();
+
+    for (i, img_path) in images.iter().enumerate() {
+        let date = match get_date_from_path(img_path) {
+            Some(d) => d,
+            None => {
+                result.skipped += 1;
+                result
+                    .errors
+                    .push(format!("no date for {}", img_path.display()));
+                on_progress(OrganizeProgress {
+                    processed: i + 1,
+                    total,
+                    current_file: img_path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("?")
+                        .to_string(),
+                    moved: result.moved,
+                    skipped: result.skipped,
+                });
+                continue;
+            }
+        };
+
+        let (year, month, _) = date;
+        let year_dir = dest.join(year.to_string());
+        let month_dir = year_dir.join(format!("{:02}", month));
+
+        if let Err(e) = fs::create_dir_all(&month_dir) {
+            result.errors.push(format!(
+                "could not create dir {}: {}",
+                month_dir.display(),
+                e
+            ));
+            result.skipped += 1;
+            on_progress(OrganizeProgress {
+                processed: i + 1,
+                total,
+                current_file: img_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("?")
+                    .to_string(),
+                moved: result.moved,
+                skipped: result.skipped,
+            });
+            continue;
+        }
+
+        let filename = img_path.file_name().unwrap_or_default();
+        let mut dest_path = month_dir.join(filename);
+
+        let mut counter = 1;
+        while dest_path.exists() {
+            let stem = img_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("file");
+            let ext = img_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            dest_path = month_dir.join(format!("{}_{}.{}", stem, counter, ext));
+            counter += 1;
+            if counter > 999 {
+                result
+                    .errors
+                    .push(format!("too many conflicts for {}", img_path.display()));
+                result.skipped += 1;
+                break;
+            }
+        }
+
+        if counter > 999 {
+            on_progress(OrganizeProgress {
+                processed: i + 1,
+                total,
+                current_file: img_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("?")
+                    .to_string(),
+                moved: result.moved,
+                skipped: result.skipped,
+            });
+            continue;
+        }
+
+        let img_path_str = img_path.to_string_lossy().into_owned();
+
+        let move_ok = if mode.copy {
+            fs::copy(img_path, &dest_path).is_ok()
+        } else {
+            match fs::rename(img_path, &dest_path) {
+                Ok(_) => true,
+                Err(e) => {
+                    if e.kind() == std::io::ErrorKind::CrossesDevices {
+                        fs::copy(img_path, &dest_path).is_ok() && fs::remove_file(img_path).is_ok()
+                    } else {
+                        false
+                    }
+                }
+            }
+        };
+
+        if move_ok {
+            result.moved += 1;
+        } else {
+            result
+                .errors
+                .push(format!("failed to move {}", img_path_str));
+            result.skipped += 1;
+        }
+
+        on_progress(OrganizeProgress {
+            processed: i + 1,
+            total,
+            current_file: img_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("?")
+                .to_string(),
+            moved: result.moved,
+            skipped: result.skipped,
+        });
+    }
 }
 
 #[cfg(test)]

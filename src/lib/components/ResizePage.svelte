@@ -186,10 +186,10 @@
   <div class="control-group">
     <span class="label">
       Mode
-      <HelperTooltip tip="Fit: scales to fit within, preserving aspect ratio. Stretch: forces exact dimensions, may distort." />
+      <HelperTooltip tip="Fit: scales to fit within, preserving aspect ratio. Exact: forces exact dimensions, may distort." />
     </span>
     <div class="pills">
-      {#each ([["Fit", "Fit"], ["Exact", "Stretch"]] as const) as [value, label]}
+      {#each ([["Fit", "Fit"], ["Exact", "Exact"]] as const) as [value, label]}
         <button class="pill" class:active={$resizeMode === value} onclick={() => resizeMode.set(value)}>
           {label}
         </button>
