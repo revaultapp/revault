@@ -5,7 +5,6 @@
   import ToolsPage from "$lib/components/ToolsPage.svelte";
   import PrivacyPage from "$lib/components/PrivacyPage.svelte";
   import AnalyzePage from "$lib/components/AnalyzePage.svelte";
-  import OrganizePage from "$lib/components/OrganizePage.svelte";
 </script>
 
 {#if $activePage === "dashboard"}
@@ -14,8 +13,6 @@
   <ToolsPage />
 {:else if $activePage === "analyze"}
   <AnalyzePage />
-{:else if $activePage === "organize"}
-  <OrganizePage />
 {:else if $activePage === "privacy"}
   <PrivacyPage />
 {:else if $activePage === "settings"}

@@ -1,7 +1,7 @@
 <script lang="ts">
   import {
     Compass, Wand2, ScanSearch,
-    Boxes, EyeOff, CloudCog,
+    EyeOff, CloudCog,
     Settings, Database
   } from "lucide-svelte";
   import { activePage } from "$lib/stores/nav";
@@ -13,7 +13,6 @@
     { icon: Compass, id: "dashboard", label: "Dashboard" },
     { icon: Wand2, id: "tools", label: "Tools" },
     { icon: ScanSearch, id: "analyze", label: "Analyze" },
-    { icon: Boxes, id: "organize", label: "Organize" },
     { icon: EyeOff, id: "privacy", label: "Privacy" },
     { icon: CloudCog, id: "cloud", label: "Cloud" },
   ];
