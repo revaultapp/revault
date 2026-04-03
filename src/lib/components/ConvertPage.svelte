@@ -4,6 +4,7 @@
   import { FolderOpen, CheckCircle, AlertCircle, X, Eye } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
   import BeforeAfterSlider from "./BeforeAfterSlider.svelte";
+  import HelperTooltip from "./HelperTooltip.svelte";
   import ToggleSwitch from "./ToggleSwitch.svelte";
   import { formatBytes, browseOutputDir } from "$lib/utils";
   import {
@@ -221,7 +222,7 @@
 
   {#snippet fileStatus(file)}
     {#if file.status === "done"}
-      <button class="btn-icon compare-btn" onclick={() => compareFile = file} title="Compare">
+      <button class="btn-icon compare-btn" onclick={() => compareFile = file} aria-label="Compare before and after">
         <Eye size={16} />
       </button>
       <CheckCircle size={18} />
@@ -236,7 +237,7 @@
 
   <div class="controls-row">
     <div class="control-group">
-      <span class="label">Format</span>
+      <span class="label">Format <HelperTooltip tip="Choose the output image format. JPEG is best for photos, PNG for graphics, WebP/AVIF for modern compression." /></span>
       <div class="pills">
         {#each formats as f}
           <button class="pill" class:active={$targetFormat === f.value} onclick={() => targetFormat.set(f.value)}>
@@ -247,7 +248,7 @@
     </div>
     {#if $targetFormat !== "Png"}
       <div class="control-group">
-        <span class="label">Quality</span>
+        <span class="label">Quality <HelperTooltip tip="Smallest: minimum file size. Balanced: good quality at lower size. High quality: best quality, larger files." /></span>
         <div class="pills">
           <button class="pill" class:active={$qualityPreset === "Smallest"}
             onclick={() => qualityPreset.set("Smallest")}>Smallest</button>
@@ -259,7 +260,7 @@
       </div>
     {/if}
     <div class="control-group">
-      <span class="label">Output</span>
+      <span class="label">Output <HelperTooltip tip="Where to save converted files. Defaults to the same folder as the source images." /></span>
       <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
         <FolderOpen size={14} />
         {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
@@ -273,8 +274,7 @@
     <div class="control-group">
       <div class="toggle-row">
         <div class="toggle-label">
-          <span class="label">Strip GPS</span>
-          <span class="control-hint">Remove location data from photos</span>
+          <span class="label">Strip GPS <HelperTooltip tip="Removes GPS coordinates and other location metadata from converted images to protect your privacy." /></span>
         </div>
         <ToggleSwitch bind:checked={$stripGps} />
       </div>
@@ -286,7 +286,7 @@
   <div class="controls-row">
     <div class="social-row">
       <div class="control-group">
-        <span class="label">Social export</span>
+        <span class="label">Social export <HelperTooltip tip="Export images optimized for each social platform's dimensions and format requirements." /></span>
         <div class="social-platforms">
           {#each socialPlatforms as platform}
             <button

@@ -3,6 +3,7 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { FolderOpen, CheckCircle, AlertCircle, X } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
+  import HelperTooltip from "./HelperTooltip.svelte";
   import ToggleSwitch from "./ToggleSwitch.svelte";
   import { browseOutputDir } from "$lib/utils";
   import { stripGps } from "$lib/stores/compress";
@@ -183,7 +184,10 @@
     </div>
   </div>
   <div class="control-group">
-    <span class="label">Mode</span>
+    <span class="label">
+      Mode
+      <HelperTooltip tip="Fit: scales to fit within, preserving aspect ratio. Stretch: forces exact dimensions, may distort." />
+    </span>
     <div class="pills">
       {#each ([["Fit", "Fit"], ["Exact", "Stretch"]] as const) as [value, label]}
         <button class="pill" class:active={$resizeMode === value} onclick={() => resizeMode.set(value)}>
@@ -247,7 +251,7 @@
   .dimension-inputs input {
     width: 72px;
     padding: 6px 8px;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     font-size: 13px;
     border: 1px solid var(--border);
     background: var(--navy-bg);
@@ -259,4 +263,5 @@
     font-size: 13px;
     color: var(--text-muted);
   }
+
 </style>

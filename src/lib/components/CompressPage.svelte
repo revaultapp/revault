@@ -4,6 +4,7 @@
   import { FolderOpen, CheckCircle, AlertCircle, X, Eye } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
   import BeforeAfterSlider from "./BeforeAfterSlider.svelte";
+  import HelperTooltip from "./HelperTooltip.svelte";
   import { formatBytes, browseOutputDir } from "$lib/utils";
   import ToggleSwitch from "./ToggleSwitch.svelte";
   import {
@@ -161,7 +162,7 @@
   {/snippet}
 
   <div class="control-group">
-    <span class="label">Format</span>
+    <span class="label">Format <HelperTooltip tip="Choose the output format. Auto selects the format that produces the smallest file." /></span>
     <div class="pills">
       {#each formats as f}
         <button class="pill" class:active={$format === f.value} onclick={() => format.set(f.value)}>
@@ -171,7 +172,7 @@
     </div>
   </div>
   <div class="control-group">
-    <span class="label">Quality</span>
+    <span class="label">Quality <HelperTooltip tip="Smallest: minimum file size. Balanced: good quality at lower size. High quality: best quality, larger files." /></span>
     <div class="pills">
       <button class="pill" class:active={$qualityPreset === "Smallest"}
         onclick={() => qualityPreset.set("Smallest")}>Smallest</button>
@@ -185,7 +186,7 @@
     {/if}
   </div>
   <div class="control-group">
-    <span class="label">Output</span>
+    <span class="label">Output <HelperTooltip tip="Folder where compressed images are saved. Defaults to the same folder as the original." /></span>
     <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
       <FolderOpen size={14} />
       {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
