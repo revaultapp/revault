@@ -35,6 +35,7 @@ sha2 = "0.11"
 tempfile = "3"
 rayon = "1.11"
 memmap2 = "0.9"
+trash = "5"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"

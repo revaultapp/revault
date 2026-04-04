@@ -27,6 +27,7 @@ pub fn run() {
             commands::compress::preview_compress,
             commands::convert::convert_images,
             commands::dedupe::find_duplicates,
+            commands::delete::delete_files,
             commands::privacy::read_metadata,
             commands::privacy::strip_files,
             commands::privacy::strip_files_selective,

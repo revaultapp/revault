@@ -1,9 +1,11 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
+  import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import { Trash2, FolderOpen, Search, ChevronDown, ChevronRight, FolderSearch } from "lucide-svelte";
   import ProgressRing from "./ProgressRing.svelte";
+  import Button from "./Button.svelte";
   import { duplicateGroups, isScanning, totalFound, scanError, scanForDuplicates, clearResults } from "$lib/stores/dedupe";
   import { formatBytes } from "$lib/utils";
   import { activity } from "$lib/stores/activity";
@@ -87,9 +89,17 @@
   }
 
   async function deleteDuplicate(filePath: string) {
-    // Note: moving to OS trash requires tauri-plugin-fs which is not yet installed.
-    // For now, mark as deleted in UI only. A future update will wire up the actual delete.
-    deletedPaths = new Set([...deletedPaths, filePath]);
+    try {
+      const results = await invoke<{ path: string; success: boolean; error?: string }[]>("delete_files", { paths: [filePath] });
+      const result = results[0];
+      if (result.success) {
+        deletedPaths = new Set([...deletedPaths, filePath]);
+      } else {
+        scanError.set(result.error ?? "Failed to delete file");
+      }
+    } catch (e) {
+      scanError.set(String(e));
+    }
   }
 
   function clearAll() {
@@ -112,10 +122,10 @@
       </div>
       <h2 class="drop-title">Add folders to scan for duplicates</h2>
       <p class="drop-subtitle">Drop folders here or click to browse</p>
-      <button class="btn-primary" onclick={browseFolders} aria-label="Choose folders to scan">
+      <Button onclick={browseFolders} aria-label="Choose folders to scan">
         <FolderOpen size={16} />
         Choose folders
-      </button>
+      </Button>
     </div>
   </div>
 {:else if $isScanning}
@@ -141,16 +151,16 @@
           </span>
         {/each}
       </div>
-      <button class="btn-primary" onclick={startScan}>
+      <Button onclick={startScan}>
         <Search size={14} />
         Rescan
-      </button>
+      </Button>
     </div>
   </div>
 {:else}
   <div class="results-view">
     {#if $scanError}
-      <div class="error-banner">
+      <div class="error-banner" role="alert">
         <span class="error-text">{$scanError}</span>
         <button class="error-dismiss" onclick={() => scanError.set(null)}>×</button>
       </div>
@@ -161,14 +171,14 @@
         <span class="sub">{visibleFileCount} files · {formatBytes(totalWastedSpace)} wasted</span>
       </div>
       <div class="header-actions">
-        <button class="btn-ghost" onclick={browseFolders} aria-label="Add more folders">
+        <Button variant="ghost" onclick={browseFolders} aria-label="Add more folders">
           <FolderOpen size={14} />
           Add folders
-        </button>
-        <button class="btn-ghost" onclick={clearAll} aria-label="Clear all results">
+        </Button>
+        <Button variant="ghost" onclick={clearAll} aria-label="Clear all results">
           <Trash2 size={14} />
           Clear
-        </button>
+        </Button>
       </div>
     </div>
 
@@ -181,10 +191,10 @@
         </span>
       {/each}
       {#if selectedFolders.length > 0}
-        <button class="btn-primary scan-btn" onclick={startScan} disabled={$isScanning}>
+        <Button onclick={startScan} disabled={$isScanning}>
           <Search size={14} />
           Scan
-        </button>
+        </Button>
       {/if}
     </div>
 
@@ -223,7 +233,7 @@
                     {#if fi === 0}
                       <span class="original-tag">Original</span>
                     {:else if !isDeleted}
-                      <button class="btn-icon delete-btn" onclick={() => deleteDuplicate(file.path)} title="Coming soon" aria-label="Mark duplicate for deletion" disabled>
+                      <button class="btn-icon delete-btn" onclick={() => deleteDuplicate(file.path)} title="Move to trash" aria-label="Move duplicate to trash">
                         <Trash2 size={14} />
                       </button>
                     {:else}
@@ -389,35 +399,6 @@
 
   .chip-remove:hover {
     color: var(--danger);
-  }
-
-  .scan-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 16px;
-    border-radius: var(--radius-sm);
-    background: var(--accent);
-    color: #fff;
-    font-size: 13px;
-    font-weight: 600;
-    border: none;
-    cursor: pointer;
-    transition: transform 0.1s, opacity 0.15s;
-  }
-
-  .scan-btn:hover {
-    opacity: 0.9;
-    transform: translateY(-1px);
-  }
-
-  .scan-btn:active {
-    transform: translateY(0) scale(0.98);
-  }
-
-  .scan-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
   }
 
   .groups-list {
@@ -611,49 +592,4 @@
     margin: 8px 0;
   }
 
-  .btn-ghost {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 14px;
-    border-radius: var(--radius-sm);
-    font-size: 13px;
-    color: var(--text-secondary);
-    border: 1px solid var(--border);
-    background: none;
-    cursor: pointer;
-    transition: background 0.15s, transform 0.1s;
-  }
-
-  .btn-ghost:hover {
-    background: var(--navy-bg);
-  }
-
-  .btn-ghost:active {
-    transform: scale(0.98);
-  }
-
-  .btn-primary {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 10px 28px;
-    border-radius: var(--radius-sm);
-    background: var(--accent);
-    color: #fff;
-    font-size: 14px;
-    font-weight: 600;
-    border: none;
-    cursor: pointer;
-    transition: transform 0.1s, opacity 0.15s;
-  }
-
-  .btn-primary:hover {
-    opacity: 0.9;
-    transform: translateY(-1px);
-  }
-
-  .btn-primary:active {
-    transform: translateY(0) scale(0.98);
-  }
 </style>
