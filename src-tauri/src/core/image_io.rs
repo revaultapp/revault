@@ -1,10 +1,30 @@
 use base64::Engine;
 use image::ImageReader;
-use std::fs;
+use memmap2::Mmap;
+use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::Path;
 
 pub const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
+/// Threshold for using memory-mapped I/O instead of reading into RAM.
+/// 10MB+ files benefit from mmap as OS handles caching better.
+const MMAP_THRESHOLD: u64 = 10 * 1024 * 1024;
+
+/// Read file contents via memory mapping for large files (>10MB).
+/// Falls back to regular read for smaller files or if mmap fails.
+pub fn read_file_mmap_or_default(path: &str) -> Result<Vec<u8>, std::io::Error> {
+    let file = File::open(path)?;
+    let size = file.metadata()?.len();
+    if size >= MMAP_THRESHOLD {
+        // Safety: we immediately copy the mmap contents to owned memory
+        // and the Mmap is dropped after. This is safe.
+        unsafe {
+            let mmap = Mmap::map(&file)?;
+            return Ok(mmap.to_vec());
+        }
+    }
+    fs::read(path)
+}
 
 pub fn ext_lowercase(path: &str) -> Option<String> {
     Path::new(path)
@@ -14,7 +34,7 @@ pub fn ext_lowercase(path: &str) -> Option<String> {
 }
 
 fn decode_jxl(path: &str) -> Result<image::DynamicImage, Box<dyn std::error::Error>> {
-    let data = fs::read(path)?;
+    let data = read_file_mmap_or_default(path)?;
     let image = jxl_oxide::JxlImage::builder()
         .read(std::io::Cursor::new(&data))
         .map_err(|e| e.to_string())?;
@@ -59,9 +79,9 @@ pub fn open_image(path: &str) -> Result<image::DynamicImage, Box<dyn std::error:
             let file = fs::File::open(path)?;
             let mut reader = ImageReader::new(BufReader::new(file)).with_guessed_format()?;
             let mut limits = image::Limits::default();
-            limits.max_image_width = Some(16384);
-            limits.max_image_height = Some(16384);
-            limits.max_alloc = Some(512 * 1024 * 1024);
+            limits.max_image_width = Some(8192);
+            limits.max_image_height = Some(8192);
+            limits.max_alloc = Some(256 * 1024 * 1024);
             reader.limits(limits);
             Ok(reader.decode()?)
         }

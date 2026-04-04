@@ -9,9 +9,9 @@
 
 {#if $activePage === "dashboard"}
   <DashboardPage />
-{:else if $activePage === "tools"}
+{:else if $activePage === "optimize"}
   <ToolsPage />
-{:else if $activePage === "analyze"}
+{:else if $activePage === "duplicates"}
   <AnalyzePage />
 {:else if $activePage === "privacy"}
   <PrivacyPage />

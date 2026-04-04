@@ -1,6 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
+  import { openPath } from "@tauri-apps/plugin-opener";
   import { FolderOpen, CheckCircle, AlertCircle, X, Eye } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
   import BeforeAfterSlider from "./BeforeAfterSlider.svelte";
@@ -8,10 +9,11 @@
   import { formatBytes, browseOutputDir } from "$lib/utils";
   import ToggleSwitch from "./ToggleSwitch.svelte";
   import {
-    files, qualityPreset, format, outputDir, isCompressing, summary,
-    stripGps,
+    files, qualityPreset, format, outputDir, isCompressing, isEstimating, summary,
+    stripGps, estimateSavings,
     addFiles, removeFile, clearFiles,
     type QualityPreset, type OutputFormat, type CompressFile,
+    type SavingsEstimate,
   } from "$lib/stores/compress";
   import { savings } from "$lib/stores/savings";
   import { activity } from "$lib/stores/activity";
@@ -109,6 +111,56 @@
     return "Same size";
   }
 
+  async function openOutputFolder() {
+    const dir = $outputDir ?? ($files[0]?.path ? $files[0].path.substring(0, $files[0].path.lastIndexOf($files[0].path.includes('/') ? '/' : '\\')) : null);
+    if (dir) await openPath(dir);
+  }
+
+  // Real savings estimate from preview compression
+  let savingsEstimate = $state<SavingsEstimate | null>(null);
+  let currentEstimateId = 0;
+
+  // Re-estimate when files, quality, or format changes
+  $effect(() => {
+    if ($files.length === 0 || $isCompressing || $summary.done > 0) {
+      savingsEstimate = null;
+      return;
+    }
+    // Copy values to avoid tracking issues with async
+    const currentFiles = $files;
+    const currentPreset = $qualityPreset;
+    const currentFormat = $format;
+    const estimateId = ++currentEstimateId;
+
+    estimateSavings(currentFiles, currentPreset, currentFormat).then((result) => {
+      // Only use result if this is still the latest estimate
+      if (estimateId !== currentEstimateId) return;
+      if (currentFiles.length > 0) {
+        savingsEstimate = result;
+      }
+    });
+  });
+
+  // Derived banner from real estimate
+  let estimatedBanner = $derived.by(() => {
+    if ($files.length === 0 || $isCompressing || $summary.done > 0) return null;
+    if (!savingsEstimate) return null;
+    const { sampleRatio, filesMayIncrease, totalOriginalBytes } = savingsEstimate;
+    const totalOriginal = totalOriginalBytes;
+    const estimated = Math.round(totalOriginal * sampleRatio);
+    const pct = Math.round((1 - sampleRatio) * 100);
+    const wouldGrow = pct < 0;
+    return {
+      count: $files.length,
+      totalOriginal,
+      estimated,
+      pct,
+      displayPct: Math.abs(pct),
+      wouldGrow,
+      filesMayIncrease,
+    };
+  });
+
   let compareFile = $state<CompressFile | null>(null);
 
   function handleClear() {
@@ -133,6 +185,42 @@
   {#snippet headerSub()}
     {#if $summary.savedBytes > 0}
       <span class="saved-total">Saved {formatBytes($summary.savedBytes)}</span>
+    {/if}
+    {#if $summary.done > 0}
+      <button class="btn-ghost open-folder-btn" onclick={openOutputFolder}>
+        Open output folder
+      </button>
+    {/if}
+  {/snippet}
+
+  {#snippet estimateCard()}
+    {#if $isEstimating}
+      <div class="estimate-card">
+        <div class="estimate-row">
+          <span class="estimate-label">Estimated</span>
+          <span class="estimate-value estimating">Scanning sample files...</span>
+        </div>
+      </div>
+    {:else if estimatedBanner}
+      <div class="estimate-card">
+        <div class="estimate-row">
+          <span class="estimate-label">Estimated</span>
+          <span class="estimate-value">
+            {estimatedBanner.count} files:&nbsp;
+            {formatBytes(estimatedBanner.totalOriginal)}
+            → ~{formatBytes(estimatedBanner.estimated)}
+            <span class="estimate-pct">({estimatedBanner.displayPct}% {estimatedBanner.wouldGrow ? 'larger' : 'smaller'})</span>
+          </span>
+        </div>
+        <div class="estimate-meta">
+          {#if estimatedBanner.filesMayIncrease > 0}
+            <span class="estimate-warn">
+              <AlertCircle size={12} />
+              {estimatedBanner.filesMayIncrease} file{estimatedBanner.filesMayIncrease > 1 ? 's' : ''} may grow
+            </span>
+          {/if}
+        </div>
+      </div>
     {/if}
   {/snippet}
 
@@ -195,7 +283,7 @@
   <div class="control-group">
     <div class="toggle-row">
       <div class="toggle-label">
-        <span class="label">Strip GPS</span>
+        <span class="label">Strip Location</span>
         <span class="control-hint">Remove location data from photos</span>
       </div>
       <ToggleSwitch bind:checked={$stripGps} />
@@ -233,6 +321,69 @@
     transition: color 0.15s;
   }
   .compare-btn:hover { color: var(--accent); }
+
+  .open-folder-btn {
+    margin-left: 8px;
+    font-size: 12px;
+  }
+
+  /* Estimate card — prominent pre-compression savings display */
+  .estimate-card {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 16px;
+    background: var(--accent-subtle);
+    border: 1px solid var(--accent-glow);
+    border-radius: var(--radius-sm);
+  }
+
+  .estimate-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .estimate-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+  }
+
+  .estimate-value {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .estimate-pct {
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .estimate-meta {
+    display: flex;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  .estimate-warn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--warning, #f59e0b);
+  }
+
+  .estimating {
+    color: var(--text-muted);
+    font-style: italic;
+  }
 
   /* .toggle-row, .toggle-label, .control-hint — styled globally in ToolShell */
 </style>

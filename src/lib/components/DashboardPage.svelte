@@ -20,7 +20,6 @@
     convert: "Converted",
     resize: "Resized",
     analyze: "Analyzed",
-    organize: "Organized",
     watermark: "Watermarked",
     rename: "Renamed",
   };
@@ -77,7 +76,7 @@
   <!-- Quick Actions -->
   <div class="section-title">Quick Actions</div>
   <div class="actions-grid">
-    <button class="action-card accent" onclick={() => navigate("tools")}>
+    <button class="action-card accent" onclick={() => navigate("optimize")}>
       <div class="action-icon">
         <Zap size={18} />
       </div>
@@ -87,23 +86,13 @@
       </div>
     </button>
 
-    <button class="action-card" onclick={() => navigate("analyze")}>
+    <button class="action-card" onclick={() => navigate("duplicates")}>
       <div class="action-icon">
         <Search size={18} />
       </div>
       <div class="action-text">
         <span class="action-title">Analyze Folder</span>
         <span class="action-desc">Find duplicates and storage hogs</span>
-      </div>
-    </button>
-
-    <button class="action-card" onclick={() => navigate("organize")}>
-      <div class="action-icon">
-        <Folder size={18} />
-      </div>
-      <div class="action-text">
-        <span class="action-title">Organize Files</span>
-        <span class="action-desc">Sort by date, location, or custom rules</span>
       </div>
     </button>
 

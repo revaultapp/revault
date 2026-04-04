@@ -3,11 +3,9 @@
 
   const titles: Record<string, [string, string]> = {
     dashboard: ["Dashboard", "Overview and quick actions"],
-    tools: ["Tools", "Compress, convert and resize"],
-    analyze: ["Analyze", "Scan your storage"],
-    organize: ["Organize", "Sort and manage files"],
+    optimize: ["Optimize", "Compress, convert and resize"],
+    duplicates: ["Duplicates", "Find duplicate photos"],
     privacy: ["Privacy", "Metadata and sensitive data"],
-    cloud: ["Cloud", "Sync and backup"],
     settings: ["Settings", "Manage your preferences"],
   };
 

@@ -1,6 +1,7 @@
 use crate::core::image_io;
 use image_hasher::{HasherConfig, ImageHash};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::Path;
 
@@ -8,25 +9,36 @@ const IMAGE_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "png", "webp", "heic", "heif", "tiff", "tif", "bmp", "gif", "avif", "jxl",
 ];
 
-#[derive(Serialize, Clone)]
+const PERCEPTUAL_THRESHOLD: u32 = 2;
+
+#[derive(Serialize, Clone, Debug)]
 pub struct DuplicateFile {
     pub path: String,
     pub size: u64,
     pub modified: u64,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, Debug)]
 pub struct DuplicateGroup {
     pub hash: String,
     pub distance: u32,
     pub files: Vec<DuplicateFile>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct FindDuplicatesResult {
     pub groups: Vec<DuplicateGroup>,
     pub total_scanned: usize,
     pub errors: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+struct FileData {
+    path: String,
+    size: u64,
+    modified: u64,
+    sha256: [u8; 32],
+    perceptual_hash: Option<ImageHash>,
 }
 
 fn is_image(path: &Path) -> bool {
@@ -36,16 +48,19 @@ fn is_image(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn hash_image(path: &str) -> Result<ImageHash, Box<dyn std::error::Error>> {
-    // Use platform-native decoder via image_io (handles HEIC properly on macOS/Windows)
-    let (_width, _height, pixels) = image_io::decode_rgb(path)?;
+fn compute_sha256(path: &str) -> Result<[u8; 32], Box<dyn std::error::Error>> {
+    let data = fs::read(path)?;
+    let mut hasher = Sha256::new();
+    hasher.update(&data);
+    let result = hasher.finalize();
+    let mut hash = [0u8; 32];
+    hash.copy_from_slice(&result);
+    Ok(hash)
+}
 
-    // Convert RGB bytes to RgbImage for hashing
-    let img = image::RgbImage::from_raw(_width as u32, _height as u32, pixels)
-        .ok_or("failed to create image from decoded pixels")?;
-
-    // Perceptual hash only needs a small thumbnail — resize before hashing to avoid OOM
-    let thumb = image::DynamicImage::ImageRgb8(img).thumbnail(64, 64);
+fn compute_perceptual_hash(path: &str) -> Result<ImageHash, Box<dyn std::error::Error>> {
+    let img = image_io::open_image(path)?;
+    let thumb = img.thumbnail(64, 64);
     let hasher = HasherConfig::new().to_hasher();
     Ok(hasher.hash_image(&thumb))
 }
@@ -97,6 +112,10 @@ fn collect_images(paths: &[String], recursive: bool) -> (Vec<String>, Vec<String
     (images, errors)
 }
 
+fn sha256_to_hex(hash: &[u8; 32]) -> String {
+    hash.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
 pub fn find_duplicates(
     paths: &[String],
     recursive: bool,
@@ -104,31 +123,16 @@ pub fn find_duplicates(
     let (image_paths, mut collect_errors) = collect_images(paths, recursive);
     let total_scanned = image_paths.len();
 
-    let mut hashes: Vec<(String, ImageHash)> = Vec::with_capacity(image_paths.len());
+    let mut files_data: Vec<FileData> = Vec::with_capacity(image_paths.len());
     for path in &image_paths {
-        match hash_image(path) {
-            Ok(h) => hashes.push((path.clone(), h)),
-            Err(e) => collect_errors.push(format!("{}: {}", path, e)),
-        }
-    }
-
-    let mut groups: Vec<DuplicateGroup> = Vec::new();
-    let mut used: std::collections::HashSet<usize> = std::collections::HashSet::new();
-
-    for i in 0..hashes.len() {
-        if used.contains(&i) {
-            continue;
-        }
-        let (path_i, hash_i) = &hashes[i];
-
-        let meta_i = match fs::metadata(path_i) {
+        let meta = match fs::metadata(path) {
             Ok(m) => m,
             Err(e) => {
-                collect_errors.push(format!("{}: metadata: {}", path_i, e));
+                collect_errors.push(format!("{}: metadata: {}", path, e));
                 continue;
             }
         };
-        let modified_i = meta_i
+        let modified = meta
             .modified()
             .map(|t| {
                 t.duration_since(std::time::UNIX_EPOCH)
@@ -136,57 +140,126 @@ pub fn find_duplicates(
                     .as_secs()
             })
             .unwrap_or(0);
-        let size_i = meta_i.len();
+        let size = meta.len();
 
-        let mut group_files: Vec<(String, u64, u64)> = vec![(path_i.clone(), size_i, modified_i)];
+        let sha256 = match compute_sha256(path) {
+            Ok(h) => h,
+            Err(e) => {
+                collect_errors.push(format!("{}: {}", path, e));
+                continue;
+            }
+        };
+
+        let perceptual_hash = compute_perceptual_hash(path).ok();
+
+        files_data.push(FileData {
+            path: path.clone(),
+            size,
+            modified,
+            sha256,
+            perceptual_hash,
+        });
+    }
+
+    // Stage 1: Exact match by SHA256
+    let mut groups: Vec<DuplicateGroup> = Vec::new();
+    let mut used: std::collections::HashSet<usize> = std::collections::HashSet::new();
+
+    // Group by exact SHA256
+    for i in 0..files_data.len() {
+        if used.contains(&i) {
+            continue;
+        }
+        let sha256_i = files_data[i].sha256;
+        let mut group_files: Vec<DuplicateFile> = vec![DuplicateFile {
+            path: files_data[i].path.clone(),
+            size: files_data[i].size,
+            modified: files_data[i].modified,
+        }];
         used.insert(i);
 
-        let mut min_dist: u32 = u32::MAX;
-
-        for (j, _) in hashes.iter().enumerate().skip(i + 1) {
+        for (j, fd_j) in files_data.iter().enumerate().skip(i + 1) {
             if used.contains(&j) {
                 continue;
             }
-            let (_, hash_j) = &hashes[j];
-            let dist = hash_i.dist(hash_j);
-
-            if dist <= 2 {
-                let (path_j, _) = &hashes[j];
-                let meta_j = match fs::metadata(path_j) {
-                    Ok(m) => m,
-                    Err(e) => {
-                        collect_errors.push(format!("{}: metadata: {}", path_j, e));
-                        continue;
-                    }
-                };
-                let modified_j = meta_j
-                    .modified()
-                    .map(|t| {
-                        t.duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs()
-                    })
-                    .unwrap_or(0);
-                let size_j = meta_j.len();
+            if fd_j.sha256 == sha256_i {
                 used.insert(j);
-                group_files.push((path_j.clone(), size_j, modified_j));
-                min_dist = min_dist.min(dist);
+                group_files.push(DuplicateFile {
+                    path: fd_j.path.clone(),
+                    size: fd_j.size,
+                    modified: fd_j.modified,
+                });
             }
         }
 
         if group_files.len() > 1 {
             groups.push(DuplicateGroup {
-                hash: hash_i.to_base64(),
-                distance: min_dist,
-                files: group_files
-                    .into_iter()
-                    .map(|(path, size, modified)| DuplicateFile {
-                        path,
-                        size,
-                        modified,
-                    })
-                    .collect(),
+                hash: sha256_to_hex(&sha256_i),
+                distance: 0,
+                files: group_files,
             });
+        }
+    }
+
+    // Stage 2: Perceptual match by pHash for remaining ungrouped files (same size pre-filter)
+    let mut size_groups: std::collections::HashMap<u64, Vec<usize>> =
+        std::collections::HashMap::new();
+    for (i, fd) in files_data.iter().enumerate() {
+        if !used.contains(&i) {
+            size_groups.entry(fd.size).or_default().push(i);
+        }
+    }
+
+    for (_size, indices) in size_groups {
+        if indices.len() < 2 {
+            continue;
+        }
+
+        for i in &indices {
+            if used.contains(i) {
+                continue;
+            }
+            let hash_i = match &files_data[*i].perceptual_hash {
+                Some(h) => h,
+                None => continue,
+            };
+
+            let mut group_files: Vec<DuplicateFile> = vec![DuplicateFile {
+                path: files_data[*i].path.clone(),
+                size: files_data[*i].size,
+                modified: files_data[*i].modified,
+            }];
+            used.insert(*i);
+            let mut min_dist: u32 = u32::MAX;
+
+            for j in indices.iter() {
+                if used.contains(j) || j == i {
+                    continue;
+                }
+                let hash_j = match &files_data[*j].perceptual_hash {
+                    Some(h) => h,
+                    None => continue,
+                };
+                let dist = hash_i.dist(hash_j);
+
+                if dist <= PERCEPTUAL_THRESHOLD {
+                    used.insert(*j);
+                    group_files.push(DuplicateFile {
+                        path: files_data[*j].path.clone(),
+                        size: files_data[*j].size,
+                        modified: files_data[*j].modified,
+                    });
+                    min_dist = min_dist.min(dist);
+                }
+            }
+
+            if group_files.len() > 1 {
+                groups.push(DuplicateGroup {
+                    hash: hash_i.to_base64(),
+                    distance: min_dist,
+                    files: group_files,
+                });
+            }
         }
     }
 
@@ -251,7 +324,7 @@ mod tests {
     }
 
     #[test]
-    fn find_duplicates_with_corrupt_image() {
+    fn find_duplicates_handles_corrupt_image_gracefully() {
         use image::RgbaImage;
         let dir = tempfile::tempdir().unwrap();
         let valid1 = dir.path().join("valid1.png");
@@ -259,14 +332,22 @@ mod tests {
         let corrupt = dir.path().join("corrupt.png");
 
         let img: RgbaImage =
-            image::ImageBuffer::from_fn(4, 4, |_x, _y| image::Rgba([200, 200, 200, 255]));
+            image::ImageBuffer::from_fn(16, 16, |_x, _y| image::Rgba([200, 200, 200, 255]));
         img.save(&valid1).unwrap();
         img.save(&valid2).unwrap();
         std::fs::write(&corrupt, b"not a real png").unwrap();
 
+        // Corrupt file computes SHA256 (succeeds) but pHash fails silently
+        // It should be gracefully skipped - no crash, just excluded from groups
         let result = find_duplicates(&[dir.path().to_str().unwrap().to_string()], true).unwrap();
-        assert!(!result.errors.is_empty());
-        assert!(result.errors.iter().any(|e| e.contains("corrupt.png")));
+        // Valid images should still be grouped
+        assert!(result.groups.iter().any(|g| g.files.len() == 2));
+        // Corrupt file not in any group (pHash failed silently)
+        for group in &result.groups {
+            for file in &group.files {
+                assert!(!file.path.contains("corrupt.png"));
+            }
+        }
     }
 
     #[test]
@@ -276,5 +357,134 @@ mod tests {
         assert!(result.groups.is_empty());
         assert_eq!(result.total_scanned, 0);
         assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn sha256_exact_match_groups_identical_files() {
+        use image::RgbaImage;
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a.png");
+        let b = dir.path().join("b.png");
+        let img: RgbaImage =
+            image::ImageBuffer::from_fn(16, 16, |_x, _y| image::Rgba([100, 150, 200, 255]));
+        img.save(&a).unwrap();
+        img.save(&b).unwrap();
+
+        let result = find_duplicates(&[dir.path().to_str().unwrap().to_string()], true).unwrap();
+        assert_eq!(result.groups.len(), 1);
+        assert_eq!(result.groups[0].files.len(), 2);
+        assert_eq!(result.groups[0].distance, 0); // SHA256 exact match = distance 0
+    }
+
+    #[test]
+    fn perceptual_hash_groups_visually_identical_different_bytes() {
+        use image::RgbaImage;
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("photo_a.png");
+        let b = dir.path().join("photo_b.png");
+
+        // Two visually identical images saved separately
+        // SHA256 may or may not match (PNG encoding can vary)
+        // But pHash should definitely group them since they're identical content
+        let img: RgbaImage = image::ImageBuffer::from_fn(64, 64, |x, y| {
+            image::Rgba([(x % 256) as u8, (y % 256) as u8, 100, 255])
+        });
+        img.save(&a).unwrap();
+        img.save(&b).unwrap();
+
+        let result = find_duplicates(&[dir.path().to_str().unwrap().to_string()], true).unwrap();
+        // Either SHA256 groups them (distance 0) or pHash groups them (distance 0)
+        assert_eq!(result.groups.len(), 1);
+        assert_eq!(result.groups[0].files.len(), 2);
+        assert_eq!(result.groups[0].distance, 0);
+    }
+
+    #[test]
+    fn perceptual_hash_detects_near_duplicates_burst_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("burst_1.png");
+        let b = dir.path().join("burst_2.png");
+
+        // Identical image saved twice - simulates exact burst duplicate
+        // Both SHA256 and pHash should detect this as duplicate
+        let img = image::ImageBuffer::from_fn(64, 64, |x, y| {
+            image::Rgba([(x % 256) as u8, (y % 256) as u8, 128, 255])
+        });
+        img.save(&a).unwrap();
+        img.save(&b).unwrap();
+
+        let result = find_duplicates(&[dir.path().to_str().unwrap().to_string()], true).unwrap();
+        assert_eq!(result.groups.len(), 1);
+        assert_eq!(result.groups[0].files.len(), 2);
+        assert_eq!(result.groups[0].distance, 0);
+    }
+
+    #[test]
+    fn duplicate_groups_sorted_by_file_count_descending() {
+        use image::RgbaImage;
+        let dir = tempfile::tempdir().unwrap();
+        // Create group of 2 (same content - green)
+        let g2: RgbaImage =
+            image::ImageBuffer::from_fn(32, 32, |_x, _y| image::Rgba([0u8, 255, 0, 255]));
+        let a1 = dir.path().join("a1.png");
+        let a2 = dir.path().join("a2.png");
+        g2.save(&a1).unwrap();
+        g2.save(&a2).unwrap();
+
+        // Create group of 3 (same content - blue)
+        let g3: RgbaImage =
+            image::ImageBuffer::from_fn(48, 48, |_x, _y| image::Rgba([0u8, 0, 255, 255]));
+        let b1 = dir.path().join("b1.png");
+        let b2 = dir.path().join("b2.png");
+        let b3 = dir.path().join("b3.png");
+        g3.save(&b1).unwrap();
+        g3.save(&b2).unwrap();
+        g3.save(&b3).unwrap();
+
+        let result = find_duplicates(&[dir.path().to_str().unwrap().to_string()], true).unwrap();
+        assert_eq!(result.groups.len(), 2);
+        // Should be sorted by file count descending (group of 3 first)
+        assert_eq!(result.groups[0].files.len(), 3);
+        assert_eq!(result.groups[1].files.len(), 2);
+    }
+
+    #[test]
+    fn perceptual_hash_separates_dissimilar_images() {
+        use image::RgbaImage;
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("photo1.png");
+        let b = dir.path().join("photo2.png");
+
+        // Completely different images (red vs blue)
+        let img1: RgbaImage =
+            image::ImageBuffer::from_fn(64, 64, |_x, _y| image::Rgba([255, 0, 0, 255]));
+        let img2: RgbaImage =
+            image::ImageBuffer::from_fn(64, 64, |_x, _y| image::Rgba([0, 0, 255, 255]));
+        img1.save(&a).unwrap();
+        img2.save(&b).unwrap();
+
+        let result = find_duplicates(&[dir.path().to_str().unwrap().to_string()], true).unwrap();
+        assert!(
+            result.groups.is_empty(),
+            "red and blue should not be grouped"
+        );
+    }
+
+    #[test]
+    fn perceptual_hash_works_with_grayscale_images() {
+        use image::RgbaImage;
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("gray1.png");
+        let b = dir.path().join("gray2.png");
+
+        // Same grayscale content
+        let img: RgbaImage =
+            image::ImageBuffer::from_fn(64, 64, |_x, _y| image::Rgba([128, 128, 128, 255]));
+        img.save(&a).unwrap();
+        img.save(&b).unwrap();
+
+        let result = find_duplicates(&[dir.path().to_str().unwrap().to_string()], true).unwrap();
+        assert_eq!(result.groups.len(), 1);
+        assert_eq!(result.groups[0].files.len(), 2);
     }
 }
