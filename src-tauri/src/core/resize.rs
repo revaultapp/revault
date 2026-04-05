@@ -123,7 +123,7 @@ pub fn resize_image(
             buf.into_inner()
         }
         OutputFormat::Webp => encode_webp_bytes(&resized, quality)?,
-        OutputFormat::Avif => encode_avif_bytes(&resized, quality)?,
+        OutputFormat::Avif => encode_avif_bytes(&resized, quality, 5)?,
     };
 
     if strip_gps {

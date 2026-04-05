@@ -20,7 +20,7 @@ serde = { version = "1", features = ["derive"] }
 mozjpeg = { version = "0.10", default-features = false }
 # image["avif"] enables AVIF *decoding* via open_image(); ravif is used for *encoding*
 image = { version = "0.25", features = ["avif"] }
-oxipng = "10"
+oxipng = { version = "10", features = ["zopfli", "parallel"] }
 webp = "0.3"
 ravif = "0.13"
 jxl-oxide = "0.12"

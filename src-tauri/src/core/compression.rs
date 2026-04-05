@@ -109,11 +109,11 @@ impl QualityPreset {
             QualityPreset::HighQuality => 80.0,
         }
     }
-    fn oxipng_preset(self) -> u8 {
+    fn avif_speed(self) -> u8 {
         match self {
-            QualityPreset::Smallest => 0,
-            QualityPreset::Balanced => 2,
-            QualityPreset::HighQuality => 6,
+            QualityPreset::Smallest => 2,
+            QualityPreset::Balanced => 5,
+            QualityPreset::HighQuality => 1,
         }
     }
 }
@@ -197,6 +197,12 @@ fn encode_jpeg_bytes_inner(
         let mut cinfo = mozjpeg::Compress::new(mozjpeg::ColorSpace::JCS_RGB);
         cinfo.set_size(width, height);
         cinfo.set_quality(quality);
+        cinfo.set_optimize_coding(true);
+        cinfo.set_use_scans_in_trellis(true);
+        cinfo.set_progressive_mode();
+        if quality >= 80.0 {
+            cinfo.set_optimize_scans(true);
+        }
         if !progressive {
             cinfo.set_optimize_scans(false);
         }
@@ -214,7 +220,13 @@ pub(crate) fn encode_webp_bytes(
     let encoder = webp::Encoder::from_image(img)?;
     let mut config = webp::WebPConfig::new().map_err(|_| "failed to create WebP config")?;
     config.quality = quality;
-    config.method = 0;
+    config.method = 6;
+    config.sns_strength = match quality {
+        40.0 => 80, // Smallest
+        72.0 => 60, // Balanced
+        85.0 => 40, // HighQuality
+        _ => 60,
+    };
     let memory = encoder
         .encode_advanced(&config)
         .map_err(|e| format!("webp encoding failed: {e:?}"))?;
@@ -224,6 +236,7 @@ pub(crate) fn encode_webp_bytes(
 pub(crate) fn encode_avif_bytes(
     img: &image::DynamicImage,
     quality: f32,
+    speed: u8,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let rgba = img.to_rgba8();
     let (w, h) = (rgba.width() as usize, rgba.height() as usize);
@@ -231,7 +244,6 @@ pub(crate) fn encode_avif_bytes(
     for chunk in rgba.as_raw().chunks_exact(4) {
         pixels.push(ravif::RGBA8::new(chunk[0], chunk[1], chunk[2], chunk[3]));
     }
-    let speed = 6;
     let encoded = ravif::Encoder::new()
         .with_quality(quality)
         .with_speed(speed)
@@ -417,16 +429,22 @@ pub fn compress_jpeg(
 pub fn compress_png(
     input_path: &str,
     output_path: &str,
-    preset: QualityPreset,
 ) -> Result<CompressionResult, Box<dyn std::error::Error>> {
     let original_size = checked_size(input_path)?;
-    let oxipng_preset = preset.oxipng_preset();
 
     let (compressed, width, height) = if matches!(ext_lowercase(input_path).as_deref(), Some("png"))
     {
         let img = open_image(input_path)?;
         let (w, h) = (img.width(), img.height());
-        let mut opts = oxipng::Options::from_preset(oxipng_preset);
+        let mut opts = oxipng::Options {
+            deflater: oxipng::Deflater::Zopfli(oxipng::ZopfliOptions {
+                iteration_count: std::num::NonZeroU64::new(15).unwrap(),
+                ..Default::default()
+            }),
+            optimize_alpha: true,
+            strip: oxipng::StripChunks::None,
+            ..Default::default()
+        };
         opts.force = true;
         // Use memory-mapped read for large PNG files (>10MB)
         let png_data = read_file_mmap_or_default(input_path)
@@ -479,13 +497,13 @@ pub fn compress_webp(
 pub fn compress_avif(
     input_path: &str,
     output_path: &str,
-    quality: f32,
+    preset: QualityPreset,
 ) -> Result<CompressionResult, Box<dyn std::error::Error>> {
-    let quality = quality.clamp(0.0, 100.0);
+    let quality = preset.avif_quality();
     let original_size = checked_size(input_path)?;
     let img = open_image(input_path)?;
     let (w, h) = (img.width(), img.height());
-    let compressed = encode_avif_bytes(&img, quality)?;
+    let compressed = encode_avif_bytes(&img, quality, preset.avif_speed())?;
     let warning = gather_warnings(
         input_path,
         output_path,
@@ -505,9 +523,9 @@ pub fn compress_image(
 ) -> Result<CompressionResult, Box<dyn std::error::Error>> {
     match format {
         OutputFormat::Jpeg => compress_jpeg(input_path, output_path, preset.jpeg_quality()),
-        OutputFormat::Png => compress_png(input_path, output_path, preset),
+        OutputFormat::Png => compress_png(input_path, output_path),
         OutputFormat::Webp => compress_webp(input_path, output_path, preset.webp_quality()),
-        OutputFormat::Avif => compress_avif(input_path, output_path, preset.avif_quality()),
+        OutputFormat::Avif => compress_avif(input_path, output_path, preset),
     }
 }
 
@@ -678,12 +696,7 @@ mod tests {
         create_test_png(input.to_str().unwrap(), 200, 200);
         let original_size = fs::metadata(&input).unwrap().len();
 
-        let result = compress_png(
-            input.to_str().unwrap(),
-            output.to_str().unwrap(),
-            QualityPreset::Balanced,
-        )
-        .unwrap();
+        let result = compress_png(input.to_str().unwrap(), output.to_str().unwrap()).unwrap();
 
         assert!(output.exists());
         assert_eq!(result.original_size, original_size);
@@ -737,12 +750,7 @@ mod tests {
         let output = dir.path().join("photo_out.png");
 
         create_test_jpeg(input.to_str().unwrap(), 100, 100, 90.0);
-        let result = compress_png(
-            input.to_str().unwrap(),
-            output.to_str().unwrap(),
-            QualityPreset::Balanced,
-        )
-        .unwrap();
+        let result = compress_png(input.to_str().unwrap(), output.to_str().unwrap()).unwrap();
 
         assert!(result.compressed_size > 0);
         let header = &fs::read(&output).unwrap()[..4];
@@ -757,8 +765,12 @@ mod tests {
 
         create_test_png(input.to_str().unwrap(), 200, 200);
 
-        let result =
-            compress_avif(input.to_str().unwrap(), output.to_str().unwrap(), 75.0).unwrap();
+        let result = compress_avif(
+            input.to_str().unwrap(),
+            output.to_str().unwrap(),
+            QualityPreset::Balanced,
+        )
+        .unwrap();
 
         assert!(output.exists());
         assert!(result.compressed_size > 0);
@@ -829,12 +841,7 @@ mod tests {
         let output = dir.path().join("test_out.png");
 
         create_test_png(input.to_str().unwrap(), 200, 200);
-        let result = compress_png(
-            input.to_str().unwrap(),
-            output.to_str().unwrap(),
-            QualityPreset::Balanced,
-        )
-        .unwrap();
+        let result = compress_png(input.to_str().unwrap(), output.to_str().unwrap()).unwrap();
 
         assert!(result.warning.is_some());
         assert!(result
@@ -994,12 +1001,7 @@ mod tests {
         let output = dir.path().join("test_out.png");
 
         create_test_png(input.to_str().unwrap(), 200, 200);
-        let result = compress_png(
-            input.to_str().unwrap(),
-            output.to_str().unwrap(),
-            QualityPreset::Balanced,
-        )
-        .unwrap();
+        let result = compress_png(input.to_str().unwrap(), output.to_str().unwrap()).unwrap();
 
         // PNG shouldn't trigger "already highly compressed" warning
         assert!(result.warning.is_some());

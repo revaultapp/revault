@@ -1,5 +1,5 @@
 use crate::core::image_io;
-use image_hasher::{HasherConfig, ImageHash};
+use image_hasher::{HashAlg, HasherConfig, ImageHash};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -9,7 +9,8 @@ const IMAGE_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "png", "webp", "heic", "heif", "tiff", "tif", "bmp", "gif", "avif", "jxl",
 ];
 
-const PERCEPTUAL_THRESHOLD: u32 = 2;
+const HASH_SIZE: u32 = 16;
+const PERCEPTUAL_THRESHOLD: u32 = 10;
 
 #[derive(Serialize, Clone, Debug)]
 pub struct DuplicateFile {
@@ -60,9 +61,12 @@ fn compute_sha256(path: &str) -> Result<[u8; 32], Box<dyn std::error::Error>> {
 
 fn compute_perceptual_hash(path: &str) -> Result<ImageHash, Box<dyn std::error::Error>> {
     let img = image_io::open_image(path)?;
-    let thumb = img.thumbnail(64, 64);
-    let hasher = HasherConfig::new().to_hasher();
-    Ok(hasher.hash_image(&thumb))
+    let resized = img.resize_exact(256, 256, image::imageops::FilterType::Lanczos3);
+    let hasher = HasherConfig::new()
+        .hash_size(HASH_SIZE, HASH_SIZE)
+        .hash_alg(HashAlg::DoubleGradient)
+        .to_hasher();
+    Ok(hasher.hash_image(&resized))
 }
 
 fn collect_images_recursive(
