@@ -483,7 +483,7 @@
   }
 
   .dup-file.original {
-    background: rgba(16, 185, 129, 0.04);
+    background: rgba(16, 216, 122, 0.04);
   }
 
   .dup-file.deleted {

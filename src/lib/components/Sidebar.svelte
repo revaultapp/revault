@@ -20,7 +20,7 @@
 <aside class="sidebar">
   <div class="sidebar-inner">
     <div class="logo-row">
-      <img class="logo-icon" src="/logo.png" alt="Revault" />
+      <img class="logo-icon" src="/logo2.png" alt="Revault" />
       <span class="logo-text">Revault</span>
     </div>
 
@@ -63,7 +63,7 @@
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
-    background: var(--bg-card);
+    background: #0c0f0e;
   }
 
   .sidebar-inner {
@@ -87,10 +87,11 @@
     height: 34px;
     border-radius: var(--radius-sm);
     flex-shrink: 0;
+    mix-blend-mode: lighten;
   }
 
   .logo-text {
-    color: var(--text-primary);
+    color: #e4e8e6;
     font-size: 18px;
     font-weight: 700;
     letter-spacing: -0.02em;
@@ -107,9 +108,9 @@
     align-items: center;
     gap: 12px;
     height: 40px;
-    padding: 0 14px;
+    padding: 0 14px 0 8px;
     border-radius: var(--radius-sm);
-    color: var(--text-muted);
+    color: #5a6b63;
     font-size: 13.5px;
     font-weight: 500;
     transition: background 0.15s, color 0.15s;
@@ -120,16 +121,16 @@
   }
 
   .nav-item span {
-    color: var(--text-muted);
+    color: #5a6b63;
   }
 
   .nav-item:hover {
     background: rgba(255, 255, 255, 0.05);
-    color: var(--text-muted);
+    color: #5a6b63;
   }
 
   .nav-item:hover span {
-    color: var(--text-muted);
+    color: #5a6b63;
   }
 
   .nav-item.active {
@@ -137,11 +138,11 @@
     color: var(--accent);
     border-radius: 10px;
     gap: 10px;
-    padding: 0 12px;
+    padding: 0 12px 0 6px;
   }
 
   .nav-item.active span {
-    color: var(--text-primary);
+    color: #e4e8e6;
     font-weight: 600;
   }
 
@@ -160,7 +161,7 @@
   .divider {
     height: 1px;
     margin: 16px 0;
-    background: var(--border);
+    background: #1e2824;
   }
 
   .saved-badge {
@@ -171,8 +172,8 @@
     height: 40px;
     padding: 0 12px;
     border-radius: 10px;
-    background: linear-gradient(90deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.08));
-    border: 1px solid rgba(16, 185, 129, 0.19);
+    background: linear-gradient(90deg, rgba(16, 216, 122, 0.12), rgba(14, 207, 116, 0.06));
+    border: 1px solid rgba(16, 216, 122, 0.16);
     color: var(--accent);
     font-size: 12.5px;
     font-weight: 600;

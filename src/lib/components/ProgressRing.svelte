@@ -69,17 +69,17 @@
   }
 
   .circle-wrap svg {
-    filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.25));
+    filter: drop-shadow(0 0 10px rgba(16, 216, 122, 0.25));
     animation: glow-pulse 2.5s ease-in-out infinite;
   }
 
   .arc {
-    filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.5));
+    filter: drop-shadow(0 0 4px rgba(16, 216, 122, 0.5));
   }
 
   @keyframes glow-pulse {
-    0%, 100% { filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.2)); }
-    50% { filter: drop-shadow(0 0 16px rgba(16, 185, 129, 0.45)); }
+    0%, 100% { filter: drop-shadow(0 0 8px rgba(16, 216, 122, 0.2)); }
+    50% { filter: drop-shadow(0 0 16px rgba(16, 216, 122, 0.45)); }
   }
 
   .pct {
