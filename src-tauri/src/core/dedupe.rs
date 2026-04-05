@@ -116,6 +116,7 @@ fn sha256_to_hex(hash: &[u8; 32]) -> String {
     hash.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
+#[allow(dead_code)]
 pub fn find_duplicates(
     paths: &[String],
     recursive: bool,
@@ -173,7 +174,7 @@ where
         });
         let progress = idx + 1;
         if progress % 10 == 0 || progress == total {
-            let _ = on_progress(progress, total, "hashing");
+            on_progress(progress, total, "hashing");
         }
     }
 
@@ -218,7 +219,7 @@ where
     }
 
     // Stage 2: Perceptual match by pHash for remaining ungrouped files (same size pre-filter)
-    let _ = on_progress(total, total, "grouping");
+    on_progress(total, total, "grouping");
     let mut size_groups: std::collections::HashMap<u64, Vec<usize>> =
         std::collections::HashMap::new();
     for (i, fd) in files_data.iter().enumerate() {

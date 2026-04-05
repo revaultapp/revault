@@ -175,7 +175,7 @@ fn decode_input_rgb(
     jpeg_result.map_or_else(|| decode_rgb(input_path), Ok)
 }
 
-pub(crate) fn encode_jpeg_bytes(
+pub fn encode_jpeg_bytes(
     width: usize,
     height: usize,
     pixels: &[u8],

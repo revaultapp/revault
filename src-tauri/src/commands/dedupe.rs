@@ -17,7 +17,14 @@ pub async fn find_duplicates(
     let app_clone = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         dedupe::find_duplicates_with_progress(&paths, recursive, move |current, total, phase| {
-            let _ = app_clone.emit("dedupe-progress", ScanProgress { current, total, phase: phase.to_string() });
+            let _ = app_clone.emit(
+                "dedupe-progress",
+                ScanProgress {
+                    current,
+                    total,
+                    phase: phase.to_string(),
+                },
+            );
         })
         .map_err(|e| e.to_string())
     })
