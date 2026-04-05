@@ -120,11 +120,23 @@ pub fn find_duplicates(
     paths: &[String],
     recursive: bool,
 ) -> Result<FindDuplicatesResult, Box<dyn std::error::Error>> {
+    find_duplicates_with_progress(paths, recursive, |_, _, _| {})
+}
+
+pub fn find_duplicates_with_progress<F>(
+    paths: &[String],
+    recursive: bool,
+    mut on_progress: F,
+) -> Result<FindDuplicatesResult, Box<dyn std::error::Error>>
+where
+    F: FnMut(usize, usize, &str),
+{
     let (image_paths, mut collect_errors) = collect_images(paths, recursive);
+    let total = image_paths.len();
     let total_scanned = image_paths.len();
 
     let mut files_data: Vec<FileData> = Vec::with_capacity(image_paths.len());
-    for path in &image_paths {
+    for (idx, path) in image_paths.iter().enumerate() {
         let meta = match fs::metadata(path) {
             Ok(m) => m,
             Err(e) => {
@@ -159,6 +171,10 @@ pub fn find_duplicates(
             sha256,
             perceptual_hash,
         });
+        let progress = idx + 1;
+        if progress % 10 == 0 || progress == total {
+            let _ = on_progress(progress, total, "hashing");
+        }
     }
 
     // Stage 1: Exact match by SHA256
@@ -202,6 +218,7 @@ pub fn find_duplicates(
     }
 
     // Stage 2: Perceptual match by pHash for remaining ungrouped files (same size pre-filter)
+    let _ = on_progress(total, total, "grouping");
     let mut size_groups: std::collections::HashMap<u64, Vec<usize>> =
         std::collections::HashMap::new();
     for (i, fd) in files_data.iter().enumerate() {

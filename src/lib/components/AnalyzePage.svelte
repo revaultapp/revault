@@ -6,7 +6,7 @@
   import { Trash2, FolderOpen, Search, ChevronDown, ChevronRight, FolderSearch } from "lucide-svelte";
   import ProgressRing from "./ProgressRing.svelte";
   import Button from "./Button.svelte";
-  import { duplicateGroups, isScanning, totalFound, scanError, scanForDuplicates, clearResults } from "$lib/stores/dedupe";
+  import { duplicateGroups, isScanning, totalFound, scanError, scanForDuplicates, clearResults, scanProgress } from "$lib/stores/dedupe";
   import { formatBytes } from "$lib/utils";
   import { activity } from "$lib/stores/activity";
 
@@ -51,6 +51,16 @@
 
   let visibleFileCount = $derived(
     visibleGroups.reduce((acc, g) => acc + g.files.length, 0)
+  );
+
+  let progressPct = $derived(
+    $scanProgress && $scanProgress.total > 0
+      ? Math.round(($scanProgress.current / $scanProgress.total) * 100)
+      : 0
+  );
+
+  let ringPct = $derived(
+    $scanProgress?.phase === "grouping" ? 100 : progressPct
   );
 
   async function browseFolders() {
@@ -131,9 +141,11 @@
 {:else if $isScanning}
   <div class="scanning-view">
     <ProgressRing
-      targetPct={100}
-      label="Scanning for duplicates..."
-      sublabel={`${selectedFolders.length} folder${selectedFolders.length > 1 ? "s" : ""} · ${$duplicateGroups.length} groups found`}
+      targetPct={ringPct}
+      label={$scanProgress?.phase === "grouping" ? "Grouping duplicates..." : "Scanning files..."}
+      sublabel={$scanProgress
+        ? `${$scanProgress.current} / ${$scanProgress.total} files`
+        : `${selectedFolders.length} folder${selectedFolders.length > 1 ? "s" : ""}`}
     />
   </div>
 {:else if $duplicateGroups.length === 0}
