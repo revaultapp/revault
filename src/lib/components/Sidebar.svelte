@@ -1,7 +1,7 @@
 <script lang="ts">
   import {
     Compass, Zap, ScanSearch,
-    Shield,
+    Shield, Film,
     Settings, Database
   } from "lucide-svelte";
   import { activePage } from "$lib/stores/nav";
@@ -14,6 +14,7 @@
     { icon: Zap, id: "optimize", label: "Optimize" },
     { icon: ScanSearch, id: "duplicates", label: "Duplicates" },
     { icon: Shield, id: "privacy", label: "Privacy" },
+    { icon: Film, id: "video", label: "Video" },
   ];
 </script>
 

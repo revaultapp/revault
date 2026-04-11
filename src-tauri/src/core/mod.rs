@@ -5,3 +5,4 @@ pub mod image_io;
 pub mod privacy;
 pub mod resize;
 pub mod scanner;
+pub mod video;

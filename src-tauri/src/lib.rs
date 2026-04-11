@@ -35,6 +35,10 @@ pub fn run() {
             commands::scanner::scan_folder,
             commands::thumbnail::generate_thumbnail,
             commands::thumbnail::get_file_sizes,
+            commands::video::compress_video,
+            commands::video::cancel_video_compress,
+            commands::video::check_ffmpeg,
+            commands::video::download_ffmpeg,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
