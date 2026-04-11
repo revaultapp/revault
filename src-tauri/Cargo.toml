@@ -38,6 +38,7 @@ memmap2 = "0.9"
 trash = "5"
 ffmpeg-sidecar = "2.5"
 which = "8"
+dirs = "6"
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"
 core-graphics = "0.25"

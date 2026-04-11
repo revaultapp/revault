@@ -1,6 +1,8 @@
-import { writable, derived } from "svelte/store";
+import { writable, derived, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { activity } from "./activity";
+import { savings } from "./savings";
 
 // ── FFmpeg availability ───────────────────────────────────────────────────────
 
@@ -53,7 +55,7 @@ export async function downloadFfmpeg(): Promise<void> {
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-export type VideoPreset = "Email" | "Web" | "Archive" | "HighQuality";
+export type VideoPreset = "Smallest" | "Balanced" | "HighQuality";
 
 export type VideoFileStatus = "idle" | "compressing" | "done" | "error" | "cancelled";
 
@@ -104,7 +106,8 @@ function persisted<T>(key: string, initial: T) {
 // ── Stores ─────────────────────────────────────────────────────────────────────
 
 export const videoFiles = writable<VideoFile[]>([]);
-export const videoPreset = persisted<VideoPreset>("video_preset", "Web");
+export const videoPreset = persisted<VideoPreset>("video_preset", "Balanced");
+export const videoOutputDir = persisted<string | null>("video_output_dir", null);
 export const isCompressing = writable(false);
 export const activeUnlisten = writable<UnlistenFn | null>(null);
 
@@ -128,7 +131,7 @@ export const videoSummary = derived(videoFiles, ($files) => {
 
 // ── Actions ────────────────────────────────────────────────────────────────────
 
-export function addVideoFiles(paths: string[]): void {
+export async function addVideoFiles(paths: string[]): Promise<void> {
   videoFiles.update((current) => {
     const existing = new Set(current.map((f) => f.path));
     const newFiles: VideoFile[] = paths
@@ -144,6 +147,20 @@ export function addVideoFiles(paths: string[]): void {
       }));
     return [...current, ...newFiles];
   });
+
+  // Fetch real file sizes in batch and backfill
+  try {
+    const sizes = await invoke<number[]>("get_file_sizes", { paths });
+    videoFiles.update((all) =>
+      all.map((f) => {
+        const idx = paths.indexOf(f.path);
+        if (idx === -1) return f;
+        return { ...f, originalSize: sizes[idx] ?? 0 };
+      })
+    );
+  } catch {
+    // non-fatal — originalSize stays 0 and will be updated from result
+  }
 }
 
 export function removeVideoFile(path: string): void {
@@ -155,9 +172,25 @@ export function clearVideoFiles(): void {
   isCompressing.set(false);
 }
 
+export function resetVideoFilesToIdle(): void {
+  videoFiles.update((files) =>
+    files.map((f) => ({
+      ...f,
+      status: "idle" as const,
+      progress: 0,
+      fps: 0,
+      speed: 0,
+      compressedSize: undefined,
+      outputPath: undefined,
+      error: undefined,
+    }))
+  );
+}
+
 export async function compressVideoFile(
   file: VideoFile,
-  preset: VideoPreset
+  preset: VideoPreset,
+  outputDir: string | null
 ): Promise<void> {
   isCompressing.set(true);
 
@@ -190,25 +223,43 @@ export async function compressVideoFile(
     const result = await invoke<VideoCompressionResult>("compress_video", {
       input: file.path,
       preset,
+      outputDir: outputDir ?? null,
     });
+
+    const isWarning = result.error?.includes("Output was larger") ?? false;
+    const succeeded = !result.error || isWarning;
 
     videoFiles.update((all) =>
       all.map((f) =>
         f.path === result.input_path
           ? {
               ...f,
-              status: result.error ? ("error" as const) : ("done" as const),
+              status: (result.error && !isWarning ? "error" : "done") as VideoFileStatus,
               compressedSize: result.compressed_size,
               outputPath: result.output_path,
               originalSize: result.original_size,
-              error: result.error ?? undefined,
-              progress: result.error ? f.progress : 100,
+              error: isWarning ? undefined : (result.error ?? undefined),
+              progress: succeeded ? 100 : f.progress,
             }
           : f
       )
     );
+
+    if (succeeded) {
+      const savedBytes = result.original_size - result.compressed_size;
+      activity.add({ type: "video", fileCount: 1, savedBytes: Math.max(0, savedBytes) });
+      if (savedBytes > 0) {
+        savings.add(savedBytes);
+        savings.incrementOps(1);
+        savings.addOriginalBytes(result.original_size);
+        savings.addCompressedBytes(result.compressed_size);
+      }
+    }
   } catch (err) {
-    const msg = String(err);
+    let msg = String(err);
+    if (msg.includes("os error 2") || msg.includes("No such file")) {
+      msg = `File not found: ${file.path}`;
+    }
     const isCancelled = msg.includes("cancelled");
     videoFiles.update((all) =>
       all.map((f) =>
@@ -230,4 +281,8 @@ export async function compressVideoFile(
 
 export async function cancelCompression(): Promise<void> {
   await invoke("cancel_video_compress");
+}
+
+export async function revealVideoOutput(outputPath: string): Promise<void> {
+  await invoke("reveal_video_output", { path: outputPath });
 }

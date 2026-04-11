@@ -4258,6 +4258,7 @@ dependencies = [
  "base64 0.22.1",
  "core-foundation",
  "core-graphics",
+ "dirs",
  "fast_image_resize",
  "ffmpeg-sidecar",
  "filetime",

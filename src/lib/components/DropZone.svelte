@@ -9,10 +9,16 @@
     onfiles,
     acceptedExtensions = IMAGE_EXTENSIONS_RE,
     formatTags = ["JPEG", "PNG", "WebP", "HEIC", "TIFF", "BMP", "AVIF", "JXL"],
+    filePickerName = "Images",
+    filePickerExtensions = [...IMAGE_EXTENSIONS] as string[],
+    dropTitle = "Drop images here",
   }: {
     onfiles: (paths: string[]) => void;
     acceptedExtensions?: RegExp;
     formatTags?: string[];
+    filePickerName?: string;
+    filePickerExtensions?: string[];
+    dropTitle?: string;
   } = $props();
 
   let isDragging = $state(false);
@@ -37,7 +43,7 @@
   async function browseFiles() {
     const selected = await open({
       multiple: true,
-      filters: [{ name: "Images", extensions: [...IMAGE_EXTENSIONS] }],
+      filters: [{ name: filePickerName, extensions: filePickerExtensions }],
     });
     if (selected) onfiles(selected);
   }
@@ -51,7 +57,7 @@
   }}>
   <div class="drop-zone">
     <Upload size={40} strokeWidth={1.5} />
-    <p class="drop-title">Drop images here</p>
+    <p class="drop-title">{dropTitle}</p>
     <p class="drop-sub">or click to browse</p>
     <div class="format-tags">
       {#each formatTags as tag}

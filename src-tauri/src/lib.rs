@@ -39,6 +39,7 @@ pub fn run() {
             commands::video::cancel_video_compress,
             commands::video::check_ffmpeg,
             commands::video::download_ffmpeg,
+            commands::video::reveal_video_output,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

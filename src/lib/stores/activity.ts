@@ -2,7 +2,7 @@ import { writable } from "svelte/store";
 
 export interface ActivityItem {
   id: string;
-  type: "compress" | "convert" | "resize" | "analyze" | "watermark";
+  type: "compress" | "convert" | "resize" | "analyze" | "watermark" | "video";
   fileCount: number;
   savedBytes: number;
   timestamp: number;

@@ -1,5 +1,6 @@
 use crate::core::video;
 use serde::Serialize;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
@@ -17,14 +18,21 @@ pub async fn compress_video(
     app: AppHandle,
     input: String,
     preset: video::VideoPreset,
+    output_dir: Option<String>,
 ) -> Result<video::VideoCompressionResult, String> {
     let flag = get_cancel_flag();
     flag.store(false, Ordering::SeqCst);
 
     tauri::async_runtime::spawn_blocking(move || {
-        video::compress_video(&input, preset, flag, move |progress| {
-            let _ = app.emit("video-compress-progress", &progress);
-        })
+        video::compress_video(
+            &input,
+            preset,
+            output_dir.as_deref(),
+            flag,
+            move |progress| {
+                let _ = app.emit("video-compress-progress", &progress);
+            },
+        )
     })
     .await
     .map_err(|e| e.to_string())?
@@ -46,6 +54,36 @@ struct FfmpegDownloadProgress {
     downloaded: u64,
     total: u64,
     percent: f32,
+}
+
+#[tauri::command]
+pub async fn reveal_video_output(path: String) -> Result<(), String> {
+    let p = Path::new(&path);
+    if !p.exists() {
+        return Err(format!("File not found: {}", path));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-R", &path])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .args(["/select,", &path])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(p.parent().unwrap_or(p).to_str().unwrap_or(&path))
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]

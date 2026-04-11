@@ -9,48 +9,36 @@ use std::sync::Arc;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum VideoPreset {
-    Email,
-    Web,
-    Archive,
+    Smallest,
+    Balanced,
     HighQuality,
 }
 
 impl VideoPreset {
     pub fn codec(self) -> &'static str {
-        match self {
-            VideoPreset::Archive => "libx265",
-            _ => "libx264",
-        }
+        "libx265"
     }
     pub fn crf(self) -> u32 {
         match self {
-            VideoPreset::Email => 28,
-            VideoPreset::Web => 23,
-            VideoPreset::Archive => 20,
-            VideoPreset::HighQuality => 20,
+            VideoPreset::Smallest => 35,
+            VideoPreset::Balanced => 28,
+            VideoPreset::HighQuality => 22,
         }
     }
     pub fn speed_preset(self) -> &'static str {
-        match self {
-            VideoPreset::Email => "fast",
-            VideoPreset::Web => "medium",
-            VideoPreset::Archive => "slow",
-            VideoPreset::HighQuality => "medium",
-        }
+        "slow"
     }
     pub fn audio_bitrate(self) -> &'static str {
         match self {
-            VideoPreset::Email => "96k",
-            VideoPreset::Web => "128k",
-            VideoPreset::Archive => "192k",
+            VideoPreset::Smallest => "96k",
+            VideoPreset::Balanced => "128k",
             VideoPreset::HighQuality => "192k",
         }
     }
     pub fn max_height(self) -> Option<u32> {
         match self {
-            VideoPreset::Email => Some(720),
-            VideoPreset::Web => Some(1080),
-            VideoPreset::Archive => None,
+            VideoPreset::Smallest => Some(720),
+            VideoPreset::Balanced => Some(1080),
             VideoPreset::HighQuality => None,
         }
     }
@@ -74,7 +62,23 @@ pub struct VideoCompressionResult {
     pub error: Option<String>,
 }
 
+fn app_support_ffmpeg_path() -> Option<PathBuf> {
+    let data_dir = dirs::data_dir()?;
+    let ffmpeg_dir = data_dir.join("com.revault.desktop");
+    let binary = ffmpeg_dir.join(if cfg!(windows) {
+        "ffmpeg.exe"
+    } else {
+        "ffmpeg"
+    });
+    Some(binary)
+}
+
 pub fn get_ffmpeg_path() -> PathBuf {
+    if let Some(path) = app_support_ffmpeg_path() {
+        if path.exists() {
+            return path;
+        }
+    }
     ffmpeg_sidecar::paths::ffmpeg_path()
 }
 
@@ -94,6 +98,9 @@ fn parse_duration_from_stderr(stderr: &str) -> Option<f64> {
     let substr = line[start..].trim();
     let end = substr.find(',')?;
     let time_str = substr[..end].trim();
+    if time_str == "N/A" {
+        return None;
+    }
     parse_time_to_secs(time_str)
 }
 
@@ -109,17 +116,33 @@ fn parse_time_to_secs(time: &str) -> Option<f64> {
 }
 
 pub fn build_scale_filter(max_height: Option<u32>) -> Option<String> {
-    max_height.map(|h| format!("scale=-2:{}", h))
+    // Note: lanczos is applied via -sws_flags in the caller, not here.
+    // Embedding :flags= inside the filter chain fails on some FFmpeg builds.
+    // The comma inside min() must be escaped as \, so FFmpeg's filter chain
+    // parser doesn't treat it as a filter separator.
+    max_height.map(|h| format!("scale=-2:min({}\\,ih)", h))
 }
 
-pub fn resolve_video_output_path(input_path: &str) -> Result<String, String> {
+pub fn resolve_video_output_path(
+    input_path: &str,
+    output_dir: Option<&str>,
+) -> Result<String, String> {
     let path = Path::new(input_path);
-    let parent = path.parent().ok_or("No parent directory")?;
     let stem = path
         .file_stem()
         .and_then(|s| s.to_str())
         .ok_or("Invalid filename")?;
-    let output = parent.join(format!("{}_compressed.mp4", stem));
+    let dir = match output_dir {
+        Some(d) => {
+            let p = Path::new(d);
+            if !p.is_dir() {
+                return Err(format!("Output directory does not exist: {}", d));
+            }
+            p.to_path_buf()
+        }
+        None => path.parent().ok_or("No parent directory")?.to_path_buf(),
+    };
+    let output = dir.join(format!("{}_compressed.mp4", stem));
     output
         .to_str()
         .map(|s| s.to_string())
@@ -129,12 +152,13 @@ pub fn resolve_video_output_path(input_path: &str) -> Result<String, String> {
 pub fn compress_video(
     input_path: &str,
     preset: VideoPreset,
+    output_dir: Option<&str>,
     cancelled: Arc<AtomicBool>,
     progress_cb: impl Fn(VideoProgress) + Send,
 ) -> Result<VideoCompressionResult, String> {
-    let output_path = resolve_video_output_path(input_path)?;
+    let output_path = resolve_video_output_path(input_path, output_dir)?;
     let original_size = std::fs::metadata(input_path)
-        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("Cannot read input file '{}': {}", input_path, e))?
         .len();
     let total_duration = probe_duration(input_path).unwrap_or(0.0);
 
@@ -142,7 +166,8 @@ pub fn compress_video(
         return Err("cancelled".to_string());
     }
 
-    let mut cmd = FfmpegCommand::new();
+    let ffmpeg_bin = get_ffmpeg_path();
+    let mut cmd = FfmpegCommand::new_with_path(ffmpeg_bin);
     cmd.input(input_path)
         .overwrite()
         .codec_video(preset.codec())
@@ -153,12 +178,24 @@ pub fn compress_video(
         .arg("-pix_fmt")
         .arg("yuv420p");
 
+    // QuickTime requires hvc1 tag for H.265 — without it the video stream
+    // is undecodable and only audio plays back.
+    if preset.codec() == "libx265" {
+        cmd.arg("-tag:v").arg("hvc1");
+    }
+
     if let Some(filter) = build_scale_filter(preset.max_height()) {
+        // -sws_flags must come before -vf to apply to the scale filter
+        cmd.arg("-sws_flags").arg("lanczos");
         cmd.arg("-vf").arg(filter);
     }
 
     cmd.arg("-map_metadata")
         .arg("-1")
+        .arg("-map")
+        .arg("0:v:0")
+        .arg("-map")
+        .arg("0:a?") // audio is optional — videos without audio tracks won't fail
         .codec_audio("aac")
         .arg("-b:a")
         .arg(preset.audio_bitrate())
@@ -168,32 +205,65 @@ pub fn compress_video(
 
     let mut child = cmd.spawn().map_err(|e| e.to_string())?;
 
-    for event in child.iter().map_err(|e| e.to_string())? {
-        if let FfmpegEvent::Progress(p) = event {
-            let current_secs = parse_time_to_secs(&p.time).unwrap_or(0.0);
-            let percent = if total_duration > 0.0 {
-                ((current_secs / total_duration) * 100.0).min(100.0) as f32
-            } else {
-                0.0
-            };
-            progress_cb(VideoProgress {
-                input_path: input_path.to_string(),
-                percent,
-                fps: p.fps,
-                size_kb: p.size_kb,
-                speed: p.speed,
-            });
+    let encode_result: Result<(), String> = (|| {
+        let mut ffmpeg_errors: Vec<String> = Vec::new();
+        for event in child.iter().map_err(|e| e.to_string())? {
+            match event {
+                FfmpegEvent::Progress(p) => {
+                    let current_secs = parse_time_to_secs(&p.time).unwrap_or(0.0);
+                    let percent = if total_duration > 0.0 {
+                        ((current_secs / total_duration) * 100.0).min(100.0) as f32
+                    } else {
+                        0.0
+                    };
+                    progress_cb(VideoProgress {
+                        input_path: input_path.to_string(),
+                        percent,
+                        fps: p.fps,
+                        size_kb: p.size_kb,
+                        speed: p.speed,
+                    });
+                }
+                FfmpegEvent::Log(level, msg) => {
+                    use ffmpeg_sidecar::event::LogLevel;
+                    if matches!(level, LogLevel::Fatal | LogLevel::Error) {
+                        ffmpeg_errors.push(msg);
+                    }
+                }
+                _ => {}
+            }
+            if cancelled.load(Ordering::SeqCst) {
+                let _ = child.kill();
+                let _ = std::fs::remove_file(&output_path);
+                return Err("cancelled".to_string());
+            }
         }
-        if cancelled.load(Ordering::SeqCst) {
-            let _ = child.kill();
-            let _ = std::fs::remove_file(&output_path);
-            return Err("cancelled".to_string());
+        if !ffmpeg_errors.is_empty() {
+            return Err(ffmpeg_errors.join("; "));
         }
+        Ok(())
+    })();
+
+    if let Err(e) = encode_result {
+        let _ = std::fs::remove_file(&output_path);
+        return Err(e);
     }
 
     let compressed_size = std::fs::metadata(&output_path)
-        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("FFmpeg produced no output — encoding likely failed: {}", e))?
         .len();
+
+    if compressed_size >= original_size {
+        std::fs::remove_file(&output_path).map_err(|e| e.to_string())?;
+        std::fs::copy(input_path, &output_path).map_err(|e| e.to_string())?;
+        return Ok(VideoCompressionResult {
+            input_path: input_path.to_string(),
+            output_path,
+            original_size,
+            compressed_size: original_size,
+            error: Some("Output was larger — original copied".to_string()),
+        });
+    }
 
     Ok(VideoCompressionResult {
         input_path: input_path.to_string(),
@@ -205,15 +275,35 @@ pub fn compress_video(
 }
 
 pub fn ffmpeg_is_available() -> bool {
-    ffmpeg_sidecar::command::ffmpeg_is_installed()
+    let path = get_ffmpeg_path();
+    std::process::Command::new(path)
+        .arg("-version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
 }
 
 pub fn download_ffmpeg(progress_cb: impl Fn(u64, u64) + Send + 'static) -> Result<PathBuf, String> {
-    use ffmpeg_sidecar::download::{auto_download_with_progress, FfmpegDownloadProgressEvent};
+    use ffmpeg_sidecar::download::{
+        download_ffmpeg_package_with_progress, ffmpeg_download_url, unpack_ffmpeg_without_extras,
+        FfmpegDownloadProgressEvent,
+    };
 
-    std::env::set_var("KEEP_ONLY_FFMPEG", "1");
+    if ffmpeg_is_available() {
+        return Ok(get_ffmpeg_path());
+    }
 
-    auto_download_with_progress(move |event| {
+    let dest = app_support_ffmpeg_path()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .ok_or("Could not determine application data directory")?;
+
+    std::fs::create_dir_all(&dest).map_err(|e| format!("Failed to create ffmpeg dir: {}", e))?;
+
+    let url = ffmpeg_download_url().map_err(|e| format!("Unsupported platform: {}", e))?;
+
+    let archive_path = download_ffmpeg_package_with_progress(url, &dest, move |event| {
         if let FfmpegDownloadProgressEvent::Downloading {
             total_bytes,
             downloaded_bytes,
@@ -223,6 +313,9 @@ pub fn download_ffmpeg(progress_cb: impl Fn(u64, u64) + Send + 'static) -> Resul
         }
     })
     .map_err(|e| format!("FFmpeg download failed: {}", e))?;
+
+    unpack_ffmpeg_without_extras(&archive_path, &dest)
+        .map_err(|e| format!("FFmpeg unpack failed: {}", e))?;
 
     let path = get_ffmpeg_path();
     if !path.exists() {
@@ -250,37 +343,69 @@ mod tests {
         assert_eq!(parse_duration_from_stderr(stderr), Some(150.0));
 
         assert_eq!(parse_duration_from_stderr("no duration here"), None);
+
+        let na_stderr = "  Duration: N/A, start: 0.000000, bitrate: N/A";
+        assert_eq!(parse_duration_from_stderr(na_stderr), None);
     }
 
     #[test]
     fn test_build_scale_filter() {
         assert_eq!(
             build_scale_filter(Some(720)),
-            Some("scale=-2:720".to_string())
+            Some("scale=-2:min(720\\,ih)".to_string())
+        );
+        assert_eq!(
+            build_scale_filter(Some(1080)),
+            Some("scale=-2:min(1080\\,ih)".to_string())
         );
         assert_eq!(build_scale_filter(None), None);
     }
 
     #[test]
     fn test_resolve_video_output_path() {
-        let result = resolve_video_output_path("/tmp/video.mp4").unwrap();
+        let result = resolve_video_output_path("/tmp/video.mp4", None).unwrap();
         assert_eq!(result, "/tmp/video_compressed.mp4");
 
-        let result = resolve_video_output_path("/home/user/clip.mov").unwrap();
+        let result = resolve_video_output_path("/home/user/clip.mov", None).unwrap();
         assert_eq!(result, "/home/user/clip_compressed.mp4");
     }
 
     #[test]
+    fn test_resolve_video_output_path_with_output_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let dir_str = dir.path().to_str().unwrap();
+
+        let result = resolve_video_output_path("/tmp/video.mp4", Some(dir_str)).unwrap();
+        assert_eq!(result, format!("{}/video_compressed.mp4", dir_str));
+    }
+
+    #[test]
+    fn test_resolve_video_output_path_missing_dir() {
+        let result = resolve_video_output_path("/tmp/video.mp4", Some("/nonexistent/dir"));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("does not exist"));
+    }
+
+    #[test]
     fn test_preset_values() {
-        assert_eq!(VideoPreset::Email.codec(), "libx264");
-        assert_eq!(VideoPreset::Archive.codec(), "libx265");
-        assert_eq!(VideoPreset::Email.crf(), 28);
-        assert_eq!(VideoPreset::Web.crf(), 23);
-        assert_eq!(VideoPreset::Email.max_height(), Some(720));
-        assert_eq!(VideoPreset::Web.max_height(), Some(1080));
-        assert_eq!(VideoPreset::Archive.max_height(), None);
+        assert_eq!(VideoPreset::Smallest.codec(), "libx265");
+        assert_eq!(VideoPreset::Balanced.codec(), "libx265");
+        assert_eq!(VideoPreset::HighQuality.codec(), "libx265");
+
+        assert_eq!(VideoPreset::Smallest.crf(), 35);
+        assert_eq!(VideoPreset::Balanced.crf(), 28);
+        assert_eq!(VideoPreset::HighQuality.crf(), 22);
+
+        assert_eq!(VideoPreset::Smallest.speed_preset(), "slow");
+        assert_eq!(VideoPreset::Balanced.speed_preset(), "slow");
+        assert_eq!(VideoPreset::HighQuality.speed_preset(), "slow");
+
+        assert_eq!(VideoPreset::Smallest.audio_bitrate(), "96k");
+        assert_eq!(VideoPreset::Balanced.audio_bitrate(), "128k");
+        assert_eq!(VideoPreset::HighQuality.audio_bitrate(), "192k");
+
+        assert_eq!(VideoPreset::Smallest.max_height(), Some(720));
+        assert_eq!(VideoPreset::Balanced.max_height(), Some(1080));
         assert_eq!(VideoPreset::HighQuality.max_height(), None);
-        assert_eq!(VideoPreset::Email.audio_bitrate(), "96k");
-        assert_eq!(VideoPreset::Archive.speed_preset(), "slow");
     }
 }

@@ -1,7 +1,7 @@
 <script lang="ts" generics="T extends BaseFile">
   import type { Snippet } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { Trash2, ImageIcon } from "lucide-svelte";
+  import { Trash2, ImageIcon, Film } from "lucide-svelte";
   import DropZone from "./DropZone.svelte";
   import ProgressRing from "./ProgressRing.svelte";
   import type { BaseFile } from "$lib/types";
@@ -17,6 +17,13 @@
     onfiles: (paths: string[]) => void;
     onbrowse: () => void;
     onclear: () => void;
+    dropZoneTitle?: string;
+    dropZoneFormatTags?: string[];
+    dropZoneAcceptedExtensions?: RegExp;
+    dropZoneFilePickerName?: string;
+    dropZoneFilePickerExtensions?: string[];
+    showThumbnails?: boolean;
+    placeholderIcon?: "image" | "video";
 
     actionLabel: string;
     onaction: () => void;
@@ -45,9 +52,17 @@
     children,
     fileDetail,
     fileStatus,
+    dropZoneTitle,
+    dropZoneFormatTags,
+    dropZoneAcceptedExtensions,
+    dropZoneFilePickerName,
+    dropZoneFilePickerExtensions,
+    showThumbnails = true,
+    placeholderIcon = "image",
   }: Props = $props();
 
   $effect(() => {
+    if (!showThumbnails) return;
     // Track paths submitted in this effect run so stale responses are discarded.
     // When files changes, a new effect run begins and a fresh Set is used.
     const submitted = new Set<string>();
@@ -74,7 +89,14 @@
 </script>
 
 {#if files.length === 0}
-  <DropZone {onfiles} />
+  <DropZone
+    {onfiles}
+    dropTitle={dropZoneTitle}
+    formatTags={dropZoneFormatTags}
+    acceptedExtensions={dropZoneAcceptedExtensions}
+    filePickerName={dropZoneFilePickerName}
+    filePickerExtensions={dropZoneFilePickerExtensions}
+  />
 {:else if isProcessing}
   <ProgressRing {targetPct} label={progressLabel} sublabel={progressSublabel} />
 {:else}
@@ -96,10 +118,16 @@
     <div class="file-list">
       {#each files as file (file.path)}
         <div class="file-row" class:failed={file.status === "error"}>
-          {#if thumbnails[file.path] && thumbnails[file.path] !== "error"}
+          {#if showThumbnails && thumbnails[file.path] && thumbnails[file.path] !== "error"}
             <img class="file-thumb" src={thumbnails[file.path]} alt="" draggable="false" />
           {:else}
-            <div class="file-thumb placeholder"><ImageIcon size={18} /></div>
+            <div class="file-thumb placeholder">
+              {#if placeholderIcon === "video"}
+                <Film size={18} />
+              {:else}
+                <ImageIcon size={18} />
+              {/if}
+            </div>
           {/if}
           <div class="file-info">
             <span class="file-name">{file.name}</span>

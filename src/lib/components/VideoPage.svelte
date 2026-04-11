@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Film, Shield, Download, Zap, Wifi, CheckCircle, AlertCircle, X } from "lucide-svelte";
+  import { Film, Shield, Download, Zap, Wifi, CircleCheck, CircleAlert, TriangleAlert, FolderOpen, X } from "lucide-svelte";
+  import { openPath } from "@tauri-apps/plugin-opener";
   import { open } from "@tauri-apps/plugin-dialog";
   import ToolShell from "./ToolShell.svelte";
   import { formatBytes } from "$lib/utils";
@@ -8,6 +9,7 @@
   import {
     videoFiles,
     videoPreset,
+    videoOutputDir,
     isCompressing,
     videoSummary,
     ffmpegStatus,
@@ -15,6 +17,7 @@
     addVideoFiles,
     removeVideoFile,
     clearVideoFiles,
+    resetVideoFilesToIdle,
     compressVideoFile,
     cancelCompression,
     checkFfmpeg,
@@ -24,9 +27,8 @@
   } from "$lib/stores/video";
 
   const presets: { value: VideoPreset; label: string }[] = [
-    { value: "Email", label: "Email" },
-    { value: "Web", label: "Web" },
-    { value: "Archive", label: "Archive" },
+    { value: "Smallest", label: "Smallest" },
+    { value: "Balanced", label: "Balanced" },
     { value: "HighQuality", label: "High Quality" },
   ];
 
@@ -60,9 +62,21 @@
   async function startCompression() {
     const pending = $videoFiles.filter((f) => f.status === "idle");
     for (const file of pending) {
-      await compressVideoFile(file, $videoPreset);
+      await compressVideoFile(file, $videoPreset, $videoOutputDir);
       const updated = $videoFiles.find((f) => f.path === file.path);
       if (updated?.status === "cancelled") break;
+    }
+  }
+
+  async function compressMore() {
+    resetVideoFilesToIdle();
+    await startCompression();
+  }
+
+  async function browseOutputDir() {
+    const selected = await open({ directory: true, multiple: false });
+    if (selected && typeof selected === "string") {
+      videoOutputDir.set(selected);
     }
   }
 
@@ -87,6 +101,17 @@
     if (pct > 0) return `${pct}% smaller`;
     if (pct < 0) return `${Math.abs(pct)}% larger`;
     return "Same size";
+  }
+
+  function isOutputLarger(file: VideoFile): boolean {
+    if (!file.compressedSize || file.originalSize === 0) return false;
+    return file.compressedSize >= file.originalSize;
+  }
+
+  async function revealVideoOutput(outputPath: string) {
+    const sep = outputPath.includes("/") ? "/" : "\\";
+    const dir = outputPath.substring(0, outputPath.lastIndexOf(sep));
+    if (dir) await openPath(dir);
   }
 </script>
 
@@ -131,7 +156,7 @@
 
       {#if downloadError}
         <div class="download-error" role="alert">
-          <AlertCircle size={14} />
+          <CircleAlert size={14} />
           <span>Download failed. Check your connection and try again.</span>
         </div>
       {/if}
@@ -182,8 +207,15 @@
     onbrowse={browseFiles}
     onclear={clearVideoFiles}
     actionLabel={$isCompressing ? "Cancel" : $videoSummary.pending === 0 && $videoFiles.length > 0 ? "Compress More" : "Compress"}
-    onaction={$isCompressing ? cancelCompression : $videoSummary.pending === 0 && $videoFiles.length > 0 ? clearVideoFiles : startCompression}
+    onaction={$isCompressing ? cancelCompression : $videoSummary.pending === 0 && $videoFiles.length > 0 ? compressMore : startCompression}
     {headerText}
+    dropZoneTitle="Drop videos here"
+    dropZoneFormatTags={["MP4", "MOV", "AVI", "MKV", "WebM", "M4V"]}
+    dropZoneAcceptedExtensions={VIDEO_EXTENSIONS_RE}
+    dropZoneFilePickerName="Videos"
+    dropZoneFilePickerExtensions={[...VIDEO_EXTENSIONS]}
+    showThumbnails={false}
+    placeholderIcon="video"
   >
     {#snippet headerSub()}
       {#if $videoSummary.savedBytes > 0}
@@ -191,7 +223,7 @@
       {/if}
     {/snippet}
 
-    {#snippet fileDetail(file)}
+    {#snippet fileDetail(_file)}
       Ready
     {/snippet}
 
@@ -213,6 +245,13 @@
         {/each}
       </div>
     </div>
+    <div class="control-group">
+      <span class="label">Output</span>
+      <button class="btn-ghost output-btn" onclick={browseOutputDir}>
+        <FolderOpen size={14} />
+        {$videoOutputDir?.split(/[\\/]/).pop() ?? "Same as input"}
+      </button>
+    </div>
   </ToolShell>
 
 {:else}
@@ -227,8 +266,15 @@
     onbrowse={browseFiles}
     onclear={clearVideoFiles}
     actionLabel={$isCompressing ? "Cancel" : $videoSummary.pending === 0 && $videoFiles.length > 0 ? "Compress More" : "Compress"}
-    onaction={$isCompressing ? cancelCompression : $videoSummary.pending === 0 && $videoFiles.length > 0 ? clearVideoFiles : startCompression}
+    onaction={$isCompressing ? cancelCompression : $videoSummary.pending === 0 && $videoFiles.length > 0 ? compressMore : startCompression}
     {headerText}
+    dropZoneTitle="Drop videos here"
+    dropZoneFormatTags={["MP4", "MOV", "AVI", "MKV", "WebM", "M4V"]}
+    dropZoneAcceptedExtensions={VIDEO_EXTENSIONS_RE}
+    dropZoneFilePickerName="Videos"
+    dropZoneFilePickerExtensions={[...VIDEO_EXTENSIONS]}
+    showThumbnails={false}
+    placeholderIcon="video"
   >
     {#snippet headerSub()}
       {#if $videoSummary.savedBytes > 0}
@@ -250,6 +296,8 @@
         <span class="progress-bar-track">
           <span class="progress-bar-fill" style="width: {file.progress}%"></span>
         </span>
+      {:else if file.status === "done" && isOutputLarger(file)}
+        <span class="warning-detail">Already optimized &middot; {formatBytes(file.originalSize)} kept</span>
       {:else if file.status === "done"}
         {formatBytes(file.originalSize)} &rarr; {formatBytes(file.compressedSize ?? 0)} &middot; {savedPercent(file)}
       {:else if file.status === "error"}
@@ -262,10 +310,26 @@
     {#snippet fileStatus(file)}
       {#if file.status === "compressing"}
         <span class="status-pct">{Math.round(file.progress)}%</span>
+      {:else if file.status === "done" && isOutputLarger(file)}
+        <div class="done-actions">
+          {#if file.outputPath}
+            <button class="btn-icon" title="Show in Finder" onclick={() => revealVideoOutput(file.outputPath!)}>
+              <FolderOpen size={16} />
+            </button>
+          {/if}
+          <TriangleAlert size={18} color="var(--warning)" />
+        </div>
       {:else if file.status === "done"}
-        <CheckCircle size={18} />
+        <div class="done-actions">
+          {#if file.outputPath}
+            <button class="btn-icon" title="Show in Finder" onclick={() => revealVideoOutput(file.outputPath!)}>
+              <FolderOpen size={16} />
+            </button>
+          {/if}
+          <CircleCheck size={18} />
+        </div>
       {:else if file.status === "error" || file.status === "cancelled"}
-        <AlertCircle size={18} />
+        <CircleAlert size={18} />
       {:else}
         <button class="btn-icon" onclick={() => removeVideoFile(file.path)}>
           <X size={16} />
@@ -284,6 +348,13 @@
           >{p.label}</button>
         {/each}
       </div>
+    </div>
+    <div class="control-group">
+      <span class="label">Output</span>
+      <button class="btn-ghost output-btn" onclick={browseOutputDir}>
+        <FolderOpen size={14} />
+        {$videoOutputDir?.split(/[\\/]/).pop() ?? "Same as input"}
+      </button>
     </div>
   </ToolShell>
 {/if}
@@ -497,6 +568,29 @@
     color: var(--text-muted);
     margin-top: 8px;
     font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Done actions row ── */
+  .done-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .done-actions .btn-icon {
+    padding: 4px;
+    border-radius: 4px;
+    color: var(--text-muted);
+    transition: color 0.15s ease;
+  }
+
+  .done-actions .btn-icon:hover {
+    color: var(--accent);
+  }
+
+  /* ── Warning detail for "already optimized" ── */
+  .warning-detail {
+    color: var(--warning, #f59e0b);
   }
 
   /* ── Existing video file list styles ── */

@@ -6,6 +6,7 @@
     optimize: ["Optimize", "Compress, convert and resize"],
     duplicates: ["Duplicates", "Find duplicate photos"],
     privacy: ["Privacy", "Metadata and sensitive data"],
+    video: ["Video", "Compress and optimize videos"],
     settings: ["Settings", "Manage your preferences"],
   };
 
