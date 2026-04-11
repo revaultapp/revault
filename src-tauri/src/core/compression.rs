@@ -104,16 +104,16 @@ impl QualityPreset {
     }
     fn avif_quality(self) -> f32 {
         match self {
-            QualityPreset::Smallest => 35.0,
-            QualityPreset::Balanced => 65.0,
-            QualityPreset::HighQuality => 80.0,
+            QualityPreset::Smallest => 50.0,
+            QualityPreset::Balanced => 72.0,
+            QualityPreset::HighQuality => 88.0,
         }
     }
     fn avif_speed(self) -> u8 {
         match self {
             QualityPreset::Smallest => 2,
             QualityPreset::Balanced => 5,
-            QualityPreset::HighQuality => 1,
+            QualityPreset::HighQuality => 3,
         }
     }
 }
