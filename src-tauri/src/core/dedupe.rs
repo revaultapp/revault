@@ -10,7 +10,7 @@ const IMAGE_EXTENSIONS: &[&str] = &[
 ];
 
 const HASH_SIZE: u32 = 16;
-const PERCEPTUAL_THRESHOLD: u32 = 10;
+const PERCEPTUAL_THRESHOLD: u32 = 20;
 
 #[derive(Serialize, Clone, Debug)]
 pub struct DuplicateFile {
@@ -61,12 +61,11 @@ fn compute_sha256(path: &str) -> Result<[u8; 32], Box<dyn std::error::Error>> {
 
 fn compute_perceptual_hash(path: &str) -> Result<ImageHash, Box<dyn std::error::Error>> {
     let img = image_io::open_image(path)?;
-    let resized = img.resize_exact(256, 256, image::imageops::FilterType::Lanczos3);
     let hasher = HasherConfig::new()
         .hash_size(HASH_SIZE, HASH_SIZE)
         .hash_alg(HashAlg::DoubleGradient)
         .to_hasher();
-    Ok(hasher.hash_image(&resized))
+    Ok(hasher.hash_image(&img))
 }
 
 fn collect_images_recursive(

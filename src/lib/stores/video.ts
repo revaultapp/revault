@@ -1,6 +1,6 @@
 import { writable, derived, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 import { activity } from "./activity";
 import { savings } from "./savings";
 
@@ -109,7 +109,6 @@ export const videoFiles = writable<VideoFile[]>([]);
 export const videoPreset = persisted<VideoPreset>("video_preset", "Balanced");
 export const videoOutputDir = persisted<string | null>("video_output_dir", null);
 export const isCompressing = writable(false);
-export const activeUnlisten = writable<UnlistenFn | null>(null);
 
 export const videoSummary = derived(videoFiles, ($files) => {
   const done = $files.filter((f) => f.status === "done");
@@ -192,8 +191,6 @@ export async function compressVideoFile(
   preset: VideoPreset,
   outputDir: string | null
 ): Promise<void> {
-  isCompressing.set(true);
-
   videoFiles.update((all) =>
     all.map((f) =>
       f.path === file.path
@@ -202,6 +199,9 @@ export async function compressVideoFile(
     )
   );
 
+  // NOTE: This listener relies on compression being sequential (one file at a time).
+  // If parallelism is ever added, each file needs its own typed event channel to
+  // avoid all listeners firing for every event.
   const unlisten = await listen<VideoProgress>(
     "video-compress-progress",
     (event) => {
@@ -216,8 +216,6 @@ export async function compressVideoFile(
       );
     }
   );
-
-  activeUnlisten.set(unlisten);
 
   try {
     const result = await invoke<VideoCompressionResult>("compress_video", {
@@ -274,8 +272,6 @@ export async function compressVideoFile(
     );
   } finally {
     unlisten();
-    activeUnlisten.set(null);
-    isCompressing.set(false);
   }
 }
 

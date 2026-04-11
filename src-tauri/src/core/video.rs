@@ -15,18 +15,12 @@ pub enum VideoPreset {
 }
 
 impl VideoPreset {
-    pub fn codec(self) -> &'static str {
-        "libx265"
-    }
     pub fn crf(self) -> u32 {
         match self {
             VideoPreset::Smallest => 35,
             VideoPreset::Balanced => 28,
             VideoPreset::HighQuality => 22,
         }
-    }
-    pub fn speed_preset(self) -> &'static str {
-        "slow"
     }
     pub fn audio_bitrate(self) -> &'static str {
         match self {
@@ -132,6 +126,7 @@ pub fn resolve_video_output_path(
         .file_stem()
         .and_then(|s| s.to_str())
         .ok_or("Invalid filename")?;
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("mp4");
     let dir = match output_dir {
         Some(d) => {
             let p = Path::new(d);
@@ -142,7 +137,7 @@ pub fn resolve_video_output_path(
         }
         None => path.parent().ok_or("No parent directory")?.to_path_buf(),
     };
-    let output = dir.join(format!("{}_compressed.mp4", stem));
+    let output = dir.join(format!("{}_compressed.{}", stem, ext));
     output
         .to_str()
         .map(|s| s.to_string())
@@ -170,19 +165,17 @@ pub fn compress_video(
     let mut cmd = FfmpegCommand::new_with_path(ffmpeg_bin);
     cmd.input(input_path)
         .overwrite()
-        .codec_video(preset.codec())
+        .codec_video("libx265")
         .arg("-crf")
         .arg(preset.crf().to_string())
         .arg("-preset")
-        .arg(preset.speed_preset())
+        .arg("slow")
         .arg("-pix_fmt")
         .arg("yuv420p");
 
     // QuickTime requires hvc1 tag for H.265 — without it the video stream
     // is undecodable and only audio plays back.
-    if preset.codec() == "libx265" {
-        cmd.arg("-tag:v").arg("hvc1");
-    }
+    cmd.arg("-tag:v").arg("hvc1");
 
     if let Some(filter) = build_scale_filter(preset.max_height()) {
         // -sws_flags must come before -vf to apply to the scale filter
@@ -272,6 +265,51 @@ pub fn compress_video(
         compressed_size,
         error: None,
     })
+}
+
+pub fn reveal_in_file_manager(path: &str) -> Result<(), String> {
+    let canonical =
+        std::fs::canonicalize(path).map_err(|e| format!("Invalid path '{}': {}", path, e))?;
+    let parent = Path::new(path)
+        .parent()
+        .ok_or("No parent directory")?
+        .to_path_buf();
+    let parent_canonical = std::fs::canonicalize(&parent)
+        .map_err(|e| format!("Invalid parent '{}': {}", parent.display(), e))?;
+    if !canonical.starts_with(&parent_canonical) {
+        return Err("Path resolves outside allowed directory".into());
+    }
+    let canonical_str = canonical
+        .to_str()
+        .ok_or_else(|| "Path contains invalid UTF-8".to_string())?;
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-R", canonical_str])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .args(["/select,", canonical_str])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let dir = canonical
+            .parent()
+            .unwrap_or(&canonical)
+            .to_str()
+            .unwrap_or(canonical_str);
+        std::process::Command::new("xdg-open")
+            .arg(dir)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 pub fn ffmpeg_is_available() -> bool {
@@ -367,7 +405,7 @@ mod tests {
         assert_eq!(result, "/tmp/video_compressed.mp4");
 
         let result = resolve_video_output_path("/home/user/clip.mov", None).unwrap();
-        assert_eq!(result, "/home/user/clip_compressed.mp4");
+        assert_eq!(result, "/home/user/clip_compressed.mov");
     }
 
     #[test]
@@ -377,6 +415,9 @@ mod tests {
 
         let result = resolve_video_output_path("/tmp/video.mp4", Some(dir_str)).unwrap();
         assert_eq!(result, format!("{}/video_compressed.mp4", dir_str));
+
+        let result = resolve_video_output_path("/tmp/clip.mov", Some(dir_str)).unwrap();
+        assert_eq!(result, format!("{}/clip_compressed.mov", dir_str));
     }
 
     #[test]
@@ -388,17 +429,9 @@ mod tests {
 
     #[test]
     fn test_preset_values() {
-        assert_eq!(VideoPreset::Smallest.codec(), "libx265");
-        assert_eq!(VideoPreset::Balanced.codec(), "libx265");
-        assert_eq!(VideoPreset::HighQuality.codec(), "libx265");
-
         assert_eq!(VideoPreset::Smallest.crf(), 35);
         assert_eq!(VideoPreset::Balanced.crf(), 28);
         assert_eq!(VideoPreset::HighQuality.crf(), 22);
-
-        assert_eq!(VideoPreset::Smallest.speed_preset(), "slow");
-        assert_eq!(VideoPreset::Balanced.speed_preset(), "slow");
-        assert_eq!(VideoPreset::HighQuality.speed_preset(), "slow");
 
         assert_eq!(VideoPreset::Smallest.audio_bitrate(), "96k");
         assert_eq!(VideoPreset::Balanced.audio_bitrate(), "128k");

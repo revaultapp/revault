@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { Film, Shield, Download, Zap, Wifi, CircleCheck, CircleAlert, TriangleAlert, FolderOpen, X } from "lucide-svelte";
-  import { openPath } from "@tauri-apps/plugin-opener";
   import { open } from "@tauri-apps/plugin-dialog";
   import ToolShell from "./ToolShell.svelte";
   import { formatBytes } from "$lib/utils";
@@ -20,6 +19,7 @@
     resetVideoFilesToIdle,
     compressVideoFile,
     cancelCompression,
+    revealVideoOutput,
     checkFfmpeg,
     downloadFfmpeg,
     type VideoFile,
@@ -61,10 +61,15 @@
 
   async function startCompression() {
     const pending = $videoFiles.filter((f) => f.status === "idle");
-    for (const file of pending) {
-      await compressVideoFile(file, $videoPreset, $videoOutputDir);
-      const updated = $videoFiles.find((f) => f.path === file.path);
-      if (updated?.status === "cancelled") break;
+    isCompressing.set(true);
+    try {
+      for (const file of pending) {
+        await compressVideoFile(file, $videoPreset, $videoOutputDir);
+        const updated = $videoFiles.find((f) => f.path === file.path);
+        if (updated?.status === "cancelled") break;
+      }
+    } finally {
+      isCompressing.set(false);
     }
   }
 
@@ -108,11 +113,7 @@
     return file.compressedSize >= file.originalSize;
   }
 
-  async function revealVideoOutput(outputPath: string) {
-    const sep = outputPath.includes("/") ? "/" : "\\";
-    const dir = outputPath.substring(0, outputPath.lastIndexOf(sep));
-    if (dir) await openPath(dir);
-  }
+
 </script>
 
 {#if $ffmpegStatus === "checking"}
@@ -195,67 +196,7 @@
     </div>
   </div>
 
-{:else if $videoFiles.length === 0}
-  <!-- Ready: drop zone -->
-  <ToolShell
-    files={$videoFiles}
-    isProcessing={$isCompressing}
-    {targetPct}
-    progressLabel="{$videoSummary.done + $videoSummary.failed} of {$videoFiles.length} files"
-    progressSublabel={$videoSummary.savedBytes > 0 ? `Saved ${formatBytes($videoSummary.savedBytes)}` : undefined}
-    onfiles={handleFiles}
-    onbrowse={browseFiles}
-    onclear={clearVideoFiles}
-    actionLabel={$isCompressing ? "Cancel" : $videoSummary.pending === 0 && $videoFiles.length > 0 ? "Compress More" : "Compress"}
-    onaction={$isCompressing ? cancelCompression : $videoSummary.pending === 0 && $videoFiles.length > 0 ? compressMore : startCompression}
-    {headerText}
-    dropZoneTitle="Drop videos here"
-    dropZoneFormatTags={["MP4", "MOV", "AVI", "MKV", "WebM", "M4V"]}
-    dropZoneAcceptedExtensions={VIDEO_EXTENSIONS_RE}
-    dropZoneFilePickerName="Videos"
-    dropZoneFilePickerExtensions={[...VIDEO_EXTENSIONS]}
-    showThumbnails={false}
-    placeholderIcon="video"
-  >
-    {#snippet headerSub()}
-      {#if $videoSummary.savedBytes > 0}
-        <span class="saved-total">Saved {formatBytes($videoSummary.savedBytes)}</span>
-      {/if}
-    {/snippet}
-
-    {#snippet fileDetail(_file)}
-      Ready
-    {/snippet}
-
-    {#snippet fileStatus(file)}
-      <button class="btn-icon" onclick={() => removeVideoFile(file.path)}>
-        <X size={16} />
-      </button>
-    {/snippet}
-
-    <div class="control-group">
-      <span class="label">Preset</span>
-      <div class="pills">
-        {#each presets as p}
-          <button
-            class="pill"
-            class:active={$videoPreset === p.value}
-            onclick={() => videoPreset.set(p.value)}
-          >{p.label}</button>
-        {/each}
-      </div>
-    </div>
-    <div class="control-group">
-      <span class="label">Output</span>
-      <button class="btn-ghost output-btn" onclick={browseOutputDir}>
-        <FolderOpen size={14} />
-        {$videoOutputDir?.split(/[\\/]/).pop() ?? "Same as input"}
-      </button>
-    </div>
-  </ToolShell>
-
 {:else}
-  <!-- Ready: file list -->
   <ToolShell
     files={$videoFiles}
     isProcessing={$isCompressing}
@@ -294,7 +235,7 @@
           {/if}
         </span>
         <span class="progress-bar-track">
-          <span class="progress-bar-fill" style="width: {file.progress}%"></span>
+          <span class="progress-bar-fill" style="transform: scaleX({file.progress / 100})"></span>
         </span>
       {:else if file.status === "done" && isOutputLarger(file)}
         <span class="warning-detail">Already optimized &middot; {formatBytes(file.originalSize)} kept</span>
@@ -313,7 +254,7 @@
       {:else if file.status === "done" && isOutputLarger(file)}
         <div class="done-actions">
           {#if file.outputPath}
-            <button class="btn-icon" title="Show in Finder" onclick={() => revealVideoOutput(file.outputPath!)}>
+            <button class="btn-icon" aria-label="Reveal in file manager" onclick={() => revealVideoOutput(file.outputPath!)}>
               <FolderOpen size={16} />
             </button>
           {/if}
@@ -322,7 +263,7 @@
       {:else if file.status === "done"}
         <div class="done-actions">
           {#if file.outputPath}
-            <button class="btn-icon" title="Show in Finder" onclick={() => revealVideoOutput(file.outputPath!)}>
+            <button class="btn-icon" aria-label="Reveal in file manager" onclick={() => revealVideoOutput(file.outputPath!)}>
               <FolderOpen size={16} />
             </button>
           {/if}
@@ -331,7 +272,7 @@
       {:else if file.status === "error" || file.status === "cancelled"}
         <CircleAlert size={18} />
       {:else}
-        <button class="btn-icon" onclick={() => removeVideoFile(file.path)}>
+        <button class="btn-icon" aria-label="Remove file" onclick={() => removeVideoFile(file.path)}>
           <X size={16} />
         </button>
       {/if}
@@ -363,6 +304,7 @@
   /* ── FFmpeg state container ── */
   .ffmpeg-state {
     height: 100%;
+    padding: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -616,9 +558,12 @@
   .progress-bar-fill {
     display: block;
     height: 100%;
+    width: 100%;
     background: var(--accent);
     border-radius: 2px;
-    transition: width 0.2s ease;
+    transform-origin: left center;
+    transform: scaleX(0);
+    transition: transform 0.2s ease;
   }
 
   .status-pct {

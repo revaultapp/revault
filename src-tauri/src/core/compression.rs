@@ -199,12 +199,11 @@ fn encode_jpeg_bytes_inner(
         cinfo.set_quality(quality);
         cinfo.set_optimize_coding(true);
         cinfo.set_use_scans_in_trellis(true);
-        cinfo.set_progressive_mode();
-        if quality >= 80.0 {
-            cinfo.set_optimize_scans(true);
-        }
-        if !progressive {
-            cinfo.set_optimize_scans(false);
+        if progressive {
+            cinfo.set_progressive_mode();
+            if quality >= 80.0 {
+                cinfo.set_optimize_scans(true);
+            }
         }
         let mut cinfo = cinfo.start_compress(Vec::new())?;
         cinfo.write_scanlines(pixels)?;
