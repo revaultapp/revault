@@ -58,9 +58,9 @@ export const summary = derived(files, ($files) => {
   const pending = $files.filter(
     (f) => f.status === "pending" || f.status === "compressing",
   );
-  const savedBytes = done.reduce(
-    (acc, f) => acc + (f.size - (f.compressedSize ?? f.size)),
+  const savedBytes = Math.max(
     0,
+    done.reduce((acc, f) => acc + (f.size - (f.compressedSize ?? f.size)), 0),
   );
   return { done: done.length, failed: failed.length, pending: pending.length, savedBytes };
 });

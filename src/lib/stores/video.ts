@@ -116,9 +116,9 @@ export const videoSummary = derived(videoFiles, ($files) => {
   const pending = $files.filter(
     (f) => f.status === "idle" || f.status === "compressing"
   );
-  const savedBytes = done.reduce(
-    (acc, f) => acc + (f.originalSize - (f.compressedSize ?? f.originalSize)),
-    0
+  const savedBytes = Math.max(
+    0,
+    done.reduce((acc, f) => acc + (f.originalSize - (f.compressedSize ?? f.originalSize)), 0),
   );
   return {
     done: done.length,

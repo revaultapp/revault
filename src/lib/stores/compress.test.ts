@@ -129,9 +129,8 @@ describe("compress store", () => {
       ]);
 
       const result = get(summary);
-      // savedBytes uses original - compressed, so this would be negative
-      // The store doesn't prevent this; it just subtracts
-      expect(result.savedBytes).toBe(-40);
+      // savedBytes is clamped to 0 — can't go negative
+      expect(result.savedBytes).toBe(0);
     });
   });
 
