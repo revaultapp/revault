@@ -64,7 +64,7 @@
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
-    background: #0c0f0e;
+    background: var(--sidebar-bg, var(--bg-card));
   }
 
   .sidebar-inner {
@@ -92,7 +92,7 @@
   }
 
   .logo-text {
-    color: #e4e8e6;
+    color: var(--text-primary);
     font-size: 18px;
     font-weight: 700;
     letter-spacing: -0.02em;
@@ -111,10 +111,10 @@
     height: 40px;
     padding: 0 14px 0 8px;
     border-radius: var(--radius-sm);
-    color: #5a6b63;
+    color: var(--text-muted);
     font-size: 13.5px;
     font-weight: 500;
-    transition: background 0.15s, color 0.15s;
+    transition: background var(--duration-fast), color var(--duration-fast);
   }
 
   .nav-item :global(svg) {
@@ -122,16 +122,16 @@
   }
 
   .nav-item span {
-    color: #5a6b63;
+    color: var(--text-muted);
   }
 
   .nav-item:hover {
     background: rgba(255, 255, 255, 0.05);
-    color: #5a6b63;
+    color: var(--text-muted);
   }
 
   .nav-item:hover span {
-    color: #5a6b63;
+    color: var(--text-muted);
   }
 
   .nav-item.active {
@@ -143,7 +143,7 @@
   }
 
   .nav-item.active span {
-    color: #e4e8e6;
+    color: var(--text-primary);
     font-weight: 600;
   }
 
@@ -162,7 +162,7 @@
   .divider {
     height: 1px;
     margin: 16px 0;
-    background: #1e2824;
+    background: var(--border);
   }
 
   .saved-badge {
@@ -185,6 +185,4 @@
   .saved-badge :global(svg) {
     flex-shrink: 0;
   }
-
-
 </style>

@@ -39,6 +39,7 @@
 [data-theme="dark"] {
   --bg-main: #060808;
   --bg-card: #0c0f0e;
+  --sidebar-bg: #0c0f0e;
 
   --navy: #4ade80;
   --navy-bg: #141918;

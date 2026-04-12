@@ -8,10 +8,13 @@
 
   const circumference = 2 * Math.PI * 54;
   let displayPct = $state(0);
+  let rafId = $state(0);
 
   $effect(() => {
+    if (rafId) cancelAnimationFrame(rafId);
+
     const target = targetPct;
-    let rafId: number;
+    let currentRafId = 0;
 
     function tick() {
       displayPct += (target - displayPct) * 0.06;
@@ -19,11 +22,13 @@
         displayPct = 100;
         return;
       }
-      rafId = requestAnimationFrame(tick);
+      currentRafId = requestAnimationFrame(tick);
     }
 
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
+    tick();
+    rafId = currentRafId;
+
+    return () => cancelAnimationFrame(currentRafId);
   });
 
   let offset = $derived(circumference - (displayPct / 100) * circumference);
