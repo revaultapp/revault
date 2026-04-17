@@ -7,3 +7,4 @@ pub mod resize;
 pub mod scanner;
 pub mod thumbnail;
 pub mod video;
+pub mod watermark;
