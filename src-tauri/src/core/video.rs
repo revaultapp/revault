@@ -17,9 +17,30 @@ pub enum VideoPreset {
 impl VideoPreset {
     pub fn crf(self) -> u32 {
         match self {
-            VideoPreset::Smallest => 35,
-            VideoPreset::Balanced => 28,
-            VideoPreset::HighQuality => 22,
+            VideoPreset::Smallest => 28,
+            VideoPreset::Balanced => 23,
+            VideoPreset::HighQuality => 20,
+        }
+    }
+    pub fn codec(self) -> &'static str {
+        match self {
+            VideoPreset::Smallest => "libx264",
+            VideoPreset::Balanced => "libx264",
+            VideoPreset::HighQuality => "libx265",
+        }
+    }
+    pub fn encoder_preset(self) -> &'static str {
+        match self {
+            VideoPreset::Smallest => "medium",
+            VideoPreset::Balanced => "medium",
+            VideoPreset::HighQuality => "slow",
+        }
+    }
+    pub fn pix_fmt(self) -> &'static str {
+        match self {
+            VideoPreset::Smallest => "yuv420p",
+            VideoPreset::Balanced => "yuv420p",
+            VideoPreset::HighQuality => "yuv420p10le",
         }
     }
     pub fn audio_bitrate(self) -> &'static str {
@@ -165,17 +186,22 @@ pub fn compress_video(
     let mut cmd = FfmpegCommand::new_with_path(ffmpeg_bin);
     cmd.input(input_path)
         .overwrite()
-        .codec_video("libx265")
+        .codec_video(preset.codec())
         .arg("-crf")
         .arg(preset.crf().to_string())
         .arg("-preset")
-        .arg("slow")
+        .arg(preset.encoder_preset())
         .arg("-pix_fmt")
-        .arg("yuv420p");
+        .arg(preset.pix_fmt());
 
-    // QuickTime requires hvc1 tag for H.265 — without it the video stream
-    // is undecodable and only audio plays back.
-    cmd.arg("-tag:v").arg("hvc1");
+    // H.265 only: QuickTime requires hvc1 tag — without it the video stream
+    // is undecodable and only audio plays back. Also tune x265 for perceptual
+    // quality at the HighQuality preset.
+    if matches!(preset, VideoPreset::HighQuality) {
+        cmd.arg("-tag:v").arg("hvc1");
+        cmd.arg("-x265-params")
+            .arg("aq-mode=3:psy-rd=1.5:psy-rdoq=5.0:rdoq-level=2");
+    }
 
     if let Some(filter) = build_scale_filter(preset.max_height()) {
         // -sws_flags must come before -vf to apply to the scale filter
@@ -429,9 +455,21 @@ mod tests {
 
     #[test]
     fn test_preset_values() {
-        assert_eq!(VideoPreset::Smallest.crf(), 35);
-        assert_eq!(VideoPreset::Balanced.crf(), 28);
-        assert_eq!(VideoPreset::HighQuality.crf(), 22);
+        assert_eq!(VideoPreset::Smallest.crf(), 28);
+        assert_eq!(VideoPreset::Balanced.crf(), 23);
+        assert_eq!(VideoPreset::HighQuality.crf(), 20);
+
+        assert_eq!(VideoPreset::Smallest.codec(), "libx264");
+        assert_eq!(VideoPreset::Balanced.codec(), "libx264");
+        assert_eq!(VideoPreset::HighQuality.codec(), "libx265");
+
+        assert_eq!(VideoPreset::Smallest.encoder_preset(), "medium");
+        assert_eq!(VideoPreset::Balanced.encoder_preset(), "medium");
+        assert_eq!(VideoPreset::HighQuality.encoder_preset(), "slow");
+
+        assert_eq!(VideoPreset::Smallest.pix_fmt(), "yuv420p");
+        assert_eq!(VideoPreset::Balanced.pix_fmt(), "yuv420p");
+        assert_eq!(VideoPreset::HighQuality.pix_fmt(), "yuv420p10le");
 
         assert_eq!(VideoPreset::Smallest.audio_bitrate(), "96k");
         assert_eq!(VideoPreset::Balanced.audio_bitrate(), "128k");
