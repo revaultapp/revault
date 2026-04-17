@@ -10,7 +10,7 @@ const IMAGE_EXTENSIONS: &[&str] = &[
 ];
 
 const HASH_SIZE: u32 = 16;
-const PERCEPTUAL_THRESHOLD: u32 = 20;
+const PERCEPTUAL_THRESHOLD: u32 = 10;
 
 #[derive(Serialize, Clone, Debug)]
 pub struct DuplicateFile {
