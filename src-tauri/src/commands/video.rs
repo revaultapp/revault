@@ -12,6 +12,7 @@ pub async fn compress_video(
     input: String,
     preset: video::VideoPreset,
     output_dir: Option<String>,
+    strip_privacy: bool,
 ) -> Result<video::VideoCompressionResult, String> {
     let cancel_flag = Arc::new(AtomicBool::new(false));
     *ACTIVE_CANCEL.lock().map_err(|e| e.to_string())? = Some(cancel_flag.clone());
@@ -21,6 +22,7 @@ pub async fn compress_video(
             &input,
             preset,
             output_dir.as_deref(),
+            strip_privacy,
             cancel_flag,
             move |progress| {
                 let _ = app.emit("video-compress-progress", &progress);
@@ -32,6 +34,16 @@ pub async fn compress_video(
 
     *ACTIVE_CANCEL.lock().map_err(|e| e.to_string())? = None;
     result
+}
+
+#[tauri::command]
+pub async fn preview_video_compression(
+    input: String,
+    preset: video::VideoPreset,
+) -> Result<video::VideoCompressionPreview, String> {
+    tauri::async_runtime::spawn_blocking(move || video::preview_video_compression(&input, preset))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

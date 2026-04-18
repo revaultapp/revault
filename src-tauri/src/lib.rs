@@ -36,6 +36,7 @@ pub fn run() {
             commands::thumbnail::generate_thumbnail,
             commands::thumbnail::get_file_sizes,
             commands::video::compress_video,
+            commands::video::preview_video_compression,
             commands::video::cancel_video_compress,
             commands::video::check_ffmpeg,
             commands::video::download_ffmpeg,
