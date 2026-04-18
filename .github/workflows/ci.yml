@@ -69,6 +69,7 @@ jobs:
         run: cargo clippy --workspace -- -D warnings
 
       - name: Cargo audit
+        working-directory: src-tauri
         run: |
           cargo install cargo-audit --locked 2>/dev/null || true
           cargo audit
