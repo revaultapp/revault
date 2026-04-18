@@ -37,6 +37,17 @@ pub enum VideoPreset {
     HighQuality,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum PrivacyMode {
+    #[default]
+    Off,
+    Smart,
+    #[serde(rename = "gps_only")]
+    GpsOnly,
+    Full,
+}
+
 impl VideoPreset {
     pub fn crf(self) -> u32 {
         match self {
@@ -246,9 +257,9 @@ pub fn probe_creation_time(path: &str) -> Option<String> {
     probe_video_stats(path).ok().and_then(|s| s.creation_time)
 }
 
-pub fn build_strip_flags(strip: bool) -> Vec<&'static str> {
-    if strip {
-        vec![
+pub fn build_strip_flags(privacy: PrivacyMode) -> Vec<&'static str> {
+    match privacy {
+        PrivacyMode::Smart | PrivacyMode::Full => vec![
             "-map",
             "-0:d",
             "-map_chapters",
@@ -257,9 +268,18 @@ pub fn build_strip_flags(strip: bool) -> Vec<&'static str> {
             "+bitexact",
             "-flags",
             "+bitexact",
-        ]
+        ],
+        PrivacyMode::GpsOnly | PrivacyMode::Off => Vec::new(),
+    }
+}
+
+/// Validate ISO 8601 creation_time so we never re-inject a tainted string
+/// (quotes, semicolons, shell metacharacters) into the ffmpeg command line.
+fn sanitize_iso8601(s: &str) -> Option<&str> {
+    if chrono::DateTime::parse_from_rfc3339(s).is_ok() {
+        Some(s)
     } else {
-        Vec::new()
+        None
     }
 }
 
@@ -396,7 +416,7 @@ pub fn compress_video(
     input_path: &str,
     preset: VideoPreset,
     output_dir: Option<&str>,
-    strip_privacy: bool,
+    privacy: PrivacyMode,
     cancelled: Arc<AtomicBool>,
     progress_cb: impl Fn(VideoProgress) + Send,
 ) -> Result<VideoCompressionResult, String> {
@@ -405,10 +425,10 @@ pub fn compress_video(
         .map_err(|e| format!("Cannot read input file '{}': {}", input_path, e))?
         .len();
     let total_duration = probe_duration(input_path).unwrap_or(0.0);
-    // Read creation_time up front so we can re-inject it after -map_metadata -1
-    // when privacy stripping is enabled, preserving chronological order in file
-    // managers without leaking EXIF/GPS sidecar metadata.
-    let preserved_creation_time = if strip_privacy {
+    // Smart mode re-injects creation_time after -map_metadata -1 so chronological
+    // order is preserved in file managers without leaking EXIF/GPS sidecar metadata.
+    // Full mode strips without re-injection. Off and GpsOnly keep the original tag.
+    let preserved_creation_time = if matches!(privacy, PrivacyMode::Smart) {
         probe_creation_time(input_path)
     } else {
         None
@@ -451,21 +471,31 @@ pub fn compress_video(
         cmd.arg("-vf").arg(filter);
     }
 
-    cmd.arg("-map_metadata")
-        .arg("-1")
-        .arg("-map")
-        .arg("0:v:0")
-        .arg("-map")
-        .arg("0:a?"); // audio is optional — videos without audio tracks won't fail
+    // Smart/Full wipe all container tags via -map_metadata -1. GpsOnly keeps
+    // the original tags and wipes only the location fields below. Off passes
+    // through untouched.
+    if matches!(privacy, PrivacyMode::Smart | PrivacyMode::Full) {
+        cmd.arg("-map_metadata").arg("-1");
+    }
+    cmd.arg("-map").arg("0:v:0").arg("-map").arg("0:a?"); // audio is optional — videos without audio tracks won't fail
 
     // Re-inject creation_time AFTER -map_metadata -1 so it's the only surviving tag.
+    // Guard with a strict ISO 8601 check to avoid injecting untrusted probe output.
     if let Some(ref ct) = preserved_creation_time {
-        cmd.arg("-metadata").arg(format!("creation_time={}", ct));
+        if let Some(valid) = sanitize_iso8601(ct) {
+            cmd.arg("-metadata").arg(format!("creation_time={}", valid));
+        }
+    }
+
+    // GpsOnly: wipe the location tags Apple/Android write, keep everything else.
+    if matches!(privacy, PrivacyMode::GpsOnly) {
+        cmd.arg("-metadata").arg("location=");
+        cmd.arg("-metadata").arg("location-eng=");
     }
 
     // Hardened strip flags: drop data streams (iPhone GPS tracks), chapters,
-    // and encoder fingerprint bits.
-    for flag in build_strip_flags(strip_privacy) {
+    // and encoder fingerprint bits. Only applied for Smart/Full.
+    for flag in build_strip_flags(privacy) {
         cmd.arg(flag);
     }
 
@@ -753,18 +783,88 @@ mod tests {
     }
 
     #[test]
-    fn test_strip_privacy_flags_in_command() {
-        let on = build_strip_flags(true);
-        assert!(on.contains(&"-map"));
-        assert!(on.contains(&"-0:d"));
-        assert!(on.contains(&"-map_chapters"));
-        assert!(on.contains(&"-1"));
-        assert!(on.contains(&"-fflags"));
-        assert!(on.contains(&"+bitexact"));
-        assert!(on.contains(&"-flags"));
+    fn test_strip_flags_off() {
+        assert!(build_strip_flags(PrivacyMode::Off).is_empty());
+    }
 
-        let off = build_strip_flags(false);
-        assert!(off.is_empty());
+    #[test]
+    fn test_strip_flags_smart() {
+        let flags = build_strip_flags(PrivacyMode::Smart);
+        assert!(flags.contains(&"-map"));
+        assert!(flags.contains(&"-0:d"));
+        assert!(flags.contains(&"-map_chapters"));
+        assert!(flags.contains(&"-1"));
+        assert!(flags.contains(&"-fflags"));
+        assert!(flags.contains(&"+bitexact"));
+        assert!(flags.contains(&"-flags"));
+    }
+
+    #[test]
+    fn test_strip_flags_gps_only() {
+        // GpsOnly must NOT emit any -map -0:d / -map_metadata / bitexact flags;
+        // only the location= wipes happen (added directly to the command, not here).
+        assert!(build_strip_flags(PrivacyMode::GpsOnly).is_empty());
+    }
+
+    #[test]
+    fn test_strip_flags_full() {
+        let flags = build_strip_flags(PrivacyMode::Full);
+        assert!(flags.contains(&"-map"));
+        assert!(flags.contains(&"-0:d"));
+        assert!(flags.contains(&"-map_chapters"));
+        assert!(flags.contains(&"+bitexact"));
+    }
+
+    #[test]
+    fn test_privacy_mode_serde_strings() {
+        // Frontend contract: "off" | "smart" | "gps_only" | "full".
+        assert_eq!(
+            serde_json::from_str::<PrivacyMode>("\"off\"").unwrap(),
+            PrivacyMode::Off
+        );
+        assert_eq!(
+            serde_json::from_str::<PrivacyMode>("\"smart\"").unwrap(),
+            PrivacyMode::Smart
+        );
+        assert_eq!(
+            serde_json::from_str::<PrivacyMode>("\"gps_only\"").unwrap(),
+            PrivacyMode::GpsOnly
+        );
+        assert_eq!(
+            serde_json::from_str::<PrivacyMode>("\"full\"").unwrap(),
+            PrivacyMode::Full
+        );
+    }
+
+    #[test]
+    fn test_sanitize_iso8601_valid() {
+        assert_eq!(
+            sanitize_iso8601("2024-03-15T10:30:00.000000Z"),
+            Some("2024-03-15T10:30:00.000000Z")
+        );
+        assert_eq!(
+            sanitize_iso8601("2024-03-15T10:30:00Z"),
+            Some("2024-03-15T10:30:00Z")
+        );
+        assert_eq!(
+            sanitize_iso8601("2024-03-15T10:30:00+02:00"),
+            Some("2024-03-15T10:30:00+02:00")
+        );
+    }
+
+    #[test]
+    fn test_sanitize_iso8601_rejects_injection() {
+        assert_eq!(sanitize_iso8601("2024; rm -rf /"), None);
+        assert_eq!(sanitize_iso8601("2024-03-15T10:30:00\" bad"), None);
+        assert_eq!(sanitize_iso8601("not a date"), None);
+        assert_eq!(sanitize_iso8601(""), None);
+    }
+
+    #[test]
+    fn test_sanitize_iso8601_rejects_semantically_invalid() {
+        // Regex would accept this (syntactically matches \d{4}-\d{2}-\d{2}T...),
+        // but chrono rejects it because month/day/hour are out of range.
+        assert_eq!(sanitize_iso8601("9999-99-99T99:99:99Z"), None);
     }
 
     #[test]

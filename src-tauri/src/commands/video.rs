@@ -12,7 +12,7 @@ pub async fn compress_video(
     input: String,
     preset: video::VideoPreset,
     output_dir: Option<String>,
-    strip_privacy: bool,
+    privacy: video::PrivacyMode,
 ) -> Result<video::VideoCompressionResult, String> {
     let cancel_flag = Arc::new(AtomicBool::new(false));
     *ACTIVE_CANCEL.lock().map_err(|e| e.to_string())? = Some(cancel_flag.clone());
@@ -22,7 +22,7 @@ pub async fn compress_video(
             &input,
             preset,
             output_dir.as_deref(),
-            strip_privacy,
+            privacy,
             cancel_flag,
             move |progress| {
                 let _ = app.emit("video-compress-progress", &progress);
@@ -40,6 +40,10 @@ pub async fn compress_video(
 pub async fn preview_video_compression(
     input: String,
     preset: video::VideoPreset,
+    // Accepted from the frontend for IPC symmetry with compress_video. The
+    // estimator is format-level (bitrate × factor) so privacy mode does not
+    // change the output size materially.
+    _privacy: video::PrivacyMode,
 ) -> Result<video::VideoCompressionPreview, String> {
     tauri::async_runtime::spawn_blocking(move || video::preview_video_compression(&input, preset))
         .await

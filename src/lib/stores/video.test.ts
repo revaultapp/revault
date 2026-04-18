@@ -42,16 +42,22 @@ describe("video store", () => {
     localStorage.clear();
   });
 
-  it("videoStripPrivacy persists to localStorage", async () => {
-    const { videoStripPrivacy } = await import("./video");
+  it("videoPrivacyMode persists to localStorage", async () => {
+    const { videoPrivacyMode } = await import("./video");
 
-    expect(get(videoStripPrivacy)).toBe(true);
+    expect(get(videoPrivacyMode)).toBe("smart");
 
-    videoStripPrivacy.set(false);
-    expect(localStorage.getItem("video_strip_privacy")).toBe("false");
+    videoPrivacyMode.set("smart");
+    expect(localStorage.getItem("video_privacy_mode")).toBe('"smart"');
 
-    videoStripPrivacy.set(true);
-    expect(localStorage.getItem("video_strip_privacy")).toBe("true");
+    videoPrivacyMode.set("gps_only");
+    expect(localStorage.getItem("video_privacy_mode")).toBe('"gps_only"');
+
+    videoPrivacyMode.set("full");
+    expect(localStorage.getItem("video_privacy_mode")).toBe('"full"');
+
+    videoPrivacyMode.set("off");
+    expect(localStorage.getItem("video_privacy_mode")).toBe('"off"');
   });
 
   it("computeVideoPreview sets loading then ready", async () => {
@@ -87,12 +93,12 @@ describe("video store", () => {
     const rawPreview = makeRawPreview({ input_path: "/bar.mp4" });
     mockInvoke.mockResolvedValue(rawPreview);
 
-    const { videoPreviews, computeVideoPreview, videoPreset, videoStripPrivacy } =
+    const { videoPreviews, computeVideoPreview, videoPreset, videoPrivacyMode } =
       await import("./video");
 
-    // Ensure same preset + stripPrivacy for both calls
+    // Ensure same preset + privacyMode for both calls
     videoPreset.set("Balanced");
-    videoStripPrivacy.set(true);
+    videoPrivacyMode.set("off");
 
     await computeVideoPreview("/bar.mp4");
 
@@ -118,7 +124,7 @@ describe("video store", () => {
     videoPreviews.set(new Map([
       ["/a.mp4", {
         status: "ready",
-        cacheKey: "/a.mp4|Balanced|true",
+        cacheKey: "/a.mp4|Balanced|off",
         preview: {
           inputPath: "/a.mp4",
           durationSec: 30,
@@ -131,7 +137,7 @@ describe("video store", () => {
       }],
       ["/b.mp4", {
         status: "ready",
-        cacheKey: "/b.mp4|Balanced|true",
+        cacheKey: "/b.mp4|Balanced|off",
         preview: {
           inputPath: "/b.mp4",
           durationSec: 60,

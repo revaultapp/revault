@@ -4,7 +4,7 @@
   import { Film, Shield, ShieldCheck, Download, Zap, Wifi, CircleCheck, CircleAlert, TriangleAlert, FolderOpen, X } from "lucide-svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import ToolShell from "./ToolShell.svelte";
-  import ToggleSwitch from "./ToggleSwitch.svelte";
+  import SegmentedControl from "./SegmentedControl.svelte";
   import { formatBytes } from "$lib/utils";
   import { VIDEO_EXTENSIONS, VIDEO_EXTENSIONS_RE } from "$lib/types";
   import {
@@ -15,7 +15,7 @@
     videoSummary,
     ffmpegStatus,
     ffmpegDownloadProgress,
-    videoStripPrivacy,
+    videoPrivacyMode,
     videoPreviews,
     videoPreviewSummary,
     computeVideoPreview,
@@ -30,6 +30,7 @@
     downloadFfmpeg,
     type VideoFile,
     type VideoPreset,
+    type PrivacyMode,
   } from "$lib/stores/video";
 
   const presets: { value: VideoPreset; label: string }[] = [
@@ -37,6 +38,26 @@
     { value: "Balanced", label: "Balanced" },
     { value: "HighQuality", label: "High Quality" },
   ];
+
+  const privacySegments = [
+    { id: "off" satisfies PrivacyMode, label: "Sin cambios" },
+    { id: "smart" satisfies PrivacyMode, label: "Recomendado" },
+    { id: "gps_only" satisfies PrivacyMode, label: "Solo ubicación" },
+    { id: "full" satisfies PrivacyMode, label: "Máximo" },
+  ] as const;
+
+  const privacyTooltips: Record<PrivacyMode, string> = {
+    off: "Mantiene el vídeo tal cual, con toda su información original.",
+    smart: "Borra dónde se grabó el vídeo y el modelo del móvil, pero conserva la fecha.",
+    gps_only: "Solo elimina la ubicación. Conserva fecha, cámara y demás detalles.",
+    full: "Borra todo: ubicación, fecha, cámara y cualquier otro rastro del dispositivo.",
+  };
+
+  const privacyChipText: Record<Exclude<PrivacyMode, "off">, (n: number) => string> = {
+    smart: (n) => `Ubicación y dispositivo eliminados en ${n} vídeo${n !== 1 ? "s" : ""}`,
+    gps_only: (n) => `Ubicación eliminada en ${n} vídeo${n !== 1 ? "s" : ""}`,
+    full: (n) => `Todos los metadatos eliminados en ${n} vídeo${n !== 1 ? "s" : ""}`,
+  };
 
   let targetPct = $derived(
     $videoFiles.length === 0
@@ -134,7 +155,7 @@
     // Subscribe to the signals that should re-trigger preview estimation.
     const filesSnapshot = $videoFiles;
     const presetSnapshot = $videoPreset;
-    const stripSnapshot = $videoStripPrivacy;
+    const privacySnapshot = $videoPrivacyMode;
     const compressing = $isCompressing;
 
     // Cancel pending debounce whenever inputs change.
@@ -148,7 +169,7 @@
 
     // Silence the "unused variable" for reactive tracking only.
     void presetSnapshot;
-    void stripSnapshot;
+    void privacySnapshot;
 
     const idlePaths = filesSnapshot
       .filter((f) => f.status === "idle")
@@ -166,12 +187,13 @@
   // ── Post-success privacy micro-moment ──────────────────────────────────────
   let showPrivacyChip = $state(false);
   let privacyChipCount = $state(0);
+  let privacyChipMode = $state<Exclude<PrivacyMode, "off">>("smart");
   let privacyChipTimer: ReturnType<typeof setTimeout> | null = null;
   let lastAllDoneSignature = "";
 
   $effect(() => {
     const files = $videoFiles;
-    const stripping = $videoStripPrivacy;
+    const privacyActive = $videoPrivacyMode !== "off";
 
     // Detect "all files reached done" edge with a stable signature so we only
     // fire the chip once per completed batch.
@@ -184,10 +206,11 @@
     if (
       files.length > 0 &&
       files.every((f) => f.status === "done") &&
-      stripping
+      privacyActive
     ) {
       lastAllDoneSignature = signature;
       privacyChipCount = files.length;
+      privacyChipMode = $videoPrivacyMode as Exclude<PrivacyMode, "off">;
       showPrivacyChip = true;
 
       if (privacyChipTimer !== null) clearTimeout(privacyChipTimer);
@@ -444,22 +467,19 @@
       </div>
     </div>
     <div class="control-group privacy-group">
-      <div class="toggle-row privacy-row">
-        <div class="toggle-label privacy-toggle-label">
-          <div class="privacy-icon" class:on={$videoStripPrivacy} aria-hidden="true">
+      <div class="privacy-control-row">
+        <div class="privacy-icon-label">
+          <div class="privacy-icon" class:on={$videoPrivacyMode !== "off"} aria-hidden="true">
             <ShieldCheck size={16} />
           </div>
-          <div class="privacy-text">
-            <span class="label">Proteger mi privacidad</span>
-            <span class="control-hint">
-              {$videoStripPrivacy
-                ? "Se eliminará la ubicación y los datos del dispositivo"
-                : "Tus videos conservarán la ubicación original"}
-            </span>
-          </div>
+          <span class="label">Privacidad</span>
         </div>
-        <ToggleSwitch bind:checked={$videoStripPrivacy} />
+        <SegmentedControl
+          segments={privacySegments}
+          bind:selected={$videoPrivacyMode}
+        />
       </div>
+      <p class="privacy-hint">{privacyTooltips[$videoPrivacyMode]}</p>
     </div>
     <div class="control-group">
       <span class="label">Output</span>
@@ -474,9 +494,7 @@
     <div class="privacy-chip-wrap" transition:fly={{ y: -4, duration: 200 }}>
       <div class="privacy-chip" role="status" aria-live="polite">
         <ShieldCheck size={14} />
-        <span>
-          Ubicación eliminada &middot; {privacyChipCount} video{privacyChipCount !== 1 ? "s" : ""}
-        </span>
+        <span>{privacyChipText[privacyChipMode](privacyChipCount)}</span>
       </div>
     </div>
   {/if}
@@ -838,20 +856,29 @@
     color: var(--text-muted);
   }
 
-  /* ── Privacy toggle ── */
+  /* ── Privacy segmented control ── */
   .privacy-group {
-    flex: 1 1 280px;
-    min-width: 260px;
+    flex: 1 1 auto;
   }
 
-  .privacy-row {
-    align-items: center;
-  }
-
-  .privacy-toggle-label {
+  .privacy-control-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
+  }
+
+  .privacy-hint {
+    margin: 8px 0 0;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text-muted);
+  }
+
+  .privacy-icon-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
   }
 
   .privacy-icon {
@@ -870,12 +897,6 @@
   .privacy-icon.on {
     background: var(--accent-subtle);
     color: var(--accent);
-  }
-
-  .privacy-text {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
   }
 
   /* ── Privacy success chip ── */

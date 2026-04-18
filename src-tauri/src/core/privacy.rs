@@ -222,6 +222,7 @@ pub fn read_metadata(path: &str) -> Result<MetadataResult, Box<dyn Error>> {
 }
 
 pub fn strip_metadata(input: &str, output: &str) -> Result<StripResult, Box<dyn Error>> {
+    crate::core::paths::validate_input_path(input, false)?;
     let original_size = checked_size(input)?;
     let data = fs::read(input)?;
     let bytes = img_parts::Bytes::from(data);
@@ -339,6 +340,7 @@ pub fn strip_metadata_selective(
         return Err("no metadata categories selected for stripping".into());
     }
 
+    crate::core::paths::validate_input_path(input, false)?;
     let original_size = checked_size(input)?;
     let mtime = filetime::FileTime::from_last_modification_time(&fs::metadata(input)?);
 

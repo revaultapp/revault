@@ -1,6 +1,7 @@
 import { writable, derived } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { BaseFile } from "$lib/types";
+import { persisted } from "$lib/utils";
 
 export type FileStatus = "pending" | "compressing" | "done" | "error";
 export type OutputFormat = "Jpeg" | "Png" | "Webp" | "Avif";
@@ -34,14 +35,6 @@ export interface SavingsEstimate {
   filesMayIncrease: number;
   sampleSize: number;
   totalOriginalBytes: number;
-}
-
-function persisted<T>(key: string, initial: T) {
-  const stored = localStorage.getItem(key);
-  const value: T = stored !== null ? (JSON.parse(stored) as T) : initial;
-  const store = writable<T>(value);
-  store.subscribe((v) => localStorage.setItem(key, JSON.stringify(v)));
-  return store;
 }
 
 export const files = writable<CompressFile[]>([]);

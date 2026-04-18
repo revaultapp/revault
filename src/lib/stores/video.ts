@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { activity } from "./activity";
 import { savings } from "./savings";
+import { persisted } from "$lib/utils";
 
 // ── FFmpeg availability ───────────────────────────────────────────────────────
 
@@ -58,6 +59,9 @@ export async function downloadFfmpeg(): Promise<void> {
 
 export type VideoPreset = "Smallest" | "Balanced" | "HighQuality";
 
+// Matches Rust PrivacyMode enum (serde lowercase)
+export type PrivacyMode = "off" | "smart" | "gps_only" | "full";
+
 export interface VideoCompressionPreview {
   inputPath: string;
   durationSec: number;
@@ -105,27 +109,12 @@ export interface VideoCompressionResult {
   error: string | null;
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-function persisted<T>(key: string, initial: T) {
-  const stored =
-    typeof localStorage !== "undefined" ? localStorage.getItem(key) : null;
-  const value: T = stored !== null ? (JSON.parse(stored) as T) : initial;
-  const store = writable<T>(value);
-  store.subscribe((v) => {
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem(key, JSON.stringify(v));
-    }
-  });
-  return store;
-}
-
 // ── Stores ─────────────────────────────────────────────────────────────────────
 
 export const videoFiles = writable<VideoFile[]>([]);
 export const videoPreset = persisted<VideoPreset>("video_preset", "Balanced");
 export const videoOutputDir = persisted<string | null>("video_output_dir", null);
-export const videoStripPrivacy = persisted<boolean>("video_strip_privacy", true);
+export const videoPrivacyMode = persisted<PrivacyMode>("video_privacy_mode", "smart");
 export const isCompressing = writable(false);
 
 export const videoPreviews = writable<Map<string, VideoPreviewState>>(new Map());
@@ -272,7 +261,7 @@ export async function compressVideoFile(
       input: file.path,
       preset,
       outputDir: outputDir ?? null,
-      stripPrivacy: get(videoStripPrivacy),
+      privacy: get(videoPrivacyMode),
     });
 
     const isWarning = result.error?.includes("Output was larger") ?? false;
@@ -360,8 +349,8 @@ export function clearVideoPreviews(): void {
 
 export function computeVideoPreview(path: string): Promise<void> {
   const preset = get(videoPreset);
-  const stripPrivacy = get(videoStripPrivacy);
-  const cacheKey = `${path}|${preset}|${String(stripPrivacy)}`;
+  const privacyMode = get(videoPrivacyMode);
+  const cacheKey = `${path}|${preset}|${privacyMode}`;
 
   // Already ready with same key → no-op
   const currentState = get(videoPreviews).get(path);
@@ -386,6 +375,7 @@ export function computeVideoPreview(path: string): Promise<void> {
       const raw = await invoke<RawVideoCompressionPreview>("preview_video_compression", {
         input: path,
         preset,
+        privacy: privacyMode,
       });
 
       // Discard if a newer request has been queued for this path

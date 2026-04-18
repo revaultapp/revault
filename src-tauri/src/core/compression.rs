@@ -591,6 +591,9 @@ fn compress_single(
     preset: QualityPreset,
     strip_gps: bool,
 ) -> CompressionResult {
+    if let Err(e) = crate::core::paths::validate_input_path(path, false) {
+        return CompressionResult::err(path, e);
+    }
     let fmt = format.unwrap_or_else(|| detect_format(path));
     let output = match resolve_output_path(path, &fmt, output_dir, suffix) {
         Ok(o) => o,

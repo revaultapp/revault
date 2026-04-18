@@ -110,7 +110,12 @@ fn collect_images(paths: &[String], recursive: bool) -> (Vec<String>, Vec<String
     let mut images = Vec::new();
     let mut errors = Vec::new();
     for path_str in paths {
-        collect_images_recursive(Path::new(path_str), recursive, &mut images, &mut errors);
+        match crate::core::paths::validate_input_path(path_str, true) {
+            Ok(canonical) => {
+                collect_images_recursive(&canonical, recursive, &mut images, &mut errors);
+            }
+            Err(e) => errors.push(e),
+        }
     }
     (images, errors)
 }
