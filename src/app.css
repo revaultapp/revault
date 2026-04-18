@@ -32,12 +32,19 @@
   --topbar-height: 64px;
 
   --font: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+
+  /* Chrome tokens — always dark, never redefined in [data-theme="dark"] */
+  --chrome-bg: #0c0f0e;
+  --chrome-text-primary: #e4e8e6;
+  --chrome-text-muted: #5a6b63;
+  --chrome-border: #1e2824;
+  --chrome-hover-bg: rgba(255, 255, 255, 0.05);
+  --chrome-active-bg: rgba(255, 255, 255, 0.03);
 }
 
 [data-theme="dark"] {
   --bg-main: #060808;
   --bg-card: #0c0f0e;
-  --sidebar-bg: #0c0f0e;
 
   --navy: #4ade80;
   --navy-bg: #141918;

@@ -28,8 +28,8 @@
     gap: 16px;
     height: var(--topbar-height);
     padding: 0 28px;
-    background: var(--bg-card);
-    border-bottom: 1px solid var(--border);
+    background: var(--chrome-bg);
+    border-bottom: 1px solid var(--chrome-border);
     flex-shrink: 0;
   }
 
@@ -43,12 +43,12 @@
     font-size: 20px;
     font-weight: 700;
     letter-spacing: -0.025em;
-    color: var(--text-primary);
+    color: var(--chrome-text-primary);
   }
 
   .title-area p {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--chrome-text-muted);
     font-weight: 400;
   }
 

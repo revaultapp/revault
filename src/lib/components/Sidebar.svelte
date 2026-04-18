@@ -60,11 +60,11 @@
 <style>
   .sidebar {
     width: 220px;
-    height: 100vh;
+    height: 100%;
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
-    background: var(--sidebar-bg, var(--bg-card));
+    background: var(--chrome-bg);
   }
 
   .sidebar-inner {
@@ -92,7 +92,7 @@
   }
 
   .logo-text {
-    color: var(--text-primary);
+    color: var(--chrome-text-primary);
     font-size: 18px;
     font-weight: 700;
     letter-spacing: -0.02em;
@@ -111,7 +111,7 @@
     height: 40px;
     padding: 0 14px 0 8px;
     border-radius: var(--radius-sm);
-    color: var(--text-muted);
+    color: var(--chrome-text-muted);
     font-size: 13.5px;
     font-weight: 500;
     transition: background var(--duration-fast), color var(--duration-fast);
@@ -122,20 +122,20 @@
   }
 
   .nav-item span {
-    color: var(--text-muted);
+    color: var(--chrome-text-muted);
   }
 
   .nav-item:hover {
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--text-muted);
+    background: var(--chrome-hover-bg);
+    color: var(--chrome-text-muted);
   }
 
   .nav-item:hover span {
-    color: var(--text-muted);
+    color: var(--chrome-text-muted);
   }
 
   .nav-item.active {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--chrome-active-bg);
     color: var(--accent);
     border-radius: 10px;
     gap: 10px;
@@ -143,7 +143,7 @@
   }
 
   .nav-item.active span {
-    color: var(--text-primary);
+    color: var(--chrome-text-primary);
     font-weight: 600;
   }
 
@@ -162,7 +162,7 @@
   .divider {
     height: 1px;
     margin: 16px 0;
-    background: var(--border);
+    background: var(--chrome-border);
   }
 
   .saved-badge {

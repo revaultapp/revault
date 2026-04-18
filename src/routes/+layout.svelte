@@ -3,9 +3,14 @@
   import "../app.css";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import TopBar from "$lib/components/TopBar.svelte";
+  import WindowControls from "$lib/components/WindowControls.svelte";
 
   let { children } = $props();
 </script>
+
+<div class="titlebar" data-tauri-drag-region>
+  <WindowControls />
+</div>
 
 <div class="shell">
   <Sidebar />
@@ -18,10 +23,21 @@
 </div>
 
 <style>
+  .titlebar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: stretch;
+    width: 100%;
+    height: 28px;
+    background: var(--chrome-bg);
+    border-bottom: 1px solid var(--chrome-border);
+    flex-shrink: 0;
+  }
+
   .shell {
     display: flex;
-    height: 100vh;
     width: 100vw;
+    height: calc(100vh - 28px);
   }
 
   .main {
