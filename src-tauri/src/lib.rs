@@ -39,6 +39,7 @@ pub fn run() {
             commands::dedupe::find_duplicates,
             commands::delete::delete_files,
             commands::gif::export_gif,
+            commands::gif::estimate_gif_size,
             commands::gif::check_gifski,
             commands::gif::download_gifski,
             commands::privacy::read_metadata,

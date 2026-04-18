@@ -8,13 +8,19 @@ pub async fn export_gif(
     input_path: String,
     output_path: String,
     options: gif::GifOptions,
-) -> Result<u64, String> {
+) -> Result<gif::GifResult, String> {
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     tauri::async_runtime::spawn_blocking(move || {
         gif::export_gif(&app_data, &input_path, &output_path, options)
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn estimate_gif_size(options: gif::GifOptions) -> Result<u64, String> {
+    options.validate()?;
+    Ok(gif::estimate_gif_size(&options))
 }
 
 #[tauri::command]

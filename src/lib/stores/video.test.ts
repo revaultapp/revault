@@ -130,8 +130,15 @@ describe("video store", () => {
   });
 
   it("exportGif happy path sets done state and output path", async () => {
-    mockInvoke.mockResolvedValueOnce(undefined); // export_gif returns void
-    const { gifState, gifOutputPath, gifError, exportGif } = await import("./video");
+    mockInvoke.mockResolvedValueOnce({
+      output_path: "/test/video_gif.gif",
+      size_bytes: 4_200_000,
+      duration_sec: 3.0,
+      width: 480,
+      height: 270,
+      fps: 15,
+    });
+    const { gifState, gifOutputPath, gifResult, gifError, exportGif } = await import("./video");
 
     const file = {
       path: "/test/video.mp4",
@@ -147,6 +154,8 @@ describe("video store", () => {
 
     expect(get(gifState)).toBe("done");
     expect(get(gifOutputPath)).toBe("/test/video_gif.gif");
+    expect(get(gifResult)?.size_bytes).toBe(4_200_000);
+    expect(get(gifResult)?.fps).toBe(15);
     expect(get(gifError)).toBeNull();
     expect(mockInvoke).toHaveBeenCalledWith("export_gif", expect.objectContaining({
       inputPath: "/test/video.mp4",

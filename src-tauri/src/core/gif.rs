@@ -5,7 +5,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use crate::core::paths::validate_input_path;
-use crate::core::video::get_ffmpeg_path;
+use crate::core::video::{get_ffmpeg_path, probe_video_stats};
 
 pub const GIFSKI_VERSION: &str = "1.34.0";
 const GIFSKI_RELEASE_BASE: &str = "https://github.com/revaultapp/revault/releases/download";
@@ -13,6 +13,16 @@ const GIFSKI_RELEASE_BASE: &str = "https://github.com/revaultapp/revault/release
 const MAX_RANGE_SEC: f32 = 15.0;
 const ALLOWED_FPS: [u32; 3] = [10, 15, 24];
 const ALLOWED_WIDTH: [u32; 5] = [320, 480, 640, 720, 1080];
+
+#[derive(Debug, Serialize)]
+pub struct GifResult {
+    pub output_path: String,
+    pub size_bytes: u64,
+    pub duration_sec: f32,
+    pub width: u32,
+    pub height: u32,
+    pub fps: u32,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct GifOptions {
@@ -85,7 +95,6 @@ pub fn resolve_gif_output_path(
 
 /// Heuristic only — for UI preview before encoding. Assumes ~50KB/frame at
 /// default resolutions/quality. Real output varies ±50% based on content entropy.
-#[allow(dead_code)]
 pub fn estimate_gif_size(opts: &GifOptions) -> u64 {
     let duration = (opts.end_sec - opts.start_sec).max(0.0);
     let frames = (duration * opts.fps as f32) as u64;
@@ -367,7 +376,7 @@ pub fn export_gif(
     input_path: &str,
     output_path: &str,
     opts: GifOptions,
-) -> Result<u64, String> {
+) -> Result<GifResult, String> {
     opts.validate()?;
     validate_input_path(input_path, false)?;
     let gifski = gifski_binary_path(app_data_dir)?;
@@ -438,9 +447,21 @@ pub fn export_gif(
         return Err(format!("gifski failed: {}", stderr));
     }
 
-    std::fs::metadata(output_path)
+    let size_bytes = std::fs::metadata(output_path)
         .map(|m| m.len())
-        .map_err(|e| format!("gifski produced no output: {}", e))
+        .map_err(|e| format!("gifski produced no output: {}", e))?;
+
+    let stats = probe_video_stats(output_path)
+        .map_err(|e| format!("could not read GIF metadata: {}", e))?;
+
+    Ok(GifResult {
+        output_path: output_path.to_string(),
+        size_bytes,
+        duration_sec: stats.duration_sec as f32,
+        width: stats.width,
+        height: stats.height,
+        fps: if stats.fps > 0 { stats.fps } else { opts.fps },
+    })
 }
 
 #[cfg(test)]
@@ -480,6 +501,31 @@ mod tests {
     fn resolve_gif_output_path_rejects_missing_dir() {
         let err = resolve_gif_output_path("/tmp/clip.mp4", Some("/nonexistent/xyz")).unwrap_err();
         assert!(err.contains("does not exist"));
+    }
+
+    #[test]
+    fn gif_result_serializes_expected_fields() {
+        let r = GifResult {
+            output_path: "/tmp/clip.gif".to_string(),
+            size_bytes: 1234,
+            duration_sec: 3.5,
+            width: 480,
+            height: 270,
+            fps: 15,
+        };
+        let json = serde_json::to_value(&r).unwrap();
+        assert_eq!(json["output_path"], "/tmp/clip.gif");
+        assert_eq!(json["size_bytes"], 1234);
+        assert_eq!(json["duration_sec"], 3.5);
+        assert_eq!(json["width"], 480);
+        assert_eq!(json["height"], 270);
+        assert_eq!(json["fps"], 15);
+    }
+
+    #[test]
+    fn estimate_gif_size_returns_positive_for_valid_opts() {
+        let size = estimate_gif_size(&base_opts());
+        assert!(size > 0, "expected >0, got {}", size);
     }
 
     #[test]
