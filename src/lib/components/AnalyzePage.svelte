@@ -1,15 +1,39 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
-  import { Trash2, FolderOpen, Search, ChevronDown, ChevronRight } from "lucide-svelte";
-  import DropZone from "./DropZone.svelte";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
+  import { invoke } from "@tauri-apps/api/core";
+  import { onMount } from "svelte";
+  import { Trash2, FolderOpen, Search, ChevronDown, ChevronRight, FolderSearch } from "lucide-svelte";
   import ProgressRing from "./ProgressRing.svelte";
-  import { duplicateGroups, isScanning, totalFound, scanForDuplicates, clearResults } from "$lib/stores/dedupe";
+  import Button from "./Button.svelte";
+  import { duplicateGroups, isScanning, totalFound, scanError, scanForDuplicates, clearResults, scanProgress } from "$lib/stores/dedupe";
   import { formatBytes } from "$lib/utils";
   import { activity } from "$lib/stores/activity";
 
   let selectedFolders = $state<string[]>([]);
-  let expandedGroups = $state<Set<number>>(new Set());
+  let expandedGroups = $state<Set<string>>(new Set());
   let deletedPaths = $state<Set<string>>(new Set());
+
+  onMount(() => {
+    const unlisten = getCurrentWebview().onDragDropEvent((event) => {
+      if (event.payload.type === "drop") {
+        const paths = event.payload.paths;
+        // Filter to only paths that don't look like image files (Analyze expects folders)
+        const newFolders = paths.filter((p: string) => {
+          if (selectedFolders.includes(p)) return false;
+          const ext = p.split('.').pop()?.toLowerCase();
+          const imageExts = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'tiff', 'tif', 'bmp', 'gif', 'avif', 'jxl'];
+          return !ext || !imageExts.includes(ext);
+        });
+        if (newFolders.length > 0) {
+          selectedFolders = [...selectedFolders, ...newFolders];
+        }
+      }
+    });
+    return () => {
+      unlisten.then((fn: () => void) => fn());
+    };
+  });
 
   let totalWastedSpace = $derived(
     $duplicateGroups.reduce((acc, group) => {
@@ -25,8 +49,18 @@
     )
   );
 
-  let visibleTotal = $derived(
+  let visibleFileCount = $derived(
     visibleGroups.reduce((acc, g) => acc + g.files.length, 0)
+  );
+
+  let progressPct = $derived(
+    $scanProgress && $scanProgress.total > 0
+      ? Math.round(($scanProgress.current / $scanProgress.total) * 100)
+      : 0
+  );
+
+  let ringPct = $derived(
+    $scanProgress?.phase === "grouping" ? 100 : progressPct
   );
 
   async function browseFolders() {
@@ -55,19 +89,27 @@
     }
   }
 
-  function toggleGroup(i: number) {
-    if (expandedGroups.has(i)) {
-      expandedGroups.delete(i);
+  function toggleGroup(hash: string) {
+    if (expandedGroups.has(hash)) {
+      expandedGroups.delete(hash);
     } else {
-      expandedGroups.add(i);
+      expandedGroups.add(hash);
     }
     expandedGroups = new Set(expandedGroups);
   }
 
   async function deleteDuplicate(filePath: string) {
-    // Note: moving to OS trash requires tauri-plugin-fs which is not yet installed.
-    // For now, mark as deleted in UI only. A future update will wire up the actual delete.
-    deletedPaths = new Set([...deletedPaths, filePath]);
+    try {
+      const results = await invoke<{ path: string; success: boolean; error?: string }[]>("delete_files", { paths: [filePath] });
+      const result = results[0];
+      if (result.success) {
+        deletedPaths = new Set([...deletedPaths, filePath]);
+      } else {
+        scanError.set(result.error ?? "Failed to delete file");
+      }
+    } catch (e) {
+      scanError.set(String(e));
+    }
   }
 
   function clearAll() {
@@ -82,38 +124,73 @@
   }
 </script>
 
-{#if selectedFolders.length === 0 && visibleGroups.length === 0}
+{#if selectedFolders.length === 0}
   <div class="empty-view">
-    <DropZone
-      onfiles={(paths) => { selectedFolders = [...selectedFolders, ...paths.filter(p => !selectedFolders.includes(p))]; }}
-      acceptedExtensions={/.*/}
-      formatTags={["JPEG", "PNG", "WebP", "HEIC", "TIFF", "BMP", "AVIF", "JXL", "Folder"]}
-    />
+    <div class="folder-drop-zone">
+      <div class="drop-icon">
+        <FolderSearch size={48} strokeWidth={1.5} />
+      </div>
+      <h2 class="drop-title">Add folders to scan for duplicates</h2>
+      <p class="drop-subtitle">Drop folders here or click to browse</p>
+      <Button onclick={browseFolders} aria-label="Choose folders to scan">
+        <FolderOpen size={16} />
+        Choose folders
+      </Button>
+    </div>
   </div>
 {:else if $isScanning}
   <div class="scanning-view">
     <ProgressRing
-      targetPct={100}
-      label="Scanning for duplicates..."
-      sublabel={`${selectedFolders.length} folder${selectedFolders.length > 1 ? "s" : ""} · ${$duplicateGroups.length} groups found`}
+      targetPct={ringPct}
+      label={$scanProgress?.phase === "grouping" ? "Grouping duplicates..." : "Scanning files..."}
+      sublabel={$scanProgress
+        ? `${$scanProgress.current} / ${$scanProgress.total} files`
+        : `${selectedFolders.length} folder${selectedFolders.length > 1 ? "s" : ""}`}
     />
   </div>
-{:else if visibleGroups.length > 0}
+{:else if $duplicateGroups.length === 0}
+  <div class="empty-view">
+    <div class="no-dupes">
+      <Search size={40} strokeWidth={1.5} />
+      <p class="no-dupes-title">No duplicates found</p>
+      <p class="no-dupes-sub">Try adding more folders or rescanning</p>
+      <div class="folders-added">
+        {#each selectedFolders as folder}
+          <span class="folder-chip">
+            <FolderOpen size={12} />
+            {folderName(folder)}
+            <button class="chip-remove" onclick={() => removeFolder(folder)} aria-label="Remove folder {folderName(folder)}">×</button>
+          </span>
+        {/each}
+      </div>
+      <Button onclick={startScan}>
+        <Search size={14} />
+        Rescan
+      </Button>
+    </div>
+  </div>
+{:else}
   <div class="results-view">
+    {#if $scanError}
+      <div class="error-banner" role="alert">
+        <span class="error-text">{$scanError}</span>
+        <button class="error-dismiss" onclick={() => scanError.set(null)}>×</button>
+      </div>
+    {/if}
     <div class="header">
       <div class="header-left">
         <h2>{visibleGroups.length} duplicate group{visibleGroups.length > 1 ? "s" : ""} found</h2>
-        <span class="sub">{visibleTotal} files · {formatBytes(totalWastedSpace)} wasted</span>
+        <span class="sub">{visibleFileCount} files · {formatBytes(totalWastedSpace)} wasted</span>
       </div>
       <div class="header-actions">
-        <button class="btn-ghost" onclick={browseFolders}>
+        <Button variant="ghost" onclick={browseFolders} aria-label="Add more folders">
           <FolderOpen size={14} />
           Add folders
-        </button>
-        <button class="btn-ghost" onclick={clearAll}>
+        </Button>
+        <Button variant="ghost" onclick={clearAll} aria-label="Clear all results">
           <Trash2 size={14} />
           Clear
-        </button>
+        </Button>
       </div>
     </div>
 
@@ -122,14 +199,14 @@
         <span class="folder-chip">
           <FolderOpen size={12} />
           {folderName(folder)}
-          <button class="chip-remove" onclick={() => removeFolder(folder)}>×</button>
+          <button class="chip-remove" onclick={() => removeFolder(folder)} aria-label="Remove folder {folderName(folder)}">×</button>
         </span>
       {/each}
       {#if selectedFolders.length > 0}
-        <button class="btn-primary scan-btn" onclick={startScan}>
+        <Button onclick={startScan} disabled={$isScanning}>
           <Search size={14} />
           Scan
-        </button>
+        </Button>
       {/if}
     </div>
 
@@ -137,9 +214,9 @@
       {#each visibleGroups as group, i}
         {@const sortedFiles = [...group.files].sort((a, b) => b.size - a.size)}
         {@const wasted = sortedFiles.slice(1).reduce((a, f) => a + f.size, 0)}
-        {@const isExpanded = expandedGroups.has(i)}
+        {@const isExpanded = expandedGroups.has(group.hash)}
         <div class="group-card">
-          <button class="group-header" onclick={() => toggleGroup(i)}>
+          <button class="group-header" onclick={() => toggleGroup(group.hash)} aria-expanded={isExpanded}>
             <div class="group-info">
               {#if isExpanded}
                 <ChevronDown size={16} />
@@ -168,7 +245,7 @@
                     {#if fi === 0}
                       <span class="original-tag">Original</span>
                     {:else if !isDeleted}
-                      <button class="btn-icon delete-btn" onclick={() => deleteDuplicate(file.path)} title="Move to trash">
+                      <button class="btn-icon delete-btn" onclick={() => deleteDuplicate(file.path)} title="Move to trash" aria-label="Move duplicate to trash">
                         <Trash2 size={14} />
                       </button>
                     {:else}
@@ -183,27 +260,6 @@
       {/each}
     </div>
   </div>
-{:else}
-  <div class="empty-view">
-    <div class="no-dupes">
-      <Search size={40} strokeWidth={1.5} />
-      <p class="no-dupes-title">No duplicates found</p>
-      <p class="no-dupes-sub">Try adding more folders or rescanning</p>
-      <div class="folders-added">
-        {#each selectedFolders as folder}
-          <span class="folder-chip">
-            <FolderOpen size={12} />
-            {folderName(folder)}
-            <button class="chip-remove" onclick={() => removeFolder(folder)}>×</button>
-          </span>
-        {/each}
-      </div>
-      <button class="btn-primary" onclick={startScan}>
-        <Search size={14} />
-        Rescan
-      </button>
-    </div>
-  </div>
 {/if}
 
 <style>
@@ -213,6 +269,37 @@
     justify-content: center;
     height: 100%;
     padding: 28px;
+  }
+
+  .folder-drop-zone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 64px 48px;
+    background: var(--bg-card);
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-xl);
+    text-align: center;
+    max-width: 400px;
+  }
+
+  .drop-icon {
+    color: var(--text-muted);
+    opacity: 0.6;
+  }
+
+  .drop-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+  }
+
+  .drop-subtitle {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: -8px;
   }
 
   .scanning-view {
@@ -231,6 +318,37 @@
     overflow: hidden;
   }
 
+  .error-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--danger-bg);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-sm);
+    color: var(--danger);
+    font-size: 13px;
+  }
+
+  .error-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .error-dismiss {
+    background: none;
+    border: none;
+    color: var(--danger);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    padding: 0;
+    flex-shrink: 0;
+  }
+
   .header {
     display: flex;
     justify-content: space-between;
@@ -246,6 +364,7 @@
   .header h2 {
     font-size: 18px;
     font-weight: 600;
+    letter-spacing: -0.02em;
   }
 
   .sub {
@@ -291,26 +410,7 @@
   }
 
   .chip-remove:hover {
-    color: #ef4444;
-  }
-
-  .scan-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 16px;
-    border-radius: var(--radius-sm);
-    background: var(--accent);
-    color: #fff;
-    font-size: 13px;
-    font-weight: 600;
-    border: none;
-    cursor: pointer;
-    transition: opacity 0.15s;
-  }
-
-  .scan-btn:hover {
-    opacity: 0.9;
+    color: var(--danger);
   }
 
   .groups-list {
@@ -371,9 +471,10 @@
     font-size: 12px;
     font-weight: 600;
     color: var(--accent);
-    background: rgba(16, 185, 129, 0.1);
+    background: var(--accent-subtle);
     padding: 2px 8px;
     border-radius: 4px;
+    font-variant-numeric: tabular-nums;
   }
 
   .group-files {
@@ -394,7 +495,7 @@
   }
 
   .dup-file.original {
-    background: rgba(16, 185, 129, 0.04);
+    background: rgba(16, 216, 122, 0.04);
   }
 
   .dup-file.deleted {
@@ -434,13 +535,14 @@
     font-size: 13px;
     font-weight: 600;
     color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
   }
 
   .original-tag {
     font-size: 11px;
     font-weight: 600;
     color: var(--accent);
-    background: rgba(16, 185, 129, 0.1);
+    background: var(--accent-subtle);
     padding: 2px 8px;
     border-radius: 4px;
   }
@@ -461,7 +563,16 @@
   }
 
   .delete-btn:hover {
-    color: #ef4444;
+    color: var(--danger);
+  }
+
+  .delete-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .delete-btn:disabled:hover {
+    color: var(--text-muted);
   }
 
   .no-dupes {
@@ -493,40 +604,4 @@
     margin: 8px 0;
   }
 
-  .btn-ghost {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 14px;
-    border-radius: var(--radius-sm);
-    font-size: 13px;
-    color: var(--text-secondary);
-    border: 1px solid var(--border);
-    background: none;
-    cursor: pointer;
-    transition: background 0.15s;
-  }
-
-  .btn-ghost:hover {
-    background: var(--navy-bg);
-  }
-
-  .btn-primary {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 10px 28px;
-    border-radius: var(--radius-sm);
-    background: var(--accent);
-    color: #fff;
-    font-size: 14px;
-    font-weight: 600;
-    border: none;
-    cursor: pointer;
-    transition: opacity 0.15s;
-  }
-
-  .btn-primary:hover {
-    opacity: 0.9;
-  }
 </style>

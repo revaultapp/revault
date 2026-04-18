@@ -1,31 +1,22 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
-  import { FolderOpen, CircleCheck, CircleAlert, X, Eye } from "lucide-svelte";
+  import { FolderOpen, CheckCircle, AlertCircle, X, Eye, Info } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
   import BeforeAfterSlider from "./BeforeAfterSlider.svelte";
+  import HelperTooltip from "./HelperTooltip.svelte";
   import ToggleSwitch from "./ToggleSwitch.svelte";
-  import { formatBytes, browseOutputDir, openOutputFolder } from "$lib/utils";
+  import { formatBytes, browseOutputDir } from "$lib/utils";
   import {
     files, targetFormat, outputDir, isConverting, summary,
-    activeProfile, selectedPlatforms,
+    selectedPlatforms, hasHeicFiles, heicBannerDismissed,
     addFiles, removeFile, clearFiles,
     type TargetFormat, type ConvertFile,
   } from "$lib/stores/convert";
+  import { qualityPreset, stripGps } from "$lib/stores/compress";
   import { savings } from "$lib/stores/savings";
   import { activity } from "$lib/stores/activity";
   import { IMAGE_EXTENSIONS } from "$lib/types";
-
-  let quality = $state(90);
-  let stripGps = $state(false);
-
-  const profiles: { id: "Web" | "Email" | "Archive" | "Share" | "Custom"; label: string }[] = [
-    { id: "Web", label: "Web" },
-    { id: "Email", label: "Email" },
-    { id: "Archive", label: "Archive" },
-    { id: "Share", label: "Share" },
-    { id: "Custom", label: "Custom" },
-  ];
 
   const socialPlatforms = [
     { id: "instagram-portrait", label: "Instagram Portrait", width: 1080, height: 1350 },
@@ -34,16 +25,6 @@
     { id: "linkedin", label: "LinkedIn", width: 1200, height: 627 },
     { id: "tiktok", label: "TikTok", width: 1080, height: 1920 },
   ];
-
-  function applyProfile(p: "Web" | "Email" | "Archive" | "Share" | "Custom") {
-    activeProfile.set(p);
-    if (p === "Web") { quality = 75; targetFormat.set("Webp"); }
-    else if (p === "Email") { quality = 60; targetFormat.set("Jpeg"); }
-    else if (p === "Archive") { quality = 95; targetFormat.set("Png"); }
-    else if (p === "Share") { quality = 80; targetFormat.set("Webp"); stripGps = true; }
-  }
-
-  function onManualChange() { activeProfile.set("Custom"); }
 
   let targetPct = $derived(
     $files.length === 0 ? 0 : (($summary.done + $summary.failed) / $files.length) * 100
@@ -95,26 +76,20 @@
     if (dir) outputDir.set(dir);
   }
 
-  async function handleOpenOutputFolder() {
-    const firstOutput = $files.find((f) => f.outputPath)?.outputPath;
-    if (firstOutput) await openOutputFolder(firstOutput);
-  }
-
   async function startConversion() {
     const currentFiles = $files;
     if (currentFiles.length === 0) return;
     isConverting.set(true);
     const fmt = $targetFormat;
-    const q = quality;
+    files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
     try {
-      files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
       const allPaths = currentFiles.map((f) => f.path);
       const results = await invoke<ConversionResult[]>("convert_images", {
         paths: allPaths,
         format: fmt,
-        quality: q,
+        qualityPreset: $qualityPreset,
         outputDir: $outputDir,
-        stripGps: stripGps,
+        stripGps: $stripGps,
       });
       const resultMap = new Map(results.map((r) => [r.input_path, r]));
       files.update((all) =>
@@ -125,34 +100,36 @@
           return { ...f, status: "done" as const, outputPath: r.output_path, outputSize: r.compressed_size, size: r.original_size };
         })
       );
-      const doneFiles = $files.filter((f) => f.status === "done");
-      if (doneFiles.length > 0) {
-        const originalBytes = doneFiles.reduce((acc, f) => acc + f.size, 0);
-        const compressedBytes = doneFiles.reduce((acc, f) => acc + (f.outputSize ?? f.size), 0);
-        const savedBytes = originalBytes - compressedBytes;
-        savings.incrementOps($summary.done);
-        savings.addOriginalBytes(originalBytes);
-        savings.addCompressedBytes(compressedBytes);
-        if (savedBytes > 0) savings.add(savedBytes);
-        activity.add({ type: "convert", fileCount: doneFiles.length, savedBytes });
-      }
-    } finally {
-      isConverting.set(false);
+    } catch (err) {
+      files.update((all) =>
+        all.map((f) => f.status === "pending" ? { ...f, status: "error" as const, error: String(err) } : f)
+      );
     }
+    const doneFiles = $files.filter((f) => f.status === "done");
+    if (doneFiles.length > 0) {
+      const originalBytes = doneFiles.reduce((acc, f) => acc + f.size, 0);
+      const compressedBytes = doneFiles.reduce((acc, f) => acc + (f.outputSize ?? f.size), 0);
+      const savedBytes = originalBytes - compressedBytes;
+      savings.incrementOps(doneFiles.length);
+      savings.addOriginalBytes(originalBytes);
+      savings.addCompressedBytes(compressedBytes);
+      if (savedBytes > 0) savings.add(savedBytes);
+      activity.add({ type: "convert", fileCount: doneFiles.length, savedBytes });
+    }
+    isConverting.set(false);
   }
 
   async function startSocialExport() {
     const platforms = $selectedPlatforms;
     if (platforms.length === 0 || $files.length === 0) return;
+    const filesToProcess = [...$files];
     isConverting.set(true);
-    const q = quality;
     try {
       files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
       for (const platformId of platforms) {
         const platform = socialPlatforms.find((p) => p.id === platformId);
         if (!platform) continue;
-        const platformFiles = $files.filter((f) => f.status === "pending");
-        for (const file of platformFiles) {
+        for (const file of filesToProcess) {
           files.update((all) =>
             all.map((f) => f.path === file.path ? { ...f, status: "converting" as const } : f)
           );
@@ -162,9 +139,10 @@
               width: platform.width,
               height: platform.height,
               mode: "Fit",
-              quality: q,
+              quality: null,
               outputDir: $outputDir,
-              stripGps: stripGps,
+              stripGps: $stripGps,
+              suffix: `_${platform.id}`,
             });
             const result = results[0];
             files.update((all) =>
@@ -187,7 +165,7 @@
         const originalBytes = doneFiles.reduce((acc, f) => acc + f.size, 0);
         const compressedBytes = doneFiles.reduce((acc, f) => acc + (f.outputSize ?? f.size), 0);
         const savedBytes = originalBytes - compressedBytes;
-        savings.incrementOps($summary.done);
+        savings.incrementOps(doneFiles.length);
         savings.addOriginalBytes(originalBytes);
         savings.addCompressedBytes(compressedBytes);
         if (savedBytes > 0) savings.add(savedBytes);
@@ -202,7 +180,6 @@
     selectedPlatforms.update((current) =>
       current.includes(id) ? current.filter((p) => p !== id) : [...current, id]
     );
-    onManualChange();
   }
 
   let compareFile = $state<ConvertFile | null>(null);
@@ -222,7 +199,6 @@
   onfiles={(paths) => addFiles(paths)}
   onbrowse={browseFiles}
   onclear={handleClear}
-  onopenfolder={$summary.done > 0 && $summary.pending === 0 ? handleOpenOutputFolder : undefined}
   actionLabel="Convert {$files.length > 1 ? 'All' : ''}"
   onaction={startConversion}
   {headerText}
@@ -246,12 +222,12 @@
 
   {#snippet fileStatus(file)}
     {#if file.status === "done"}
-      <button class="btn-icon compare-btn" onclick={() => compareFile = file} title="Compare">
+      <button class="btn-icon compare-btn" onclick={() => compareFile = file} aria-label="Compare before and after">
         <Eye size={16} />
       </button>
-      <CircleCheck size={18} />
+      <CheckCircle size={18} />
     {:else if file.status === "error"}
-      <CircleAlert size={18} />
+      <AlertCircle size={18} />
     {:else}
       <button class="btn-icon" onclick={() => removeFile(file.path)}>
         <X size={16} />
@@ -259,63 +235,91 @@
     {/if}
   {/snippet}
 
-  <div class="control-group">
-    <span class="label">Profile</span>
-    <div class="pills">
-      {#each profiles as p}
-        <button class="pill" class:active={$activeProfile === p.id} onclick={() => applyProfile(p.id)}>
-          {p.label}
+  {#snippet banner()}
+    {#if $hasHeicFiles && !$heicBannerDismissed}
+      <div class="heic-banner">
+        <Info size={14} />
+        <span>HEIC files detected — output format set to JPEG for broad compatibility.</span>
+        <button class="banner-dismiss" onclick={() => heicBannerDismissed.set(true)} aria-label="Dismiss">
+          <X size={13} />
         </button>
-      {/each}
-    </div>
-  </div>
-  <div class="control-group">
-    <span class="label">Format</span>
-    <div class="pills">
-      {#each formats as f}
-        <button class="pill" class:active={$targetFormat === f.value} onclick={() => { targetFormat.set(f.value); onManualChange(); }}>
-          {f.label}
-        </button>
-      {/each}
-    </div>
-  </div>
-  {#if $targetFormat !== "Png"}
-    <div class="control-group">
-      <label for="quality-slider">Quality <span class="quality-value">{quality}%</span></label>
-      <input id="quality-slider" type="range" min="10" max="100" step="5" bind:value={quality} oninput={onManualChange} />
-    </div>
-  {/if}
-  <div class="control-group">
-    <span class="label">Output</span>
-    <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
-      <FolderOpen size={14} />
-      {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
-    </button>
-  </div>
-  <div class="control-group">
-    <span class="label">Strip GPS</span>
-    <ToggleSwitch bind:checked={stripGps} />
-  </div>
-  <div class="control-group">
-    <span class="label">Social Export</span>
-    <div class="social-platforms">
-      {#each socialPlatforms as platform}
-        <label class="platform-check">
-          <input
-            type="checkbox"
-            checked={$selectedPlatforms.includes(platform.id)}
-            onchange={() => handleTogglePlatform(platform.id)}
-          />
-          <span class="platform-label">{platform.label}</span>
-          <span class="platform-res">{platform.width}×{platform.height}</span>
-        </label>
-      {/each}
-    </div>
-    {#if $selectedPlatforms.length > 0}
-      <button class="btn-primary social-btn" onclick={startSocialExport}>
-        Export to {$selectedPlatforms.length} platform{$selectedPlatforms.length > 1 ? "s" : ""}
-      </button>
+      </div>
     {/if}
+  {/snippet}
+
+  <div class="controls-row">
+    <div class="control-group">
+      <span class="label">Format <HelperTooltip tip="Choose the output image format. JPEG is best for photos, PNG for graphics, WebP/AVIF for modern compression." /></span>
+      <div class="pills">
+        {#each formats as f}
+          <button class="pill" class:active={$targetFormat === f.value} onclick={() => targetFormat.set(f.value)}>
+            {f.label}
+          </button>
+        {/each}
+      </div>
+    </div>
+    {#if $targetFormat !== "Png"}
+      <div class="control-group">
+        <span class="label">Quality <HelperTooltip tip="Smallest: minimum file size. Balanced: good quality at lower size. High quality: best quality, larger files." /></span>
+        <div class="pills">
+          <button class="pill" class:active={$qualityPreset === "Smallest"}
+            onclick={() => qualityPreset.set("Smallest")}>Smallest</button>
+          <button class="pill" class:active={$qualityPreset === "Balanced"}
+            onclick={() => qualityPreset.set("Balanced")}>Balanced</button>
+          <button class="pill" class:active={$qualityPreset === "HighQuality"}
+            onclick={() => qualityPreset.set("HighQuality")}>High quality</button>
+        </div>
+      </div>
+    {/if}
+    <div class="control-group">
+      <span class="label">Output <HelperTooltip tip="Where to save converted files. Defaults to the same folder as the source images." /></span>
+      <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
+        <FolderOpen size={14} />
+        {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
+      </button>
+    </div>
+  </div>
+
+  <div class="controls-divider"></div>
+
+  <div class="controls-row">
+    <div class="control-group">
+      <div class="toggle-row">
+        <div class="toggle-label">
+          <span class="label">Strip GPS <HelperTooltip tip="Removes GPS coordinates and other location metadata from converted images to protect your privacy." /></span>
+        </div>
+        <ToggleSwitch bind:checked={$stripGps} />
+      </div>
+    </div>
+  </div>
+
+  <div class="controls-divider"></div>
+
+  <div class="controls-row">
+    <div class="social-row">
+      <div class="control-group">
+        <span class="label">Social export <HelperTooltip tip="Export images optimized for each social platform's dimensions and format requirements." /></span>
+        <div class="social-platforms">
+          {#each socialPlatforms as platform}
+            <button
+              class="pill platform-pill"
+              class:active={$selectedPlatforms.includes(platform.id)}
+              onclick={() => handleTogglePlatform(platform.id)}
+            >
+              {platform.label}
+              <span class="platform-res">{platform.width}×{platform.height}</span>
+            </button>
+          {/each}
+        </div>
+      </div>
+      {#if $selectedPlatforms.length > 0}
+        <div class="social-action">
+          <button class="social-export-btn" onclick={startSocialExport}>
+            Export to {$selectedPlatforms.length} platform{$selectedPlatforms.length > 1 ? "s" : ""}
+          </button>
+        </div>
+      {/if}
+    </div>
   </div>
 </ToolShell>
 
@@ -330,6 +334,38 @@
 {/if}
 
 <style>
+  .heic-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    background: color-mix(in oklch, var(--accent) 12%, transparent);
+    border: 1px solid color-mix(in oklch, var(--accent) 30%, transparent);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .heic-banner :global(svg) {
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  .heic-banner span { flex: 1; }
+
+  .banner-dismiss {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    border-radius: 4px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    transition: color 0.15s;
+  }
+
+  .banner-dismiss:hover { color: var(--text-primary); }
+
   .saved-total {
     font-size: 13px;
     color: var(--accent);
@@ -346,37 +382,55 @@
   .social-platforms {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 4px;
   }
 
-  .platform-check {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 10px;
-    border-radius: 6px;
+  .platform-pill {
+    gap: 4px;
+  }
+
+  .platform-res {
+    font-size: 11px;
+    opacity: 0.45;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .platform-pill.active .platform-res {
+    opacity: 0.65;
+  }
+
+  .social-export-btn {
+    margin-top: 4px;
+    padding: 5px 14px;
     font-size: 12px;
-    cursor: pointer;
-    background: var(--navy-bg);
-    transition: background 0.15s;
+    font-weight: 500;
+    border-radius: 8px;
+    color: var(--accent);
+    border: 1px solid color-mix(in oklch, var(--accent) 40%, transparent);
+    background: var(--accent-subtle);
+    width: fit-content;
+    transition: background 0.15s, border-color 0.15s;
   }
 
-  .platform-check:hover { background: var(--border); }
-
-  .platform-check input[type="checkbox"] {
-    accent-color: var(--accent);
-    width: 14px;
-    height: 14px;
+  .social-export-btn:hover {
+    background: color-mix(in oklch, var(--accent) 18%, transparent);
+    border-color: var(--accent);
   }
 
-  .platform-label { font-weight: 500; color: var(--text-secondary); }
-  .platform-res { color: var(--text-muted); font-size: 11px; }
-
-  .social-btn {
-    margin-top: 8px;
-    padding: 8px 20px;
-    font-size: 13px;
+  .social-export-btn:active {
+    transform: scale(0.98);
   }
 
+  .social-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    width: 100%;
+  }
 
+  .social-action {
+    margin-left: auto;
+    flex-shrink: 0;
+    align-self: center;
+  }
 </style>

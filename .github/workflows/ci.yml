@@ -57,6 +57,9 @@ jobs:
       - name: Svelte / TypeScript type check
         run: pnpm check
 
+      - name: Frontend tests
+        run: pnpm test
+
       - name: Rust format check
         working-directory: src-tauri
         run: cargo fmt --all -- --check
@@ -64,6 +67,13 @@ jobs:
       - name: Rust clippy
         working-directory: src-tauri
         run: cargo clippy --workspace -- -D warnings
+
+      - name: Cargo audit
+        working-directory: src-tauri
+        shell: bash
+        run: |
+          cargo install cargo-audit --locked 2>/dev/null || true
+          cargo audit
 
       - name: Rust tests
         working-directory: src-tauri

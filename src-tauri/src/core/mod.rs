@@ -1,10 +1,9 @@
 pub mod compression;
-pub mod date;
 pub mod dedupe;
 pub mod heic;
 pub mod image_io;
-pub mod organize;
+pub mod paths;
 pub mod privacy;
-pub mod rename;
 pub mod resize;
 pub mod scanner;
+pub mod video;

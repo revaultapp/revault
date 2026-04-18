@@ -222,6 +222,7 @@ pub fn read_metadata(path: &str) -> Result<MetadataResult, Box<dyn Error>> {
 }
 
 pub fn strip_metadata(input: &str, output: &str) -> Result<StripResult, Box<dyn Error>> {
+    crate::core::paths::validate_input_path(input, false)?;
     let original_size = checked_size(input)?;
     let data = fs::read(input)?;
     let bytes = img_parts::Bytes::from(data);
@@ -339,6 +340,7 @@ pub fn strip_metadata_selective(
         return Err("no metadata categories selected for stripping".into());
     }
 
+    crate::core::paths::validate_input_path(input, false)?;
     let original_size = checked_size(input)?;
     let mtime = filetime::FileTime::from_last_modification_time(&fs::metadata(input)?);
 
@@ -409,6 +411,9 @@ pub fn strip_selective_batch(
 /// Strip only GPS metadata from a file in-place (used by compression flow).
 pub fn strip_gps_in_place(path: &str) -> Result<(), Box<dyn Error>> {
     let file_path = Path::new(path);
+
+    let mtime = filetime::FileTime::from_last_modification_time(&fs::metadata(file_path)?);
+
     let mut metadata = match Metadata::new_from_path(file_path) {
         // File has no parseable metadata — nothing to strip
         Err(_) => return Ok(()),
@@ -422,6 +427,8 @@ pub fn strip_gps_in_place(path: &str) -> Result<(), Box<dyn Error>> {
     metadata
         .write_to_file(file_path)
         .map_err(|e| format!("failed to write metadata: {e}"))?;
+
+    filetime::set_file_mtime(path, mtime)?;
 
     Ok(())
 }
@@ -465,7 +472,7 @@ mod tests {
     fn read_metadata_no_exif() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.jpg");
-        fs::write(&path, &[0xFF, 0xD8, 0xFF, 0xD9]).unwrap();
+        fs::write(&path, [0xFF, 0xD8, 0xFF, 0xD9]).unwrap();
         let result = read_metadata(path.to_str().unwrap()).unwrap();
         assert!(!result.has_metadata);
         assert!(result.gps.is_none());
@@ -486,7 +493,7 @@ mod tests {
     fn strip_batch_mixed_results() {
         let dir = tempfile::tempdir().unwrap();
         let valid = dir.path().join("valid.jpg");
-        fs::write(&valid, &[0xFF, 0xD8, 0xFF, 0xD9]).unwrap();
+        fs::write(&valid, [0xFF, 0xD8, 0xFF, 0xD9]).unwrap();
         let missing = dir.path().join("missing.jpg");
 
         let paths = vec![
@@ -503,7 +510,7 @@ mod tests {
     fn strip_selective_no_options_returns_error() {
         let dir = tempfile::tempdir().unwrap();
         let input = dir.path().join("test.jpg");
-        fs::write(&input, &[0xFF, 0xD8, 0xFF, 0xD9]).unwrap();
+        fs::write(&input, [0xFF, 0xD8, 0xFF, 0xD9]).unwrap();
         let output = dir.path().join("test_stripped.jpg");
         let opts = StripOptions {
             gps: false,
@@ -521,7 +528,7 @@ mod tests {
     fn strip_selective_gps_produces_output() {
         let dir = tempfile::tempdir().unwrap();
         let input = dir.path().join("test.jpg");
-        fs::write(&input, &[0xFF, 0xD8, 0xFF, 0xD9]).unwrap();
+        fs::write(&input, [0xFF, 0xD8, 0xFF, 0xD9]).unwrap();
         let output = dir.path().join("test_stripped.jpg");
         let opts = StripOptions {
             gps: true,
@@ -540,7 +547,7 @@ mod tests {
     fn strip_selective_batch_mixed_results() {
         let dir = tempfile::tempdir().unwrap();
         let valid = dir.path().join("valid.jpg");
-        fs::write(&valid, &[0xFF, 0xD8, 0xFF, 0xD9]).unwrap();
+        fs::write(&valid, [0xFF, 0xD8, 0xFF, 0xD9]).unwrap();
         let missing = dir.path().join("missing.jpg");
 
         let paths = vec![
@@ -563,7 +570,7 @@ mod tests {
     fn strip_gps_in_place_minimal_jpeg() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.jpg");
-        fs::write(&path, &[0xFF, 0xD8, 0xFF, 0xD9]).unwrap();
+        fs::write(&path, [0xFF, 0xD8, 0xFF, 0xD9]).unwrap();
         // Should succeed even on a minimal JPEG with no metadata
         let result = strip_gps_in_place(path.to_str().unwrap());
         assert!(result.is_ok());

@@ -1,49 +1,23 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
+  import { openPath } from "@tauri-apps/plugin-opener";
   import { FolderOpen, CheckCircle, AlertCircle, X, Eye } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
   import BeforeAfterSlider from "./BeforeAfterSlider.svelte";
-  import { formatBytes, browseOutputDir, openOutputFolder } from "$lib/utils";
+  import HelperTooltip from "./HelperTooltip.svelte";
+  import { formatBytes, browseOutputDir } from "$lib/utils";
   import ToggleSwitch from "./ToggleSwitch.svelte";
   import {
-    files, quality, format, outputDir, isCompressing, summary,
-    compressMode, targetSize, targetUnit, activeProfile, stripGps,
+    files, qualityPreset, format, outputDir, isCompressing, isEstimating, summary,
+    stripGps, estimateSavings,
     addFiles, removeFile, clearFiles,
-    type OutputFormat, type CompressFile, type CompressionProfile, type CompressMode,
+    type QualityPreset, type OutputFormat, type CompressFile,
+    type SavingsEstimate,
   } from "$lib/stores/compress";
   import { savings } from "$lib/stores/savings";
   import { activity } from "$lib/stores/activity";
   import { IMAGE_EXTENSIONS } from "$lib/types";
-
-  const profiles: { id: CompressionProfile; label: string }[] = [
-    { id: "Web", label: "Web" },
-    { id: "Email", label: "Email" },
-    { id: "Archive", label: "Archive" },
-    { id: "Share", label: "Share" },
-    { id: "Custom", label: "Custom" },
-  ];
-
-  const targetPresets = [
-    { label: "500 KB", size: 500, unit: "KB" as const },
-    { label: "1 MB", size: 1, unit: "MB" as const },
-    { label: "2 MB", size: 2, unit: "MB" as const },
-    { label: "5 MB", size: 5, unit: "MB" as const },
-  ];
-
-  function applyProfile(p: CompressionProfile) {
-    activeProfile.set(p);
-    if (p === "Web") { quality.set(75); format.set("Webp"); compressMode.set("quality"); stripGps.set(false); }
-    else if (p === "Email") { quality.set(60); format.set("Jpeg"); compressMode.set("target"); targetSize.set(500); targetUnit.set("KB"); stripGps.set(false); }
-    else if (p === "Archive") { quality.set(95); format.set(null); compressMode.set("quality"); stripGps.set(false); }
-    else if (p === "Share") { quality.set(80); format.set("Webp"); compressMode.set("quality"); stripGps.set(true); }
-  }
-
-  function onManualChange() { activeProfile.set("Custom"); }
-
-  function targetBytes(): number {
-    return $targetUnit === "MB" ? $targetSize * 1024 * 1024 : $targetSize * 1024;
-  }
 
   let targetPct = $derived(
     $files.length === 0 ? 0 : (($summary.done + $summary.failed) / $files.length) * 100
@@ -65,8 +39,9 @@
   }
 
   const formats: { value: OutputFormat | null; label: string }[] = [
-    { value: null, label: "Auto" },
+    { value: null, label: "Auto (smallest)" },
     { value: "Jpeg", label: "JPEG" },
+    { value: "Png", label: "PNG" },
     { value: "Webp", label: "WebP" },
     { value: "Avif", label: "AVIF" },
   ];
@@ -84,28 +59,22 @@
     if (dir) outputDir.set(dir);
   }
 
-  async function handleOpenOutputFolder() {
-    const firstOutput = $files.find((f) => f.outputPath)?.outputPath;
-    if (firstOutput) await openOutputFolder(firstOutput);
-  }
-
   async function startCompression() {
     const currentFiles = $files;
     if (currentFiles.length === 0) return;
     isCompressing.set(true);
-    const q = $quality;
     const fmt = $format;
-    const mode = $compressMode;
-    const tb = targetBytes();
     const gps = $stripGps;
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
     try {
       const allPaths = currentFiles.map((f) => f.path);
-      const cmd = mode === "target" ? "compress_to_target" : "compress_images";
-      const args = mode === "target"
-        ? { paths: allPaths, targetBytes: tb, format: fmt, outputDir: $outputDir, stripGps: gps }
-        : { paths: allPaths, quality: q, format: fmt, outputDir: $outputDir, stripGps: gps };
-      const results = await invoke<CompressionResult[]>(cmd, args);
+      const results = await invoke<CompressionResult[]>("compress_images", {
+        paths: allPaths,
+        qualityPreset: $qualityPreset,
+        format: fmt,
+        outputDir: $outputDir,
+        stripGps: gps,
+      });
       const resultMap = new Map(results.map((r) => [r.input_path, r]));
       files.update((all) =>
         all.map((f) => {
@@ -142,6 +111,56 @@
     return "Same size";
   }
 
+  async function openOutputFolder() {
+    const dir = $outputDir ?? ($files[0]?.path ? $files[0].path.substring(0, $files[0].path.lastIndexOf($files[0].path.includes('/') ? '/' : '\\')) : null);
+    if (dir) await openPath(dir);
+  }
+
+  // Real savings estimate from preview compression
+  let savingsEstimate = $state<SavingsEstimate | null>(null);
+  let currentEstimateId = 0;
+
+  // Re-estimate when files, quality, or format changes
+  $effect(() => {
+    if ($files.length === 0 || $isCompressing || $summary.done > 0) {
+      savingsEstimate = null;
+      return;
+    }
+    // Copy values to avoid tracking issues with async
+    const currentFiles = $files;
+    const currentPreset = $qualityPreset;
+    const currentFormat = $format;
+    const estimateId = ++currentEstimateId;
+
+    estimateSavings(currentFiles, currentPreset, currentFormat).then((result) => {
+      // Only use result if this is still the latest estimate
+      if (estimateId !== currentEstimateId) return;
+      if (currentFiles.length > 0) {
+        savingsEstimate = result;
+      }
+    });
+  });
+
+  // Derived banner from real estimate
+  let estimatedBanner = $derived.by(() => {
+    if ($files.length === 0 || $isCompressing || $summary.done > 0) return null;
+    if (!savingsEstimate) return null;
+    const { sampleRatio, filesMayIncrease, totalOriginalBytes } = savingsEstimate;
+    const totalOriginal = totalOriginalBytes;
+    const estimated = Math.round(totalOriginal * sampleRatio);
+    const pct = Math.round((1 - sampleRatio) * 100);
+    const wouldGrow = pct < 0;
+    return {
+      count: $files.length,
+      totalOriginal,
+      estimated,
+      pct,
+      displayPct: Math.abs(pct),
+      wouldGrow,
+      filesMayIncrease,
+    };
+  });
+
   let compareFile = $state<CompressFile | null>(null);
 
   function handleClear() {
@@ -159,7 +178,6 @@
   onfiles={(paths) => addFiles(paths)}
   onbrowse={browseFiles}
   onclear={handleClear}
-  onopenfolder={$summary.done > 0 && $summary.pending === 0 ? handleOpenOutputFolder : undefined}
   actionLabel="Compress {$files.length > 1 ? 'All' : ''}"
   onaction={startCompression}
   {headerText}
@@ -167,6 +185,42 @@
   {#snippet headerSub()}
     {#if $summary.savedBytes > 0}
       <span class="saved-total">Saved {formatBytes($summary.savedBytes)}</span>
+    {/if}
+    {#if $summary.done > 0}
+      <button class="btn-ghost open-folder-btn" onclick={openOutputFolder}>
+        Open output folder
+      </button>
+    {/if}
+  {/snippet}
+
+  {#snippet estimateCard()}
+    {#if $isEstimating}
+      <div class="estimate-card">
+        <div class="estimate-row">
+          <span class="estimate-label">Estimated</span>
+          <span class="estimate-value estimating">Scanning sample files...</span>
+        </div>
+      </div>
+    {:else if estimatedBanner}
+      <div class="estimate-card">
+        <div class="estimate-row">
+          <span class="estimate-label">Estimated</span>
+          <span class="estimate-value">
+            {estimatedBanner.count} files:&nbsp;
+            {formatBytes(estimatedBanner.totalOriginal)}
+            → ~{formatBytes(estimatedBanner.estimated)}
+            <span class="estimate-pct">({estimatedBanner.displayPct}% {estimatedBanner.wouldGrow ? 'larger' : 'smaller'})</span>
+          </span>
+        </div>
+        <div class="estimate-meta">
+          {#if estimatedBanner.filesMayIncrease > 0}
+            <span class="estimate-warn">
+              <AlertCircle size={12} />
+              {estimatedBanner.filesMayIncrease} file{estimatedBanner.filesMayIncrease > 1 ? 's' : ''} may grow
+            </span>
+          {/if}
+        </div>
+      </div>
     {/if}
   {/snippet}
 
@@ -182,7 +236,7 @@
 
   {#snippet fileStatus(file)}
     {#if file.status === "done"}
-      <button class="btn-icon compare-btn" onclick={() => compareFile = file} title="Compare">
+      <button class="btn-icon compare-btn" onclick={() => compareFile = file} title="Compare" aria-label="Compare before and after">
         <Eye size={16} />
       </button>
       <CheckCircle size={18} />
@@ -196,60 +250,44 @@
   {/snippet}
 
   <div class="control-group">
-    <span class="label">Profile</span>
-    <div class="pills">
-      {#each profiles as p}
-        <button class="pill" class:active={$activeProfile === p.id} onclick={() => applyProfile(p.id)}>
-          {p.label}
-        </button>
-      {/each}
-    </div>
-  </div>
-  <div class="control-group">
-    <span class="label">Format</span>
+    <span class="label">Format <HelperTooltip tip="Choose the output format. Auto selects the format that produces the smallest file." /></span>
     <div class="pills">
       {#each formats as f}
-        <button class="pill" class:active={$format === f.value} onclick={() => { format.set(f.value); onManualChange(); }}>
+        <button class="pill" class:active={$format === f.value} onclick={() => format.set(f.value)}>
           {f.label}
         </button>
       {/each}
     </div>
   </div>
   <div class="control-group">
-    <span class="label">Mode</span>
+    <span class="label">Quality <HelperTooltip tip="Smallest: minimum file size. Balanced: good quality at lower size. High quality: best quality, larger files." /></span>
     <div class="pills">
-      <button class="pill" class:active={$compressMode === "quality"} onclick={() => { compressMode.set("quality"); onManualChange(); }}>Quality</button>
-      <button class="pill" class:active={$compressMode === "target"} onclick={() => { compressMode.set("target"); onManualChange(); }}>Target Size</button>
+      <button class="pill" class:active={$qualityPreset === "Smallest"}
+        onclick={() => qualityPreset.set("Smallest")}>Smallest</button>
+      <button class="pill" class:active={$qualityPreset === "Balanced"}
+        onclick={() => qualityPreset.set("Balanced")}>Balanced</button>
+      <button class="pill" class:active={$qualityPreset === "HighQuality"}
+        onclick={() => qualityPreset.set("HighQuality")}>High quality</button>
     </div>
+    {#if $format === "Png"}
+      <span class="format-hint">PNG is lossless — quality preset doesn't affect output</span>
+    {/if}
   </div>
-  {#if $compressMode === "quality"}
-    <div class="control-group">
-      <label for="quality-slider">Quality <span class="quality-value">{$quality}%</span></label>
-      <input id="quality-slider" type="range" min="10" max="100" step="5" bind:value={$quality} oninput={onManualChange} />
-    </div>
-  {:else}
-    <div class="control-group">
-      <span class="label">Target</span>
-      <div class="pills">
-        {#each targetPresets as tp}
-          <button class="pill" class:active={$targetSize === tp.size && $targetUnit === tp.unit}
-            onclick={() => { targetSize.set(tp.size); targetUnit.set(tp.unit); onManualChange(); }}>
-            {tp.label}
-          </button>
-        {/each}
-      </div>
-    </div>
-  {/if}
   <div class="control-group">
-    <span class="label">Output</span>
+    <span class="label">Output <HelperTooltip tip="Folder where compressed images are saved. Defaults to the same folder as the original." /></span>
     <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
       <FolderOpen size={14} />
       {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
     </button>
   </div>
   <div class="control-group">
-    <span class="label">Strip GPS</span>
-    <ToggleSwitch bind:checked={$stripGps} />
+    <div class="toggle-row">
+      <div class="toggle-label">
+        <span class="label">Strip Location</span>
+        <span class="control-hint">Remove location data from photos</span>
+      </div>
+      <ToggleSwitch bind:checked={$stripGps} />
+    </div>
   </div>
 </ToolShell>
 
@@ -270,10 +308,82 @@
     font-weight: 500;
   }
 
+  .format-hint {
+    display: block;
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
   .compare-btn {
     margin-right: 6px;
     color: var(--text-muted);
     transition: color 0.15s;
   }
   .compare-btn:hover { color: var(--accent); }
+
+  .open-folder-btn {
+    margin-left: 8px;
+    font-size: 12px;
+  }
+
+  /* Estimate card — prominent pre-compression savings display */
+  .estimate-card {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 16px;
+    background: var(--accent-subtle);
+    border: 1px solid var(--accent-glow);
+    border-radius: var(--radius-sm);
+  }
+
+  .estimate-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .estimate-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+  }
+
+  .estimate-value {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .estimate-pct {
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .estimate-meta {
+    display: flex;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  .estimate-warn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--warning, #f59e0b);
+  }
+
+  .estimating {
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  /* .toggle-row, .toggle-label, .control-hint — styled globally in ToolShell */
 </style>

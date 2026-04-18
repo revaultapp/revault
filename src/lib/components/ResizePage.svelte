@@ -3,8 +3,12 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { FolderOpen, CheckCircle, AlertCircle, X } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
-  import { browseOutputDir, openOutputFolder } from "$lib/utils";
+  import HelperTooltip from "./HelperTooltip.svelte";
+  import ToggleSwitch from "./ToggleSwitch.svelte";
+  import { browseOutputDir } from "$lib/utils";
+  import { stripGps } from "$lib/stores/compress";
   import { IMAGE_EXTENSIONS } from "$lib/types";
+  import { formatBytes } from "$lib/utils";
   import {
     files, isResizing, outputDir, resizeMode, width, height, summary,
     addFiles, removeFile, clearFiles,
@@ -72,11 +76,6 @@
     if (dir) outputDir.set(dir);
   }
 
-  async function handleOpenOutputFolder() {
-    const firstOutput = $files.find((f) => f.outputPath)?.outputPath;
-    if (firstOutput) await openOutputFolder(firstOutput);
-  }
-
   async function startResize() {
     const currentFiles = $files;
     if (currentFiles.length === 0) return;
@@ -94,6 +93,7 @@
         height: h,
         mode,
         outputDir: outDir,
+        stripGps: $stripGps,
       });
       const resultMap = new Map(results.map((r) => [r.input_path, r]));
       files.update((all) =>
@@ -106,6 +106,7 @@
             outputPath: r.output_path,
             outputWidth: r.new_width, outputHeight: r.new_height,
             originalWidth: r.original_width, originalHeight: r.original_height,
+            size: r.original_size, outputSize: r.resized_size,
           };
         })
       );
@@ -113,8 +114,9 @@
       files.update((all) =>
         all.map((f) => f.status === "pending" ? { ...f, status: "error" as const, error: String(err) } : f)
       );
+    } finally {
+      isResizing.set(false);
     }
-    isResizing.set(false);
   }
 
 </script>
@@ -127,14 +129,13 @@
   onfiles={(paths) => addFiles(paths)}
   onbrowse={browseFiles}
   onclear={clearFiles}
-  onopenfolder={$summary.done > 0 && $summary.pending === 0 ? handleOpenOutputFolder : undefined}
   actionLabel="Resize {$files.length > 1 ? 'All' : ''}"
   onaction={startResize}
   {headerText}
 >
   {#snippet fileDetail(file)}
     {#if file.status === "done"}
-      {file.originalWidth}×{file.originalHeight} → {file.outputWidth}×{file.outputHeight}
+      {file.size ? formatBytes(file.size) : '—'} → {file.outputSize ? formatBytes(file.outputSize) : '—'} ({file.originalWidth}×{file.originalHeight} → {file.outputWidth}×{file.outputHeight})
     {:else if file.status === "error"}
       {file.error}
     {:else}
@@ -183,9 +184,12 @@
     </div>
   </div>
   <div class="control-group">
-    <span class="label">Mode</span>
+    <span class="label">
+      Mode
+      <HelperTooltip tip="Fit: scales to fit within, preserving aspect ratio. Exact: forces exact dimensions, may distort." />
+    </span>
     <div class="pills">
-      {#each ([["Fit", "Fit"], ["Exact", "Stretch"]] as const) as [value, label]}
+      {#each ([["Fit", "Fit"], ["Exact", "Exact"]] as const) as [value, label]}
         <button class="pill" class:active={$resizeMode === value} onclick={() => resizeMode.set(value)}>
           {label}
         </button>
@@ -198,6 +202,15 @@
       <FolderOpen size={14} />
       {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
     </button>
+  </div>
+  <div class="control-group">
+    <div class="toggle-row">
+      <div class="toggle-label">
+        <span class="label">Strip GPS</span>
+        <span class="control-hint">Remove location data from photos</span>
+      </div>
+      <ToggleSwitch bind:checked={$stripGps} />
+    </div>
   </div>
 </ToolShell>
 
@@ -215,10 +228,10 @@
   }
 
   .preset-group-label {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.04em;
     color: var(--text-muted);
     opacity: 0.7;
   }
@@ -237,8 +250,8 @@
 
   .dimension-inputs input {
     width: 72px;
-    padding: 5px 8px;
-    border-radius: 6px;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
     font-size: 13px;
     border: 1px solid var(--border);
     background: var(--navy-bg);
@@ -250,4 +263,5 @@
     font-size: 13px;
     color: var(--text-muted);
   }
+
 </style>

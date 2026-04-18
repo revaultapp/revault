@@ -1,5 +1,6 @@
 use crate::core::resize;
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn resize_images(
     paths: Vec<String>,
@@ -9,6 +10,7 @@ pub async fn resize_images(
     quality: Option<f32>,
     output_dir: Option<String>,
     strip_gps: Option<bool>,
+    suffix: Option<String>,
 ) -> Result<Vec<resize::ResizeResult>, String> {
     let strip_gps = strip_gps.unwrap_or(false);
     tauri::async_runtime::spawn_blocking(move || {
@@ -20,6 +22,7 @@ pub async fn resize_images(
             quality,
             output_dir.as_deref(),
             strip_gps,
+            suffix.as_deref(),
         ))
     })
     .await

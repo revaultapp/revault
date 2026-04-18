@@ -5,19 +5,19 @@
   import ToolsPage from "$lib/components/ToolsPage.svelte";
   import PrivacyPage from "$lib/components/PrivacyPage.svelte";
   import AnalyzePage from "$lib/components/AnalyzePage.svelte";
-  import OrganizePage from "$lib/components/OrganizePage.svelte";
+  import VideoPage from "$lib/components/VideoPage.svelte";
 </script>
 
 {#if $activePage === "dashboard"}
   <DashboardPage />
-{:else if $activePage === "tools"}
+{:else if $activePage === "optimize"}
   <ToolsPage />
-{:else if $activePage === "analyze"}
+{:else if $activePage === "duplicates"}
   <AnalyzePage />
-{:else if $activePage === "organize"}
-  <OrganizePage />
 {:else if $activePage === "privacy"}
   <PrivacyPage />
+{:else if $activePage === "video"}
+  <VideoPage />
 {:else if $activePage === "settings"}
   <SettingsPage />
 {:else}

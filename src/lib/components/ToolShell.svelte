@@ -1,7 +1,7 @@
 <script lang="ts" generics="T extends BaseFile">
   import type { Snippet } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { FolderOpen, Trash2, ImageIcon } from "lucide-svelte";
+  import { Trash2, ImageIcon, Film } from "lucide-svelte";
   import DropZone from "./DropZone.svelte";
   import ProgressRing from "./ProgressRing.svelte";
   import type { BaseFile } from "$lib/types";
@@ -17,11 +17,20 @@
     onfiles: (paths: string[]) => void;
     onbrowse: () => void;
     onclear: () => void;
-    onopenfolder?: () => void;
+    dropZoneTitle?: string;
+    dropZoneFormatTags?: string[];
+    dropZoneAcceptedExtensions?: RegExp;
+    dropZoneFilePickerName?: string;
+    dropZoneFilePickerExtensions?: string[];
+    showThumbnails?: boolean;
+    placeholderIcon?: "image" | "video";
+
     actionLabel: string;
     onaction: () => void;
     headerText: string;
     headerSub?: Snippet;
+    banner?: Snippet;
+    estimateCard?: Snippet;
     children?: Snippet;
     fileDetail: Snippet<[T]>;
     fileStatus: Snippet<[T]>;
@@ -36,17 +45,26 @@
     onfiles,
     onbrowse,
     onclear,
-    onopenfolder,
     actionLabel,
     onaction,
     headerText,
     headerSub,
+    banner,
+    estimateCard,
     children,
     fileDetail,
     fileStatus,
+    dropZoneTitle,
+    dropZoneFormatTags,
+    dropZoneAcceptedExtensions,
+    dropZoneFilePickerName,
+    dropZoneFilePickerExtensions,
+    showThumbnails = true,
+    placeholderIcon = "image",
   }: Props = $props();
 
   $effect(() => {
+    if (!showThumbnails) return;
     // Track paths submitted in this effect run so stale responses are discarded.
     // When files changes, a new effect run begins and a fresh Set is used.
     const submitted = new Set<string>();
@@ -73,7 +91,14 @@
 </script>
 
 {#if files.length === 0}
-  <DropZone {onfiles} />
+  <DropZone
+    {onfiles}
+    dropTitle={dropZoneTitle}
+    formatTags={dropZoneFormatTags}
+    acceptedExtensions={dropZoneAcceptedExtensions}
+    filePickerName={dropZoneFilePickerName}
+    filePickerExtensions={dropZoneFilePickerExtensions}
+  />
 {:else if isProcessing}
   <ProgressRing {targetPct} label={progressLabel} sublabel={progressSublabel} />
 {:else}
@@ -84,12 +109,6 @@
         {#if headerSub}{@render headerSub()}{/if}
       </div>
       <div class="header-actions">
-        {#if onopenfolder}
-          <button class="btn-ghost" onclick={onopenfolder}>
-            <FolderOpen size={14} />
-            Open Folder
-          </button>
-        {/if}
         <button class="btn-ghost" onclick={onbrowse}>Add more</button>
         <button class="btn-ghost danger" onclick={onclear}>
           <Trash2 size={14} />
@@ -101,10 +120,16 @@
     <div class="file-list">
       {#each files as file (file.path)}
         <div class="file-row" class:failed={file.status === "error"}>
-          {#if thumbnails[file.path] && thumbnails[file.path] !== "error"}
+          {#if showThumbnails && thumbnails[file.path] && thumbnails[file.path] !== "error"}
             <img class="file-thumb" src={thumbnails[file.path]} alt="" draggable="false" />
           {:else}
-            <div class="file-thumb placeholder"><ImageIcon size={18} /></div>
+            <div class="file-thumb placeholder">
+              {#if placeholderIcon === "video"}
+                <Film size={18} />
+              {:else}
+                <ImageIcon size={18} />
+              {/if}
+            </div>
           {/if}
           <div class="file-info">
             <span class="file-name">{file.name}</span>
@@ -115,7 +140,10 @@
       {/each}
     </div>
 
+    {#if banner}{@render banner()}{/if}
+
     <div class="controls">
+      {#if estimateCard}{@render estimateCard()}{/if}
       {#if children}{@render children()}{/if}
       <button class="btn-primary" onclick={onaction}>{actionLabel}</button>
     </div>
@@ -139,7 +167,7 @@
   .header-left {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
   }
 
   .header h2 {
@@ -165,15 +193,14 @@
   }
 
   .btn-ghost:hover { background: var(--navy-bg); }
-  .btn-ghost.danger:hover { color: #ef4444; border-color: #ef4444; }
+  .btn-ghost.danger:hover { color: var(--danger); border-color: var(--danger); }
 
   .file-list {
-    flex: 1;
     display: flex;
     flex-direction: column;
     gap: 4px;
     overflow-y: auto;
-    min-height: 0;
+    max-height: 320px;
   }
 
   .file-row {
@@ -209,7 +236,7 @@
   .file-info {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
     flex: 1;
     min-width: 0;
   }
@@ -223,7 +250,7 @@
   }
 
   .file-detail { font-size: 12px; color: var(--text-muted); }
-  .file-row.failed .file-detail { color: #ef4444; }
+  .file-row.failed .file-detail { color: var(--danger); }
 
   .file-status {
     flex-shrink: 0;
@@ -232,7 +259,7 @@
   }
 
   .file-status :global(svg) { color: var(--accent); }
-  .file-row.failed .file-status :global(svg) { color: #ef4444; }
+  .file-row.failed .file-status :global(svg) { color: var(--danger); }
 
   .file-status :global(.btn-icon) {
     padding: 4px;
@@ -241,15 +268,15 @@
     transition: color 0.15s;
   }
 
-  .file-status :global(.btn-icon:hover) { color: #ef4444; }
+  .file-status :global(.btn-icon:hover) { color: var(--danger); }
 
   .controls {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    column-gap: 24px;
-    row-gap: 12px;
-    padding: 16px 20px;
+    column-gap: 20px;
+    row-gap: 10px;
+    padding: 12px 16px;
     background: var(--bg-card);
     border-radius: 12px;
     border: 1px solid var(--border);
@@ -257,16 +284,23 @@
 
   .btn-primary {
     margin-left: auto;
-    padding: 10px 28px;
+    padding: 8px 24px;
     border-radius: var(--radius-sm);
     background: var(--accent);
     color: #fff;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
-    transition: opacity 0.15s;
+    transition: transform 0.1s, opacity 0.15s;
   }
 
-  .btn-primary:hover { opacity: 0.9; }
+  .btn-primary:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+  }
+
+  .btn-primary:active {
+    transform: translateY(0) scale(0.98);
+  }
 
   /*
    * Shared slot styles — these :global() rules style content passed via
@@ -278,28 +312,36 @@
   .controls :global(.control-group) {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
   }
 
   .controls :global(.control-group label),
   .controls :global(.control-group .label) {
     font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
     color: var(--text-muted);
   }
 
   .controls :global(.pills) { display: flex; gap: 4px; }
 
   .controls :global(.pill) {
-    padding: 5px 12px;
+    padding: 4px 11px;
     border-radius: 6px;
     font-size: 12px;
     font-weight: 500;
     color: var(--text-secondary);
     background: var(--navy-bg);
     transition: background 0.15s, color 0.15s;
+  }
+
+  .controls :global(.pill:hover:not(.active)) {
+    background: color-mix(in oklch, var(--navy-bg) 70%, var(--text-muted) 30%);
+  }
+
+  .controls :global(.pill:active) {
+    transform: scale(0.97);
   }
 
   .controls :global(.pill.active) { background: var(--accent); color: #fff; }
@@ -312,20 +354,68 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 14px;
-    border-radius: var(--radius-sm);
-    font-size: 13px;
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
     color: var(--text-secondary);
     border: 1px solid var(--border);
-    transition: background 0.15s;
+    transition: background 0.15s, border-color 0.15s;
   }
 
-  .controls :global(.btn-ghost:hover) { background: var(--navy-bg); }
+  .controls :global(.btn-ghost:hover) {
+    background: var(--navy-bg);
+    border-color: var(--text-muted);
+  }
 
   .controls :global(.output-btn) {
     max-width: 200px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .controls :global(.controls-row) {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: flex-start;
+  }
+
+  .controls :global(.controls-divider) {
+    width: 100%;
+    height: 0;
+    border-top: 1px solid var(--border);
+    opacity: 0.6;
+    margin: 2px 0;
+  }
+
+  .controls :global(.toggle-row) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-width: 240px;
+  }
+
+  .controls :global(.toggle-row .label) {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .controls :global(.toggle-label) {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .controls :global(.control-hint) {
+    display: block;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 1px;
   }
 </style>

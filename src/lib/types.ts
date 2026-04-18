@@ -9,3 +9,9 @@ export const IMAGE_EXTENSIONS = [
 ] as const;
 
 export const IMAGE_EXTENSIONS_RE = /\.(jpe?g|png|webp|heic|heif|tiff?|bmp|avif|jxl)$/i;
+
+export const VIDEO_EXTENSIONS = [
+  "mp4", "mov", "avi", "mkv", "webm", "m4v", "3gp",
+] as const;
+
+export const VIDEO_EXTENSIONS_RE = /\.(mp4|mov|avi|mkv|webm|m4v|3gp)$/i;

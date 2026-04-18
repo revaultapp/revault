@@ -1,7 +1,7 @@
 <script lang="ts">
   import {
-    Compass, Wand2, ScanSearch,
-    Boxes, EyeOff, CloudCog,
+    Compass, Zap, ScanSearch,
+    Shield, Film,
     Settings, Database
   } from "lucide-svelte";
   import { activePage } from "$lib/stores/nav";
@@ -11,18 +11,17 @@
   type NavItem = { icon: typeof Compass; id: string; label: string };
   const navItems: NavItem[] = [
     { icon: Compass, id: "dashboard", label: "Dashboard" },
-    { icon: Wand2, id: "tools", label: "Tools" },
-    { icon: ScanSearch, id: "analyze", label: "Analyze" },
-    { icon: Boxes, id: "organize", label: "Organize" },
-    { icon: EyeOff, id: "privacy", label: "Privacy" },
-    { icon: CloudCog, id: "cloud", label: "Cloud" },
+    { icon: Zap, id: "optimize", label: "Optimize" },
+    { icon: ScanSearch, id: "duplicates", label: "Duplicates" },
+    { icon: Shield, id: "privacy", label: "Privacy" },
+    { icon: Film, id: "video", label: "Video" },
   ];
 </script>
 
 <aside class="sidebar">
   <div class="sidebar-inner">
     <div class="logo-row">
-      <img class="logo-icon" src="/logo.png" alt="Revault" />
+      <img class="logo-icon" src="/logo2.png" alt="Revault" />
       <span class="logo-text">Revault</span>
     </div>
 
@@ -61,18 +60,18 @@
 <style>
   .sidebar {
     width: 220px;
-    height: 100vh;
+    height: 100%;
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
-    background: linear-gradient(180deg, #070d1a 0%, #0b1120 40%, #0f1729 100%);
+    background: var(--chrome-bg);
   }
 
   .sidebar-inner {
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 24px 18px 22px;
+    padding: 24px 18px 20px;
     overflow: hidden;
   }
 
@@ -89,10 +88,11 @@
     height: 34px;
     border-radius: var(--radius-sm);
     flex-shrink: 0;
+    mix-blend-mode: lighten;
   }
 
   .logo-text {
-    color: #fff;
+    color: var(--chrome-text-primary);
     font-size: 18px;
     font-weight: 700;
     letter-spacing: -0.02em;
@@ -109,12 +109,12 @@
     align-items: center;
     gap: 12px;
     height: 40px;
-    padding: 0 14px;
+    padding: 0 14px 0 8px;
     border-radius: var(--radius-sm);
-    color: var(--text-muted);
+    color: var(--chrome-text-muted);
     font-size: 13.5px;
     font-weight: 500;
-    transition: background 0.15s, color 0.15s;
+    transition: background var(--duration-fast), color var(--duration-fast);
   }
 
   .nav-item :global(svg) {
@@ -122,28 +122,28 @@
   }
 
   .nav-item span {
-    color: var(--text-muted);
+    color: var(--chrome-text-muted);
   }
 
   .nav-item:hover {
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--text-secondary);
+    background: var(--chrome-hover-bg);
+    color: var(--chrome-text-muted);
   }
 
   .nav-item:hover span {
-    color: var(--text-secondary);
+    color: var(--chrome-text-muted);
   }
 
   .nav-item.active {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--chrome-active-bg);
     color: var(--accent);
     border-radius: 10px;
     gap: 10px;
-    padding: 0 12px;
+    padding: 0 12px 0 6px;
   }
 
   .nav-item.active span {
-    color: var(--text-primary);
+    color: var(--chrome-text-primary);
     font-weight: 600;
   }
 
@@ -162,7 +162,7 @@
   .divider {
     height: 1px;
     margin: 16px 0;
-    background: linear-gradient(90deg, transparent, var(--border) 30%, var(--border) 70%, transparent);
+    background: var(--chrome-border);
   }
 
   .saved-badge {
@@ -173,8 +173,8 @@
     height: 40px;
     padding: 0 12px;
     border-radius: 10px;
-    background: linear-gradient(90deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.08));
-    border: 1px solid rgba(16, 185, 129, 0.19);
+    background: linear-gradient(90deg, rgba(16, 216, 122, 0.12), rgba(14, 207, 116, 0.06));
+    border: 1px solid rgba(16, 216, 122, 0.16);
     color: var(--accent);
     font-size: 12.5px;
     font-weight: 600;
@@ -185,6 +185,4 @@
   .saved-badge :global(svg) {
     flex-shrink: 0;
   }
-
-
 </style>

@@ -2,7 +2,7 @@ import { writable } from "svelte/store";
 
 export interface ActivityItem {
   id: string;
-  type: "compress" | "convert" | "resize" | "analyze" | "organize" | "watermark" | "rename";
+  type: "compress" | "convert" | "resize" | "analyze" | "video";
   fileCount: number;
   savedBytes: number;
   timestamp: number;
@@ -39,6 +39,7 @@ function createActivity() {
   return {
     subscribe,
     add(entry: Omit<ActivityItem, "id" | "timestamp">) {
+      if (entry.savedBytes < 0) return;
       update((items) => {
         const next: ActivityItem[] = [
           { ...entry, id: crypto.randomUUID(), timestamp: Date.now() },

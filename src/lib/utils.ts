@@ -1,5 +1,19 @@
+import { writable } from "svelte/store";
+import type { Writable } from "svelte/store";
 import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+
+export function persisted<T>(key: string, initial: T): Writable<T> {
+  const stored =
+    typeof localStorage !== "undefined" ? localStorage.getItem(key) : null;
+  const store = writable<T>(stored !== null ? (JSON.parse(stored) as T) : initial);
+  store.subscribe((v) => {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(key, JSON.stringify(v));
+    }
+  });
+  return store;
+}
 
 export async function browseOutputDir(): Promise<string | null> {
   const dir = await open({ directory: true, multiple: false });
@@ -12,6 +26,7 @@ export async function openOutputFolder(filePath: string): Promise<void> {
 
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
+  if (bytes < 0) return `-${formatBytes(-bytes)}`;
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;

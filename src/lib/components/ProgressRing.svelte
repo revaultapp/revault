@@ -8,10 +8,13 @@
 
   const circumference = 2 * Math.PI * 54;
   let displayPct = $state(0);
+  let rafId = $state(0);
 
   $effect(() => {
+    if (rafId) cancelAnimationFrame(rafId);
+
     const target = targetPct;
-    let rafId: number;
+    let currentRafId = 0;
 
     function tick() {
       displayPct += (target - displayPct) * 0.06;
@@ -19,11 +22,13 @@
         displayPct = 100;
         return;
       }
-      rafId = requestAnimationFrame(tick);
+      currentRafId = requestAnimationFrame(tick);
     }
 
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
+    tick();
+    rafId = currentRafId;
+
+    return () => cancelAnimationFrame(currentRafId);
   });
 
   let offset = $derived(circumference - (displayPct / 100) * circumference);
@@ -69,17 +74,17 @@
   }
 
   .circle-wrap svg {
-    filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.25));
+    filter: drop-shadow(0 0 10px rgba(16, 216, 122, 0.25));
     animation: glow-pulse 2.5s ease-in-out infinite;
   }
 
   .arc {
-    filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.5));
+    filter: drop-shadow(0 0 4px rgba(16, 216, 122, 0.5));
   }
 
   @keyframes glow-pulse {
-    0%, 100% { filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.2)); }
-    50% { filter: drop-shadow(0 0 16px rgba(16, 185, 129, 0.45)); }
+    0%, 100% { filter: drop-shadow(0 0 8px rgba(16, 216, 122, 0.2)); }
+    50% { filter: drop-shadow(0 0 16px rgba(16, 216, 122, 0.45)); }
   }
 
   .pct {

@@ -1,3 +1,5 @@
+.claude
+
 # Dependencies
 node_modules/
 
@@ -27,3 +29,8 @@ app-gestion-optimizacion-imagenes-documentos.md
 estructura-profesional-proyecto-gestion-optimizacion-imagenes-documentos.md
 pencil-wireframe-prompts.md
 *.pen
+
+
+/static
+specs_images
+specs_video
