@@ -711,11 +711,21 @@ mod tests {
 
     #[test]
     fn test_resolve_video_output_path() {
+        // Use Path::join for cross-platform comparison — Windows produces
+        // backslash separators, Unix produces forward slashes.
         let result = resolve_video_output_path("/tmp/video.mp4", None).unwrap();
-        assert_eq!(result, "/tmp/video_compressed.mp4");
+        let expected = Path::new("/tmp")
+            .join("video_compressed.mp4")
+            .to_string_lossy()
+            .to_string();
+        assert_eq!(result, expected);
 
         let result = resolve_video_output_path("/home/user/clip.mov", None).unwrap();
-        assert_eq!(result, "/home/user/clip_compressed.mov");
+        let expected = Path::new("/home/user")
+            .join("clip_compressed.mov")
+            .to_string_lossy()
+            .to_string();
+        assert_eq!(result, expected);
     }
 
     #[test]
@@ -724,10 +734,20 @@ mod tests {
         let dir_str = dir.path().to_str().unwrap();
 
         let result = resolve_video_output_path("/tmp/video.mp4", Some(dir_str)).unwrap();
-        assert_eq!(result, format!("{}/video_compressed.mp4", dir_str));
+        let expected = dir
+            .path()
+            .join("video_compressed.mp4")
+            .to_string_lossy()
+            .to_string();
+        assert_eq!(result, expected);
 
         let result = resolve_video_output_path("/tmp/clip.mov", Some(dir_str)).unwrap();
-        assert_eq!(result, format!("{}/clip_compressed.mov", dir_str));
+        let expected = dir
+            .path()
+            .join("clip_compressed.mov")
+            .to_string_lossy()
+            .to_string();
+        assert_eq!(result, expected);
     }
 
     #[test]
