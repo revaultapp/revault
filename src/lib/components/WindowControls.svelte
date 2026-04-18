@@ -58,14 +58,14 @@
     justify-content: center;
     background: transparent;
     border: 0;
-    color: var(--chrome-text-muted);
+    color: var(--text-muted);
     cursor: pointer;
     transition: background 120ms, color 120ms;
   }
 
   .ctrl:hover {
-    background: var(--chrome-hover-bg);
-    color: var(--chrome-text-primary);
+    background: var(--navy-bg);
+    color: var(--text-primary);
   }
 
   .ctrl.close:hover {
