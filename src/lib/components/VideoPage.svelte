@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { fly } from "svelte/transition";
   import { Film, Shield, ShieldCheck, Download, Zap, Wifi, CircleCheck, CircleAlert, TriangleAlert, FolderOpen, X } from "lucide-svelte";
   import { open } from "@tauri-apps/plugin-dialog";
@@ -28,10 +28,40 @@
     revealVideoOutput,
     checkFfmpeg,
     downloadFfmpeg,
+    videoMode,
+    gifSettings,
+    gifState,
+    gifOutputPath,
+    gifError,
+    gifskiAvailable,
+    gifDownloadProgress,
+    checkGifski,
+    exportGif,
     type VideoFile,
     type VideoPreset,
     type PrivacyMode,
   } from "$lib/stores/video";
+  import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
+
+  const modeSegments = [
+    { id: "compress", label: "Comprimir" },
+    { id: "gif", label: "GIF" },
+  ] as const;
+
+  const fpSegments = [
+    { id: "10", label: "Baja · 10" },
+    { id: "15", label: "Media · 15" },
+    { id: "24", label: "Alta · 24" },
+  ] as const;
+
+  const widthSegments = [
+    { id: "320", label: "Chat · 320" },
+    { id: "480", label: "WhatsApp · 480" },
+    { id: "640", label: "Grande · 640" },
+    { id: "720", label: "HD · 720" },
+    { id: "1080", label: "Full HD · 1080" },
+  ] as const;
 
   const presets: { value: VideoPreset; label: string }[] = [
     { value: "Smallest", label: "Smallest" },
@@ -72,10 +102,30 @@
   );
 
   let downloadError = $state<string | null>(null);
+  let gifDownloadError = $state<string | null>(null);
+  let isGifInstalling = $state(false);
 
-  onMount(() => {
-    checkFfmpeg();
+  // Derived 4-state machine: idle | downloading | installing | error
+  let gifGateState = $derived.by<"idle" | "downloading" | "installing" | "error">(() => {
+    if ($gifskiAvailable) return "idle"; // banner hidden when installed
+    if (gifDownloadError) return "error";
+    if (isGifInstalling) return "installing";
+    if ($gifDownloadProgress !== null) return "downloading";
+    return "idle";
   });
+
+  let unlistenGifProgress: (() => void) | undefined;
+
+  onMount(async () => {
+    checkFfmpeg();
+    checkGifski();
+    unlistenGifProgress = await listen<{ bytes_done: number; bytes_total: number }>(
+      "gifski-download-progress",
+      (e) => gifDownloadProgress.set({ done: e.payload.bytes_done, total: e.payload.bytes_total })
+    );
+  });
+
+  onDestroy(() => unlistenGifProgress?.());
 
   async function handleDownload() {
     downloadError = null;
@@ -84,6 +134,35 @@
     } catch (e) {
       downloadError = String(e);
     }
+  }
+
+  async function handleGifDownload() {
+    console.log("[gifski] handleGifDownload click");
+    gifDownloadError = null;
+    isGifInstalling = false;
+    gifDownloadProgress.set({ done: 0, total: 0 });
+    try {
+      console.log("[gifski] invoking download_gifski...");
+      await invoke("download_gifski");
+      console.log("[gifski] download_gifski resolved OK");
+      gifDownloadProgress.set(null);
+      isGifInstalling = true;
+      await checkGifski();
+      console.log("[gifski] checkGifski done");
+    } catch (err) {
+      console.error("[gifski] download_gifski rejected:", err);
+      gifDownloadProgress.set(null);
+      isGifInstalling = false;
+      gifDownloadError = "No hemos podido descargar el componente. Comprueba tu conexión e inténtalo de nuevo más tarde.";
+    } finally {
+      isGifInstalling = false;
+    }
+  }
+
+  async function startGifExport() {
+    const file = $videoFiles[0];
+    if (!file) return;
+    await exportGif(file);
   }
 
   async function startCompression() {
@@ -329,15 +408,19 @@
 {:else}
   <ToolShell
     files={$videoFiles}
-    isProcessing={$isCompressing}
+    isProcessing={$isCompressing || $gifState === "generating"}
     {targetPct}
     progressLabel="{$videoSummary.done + $videoSummary.failed} of {$videoFiles.length} files"
     progressSublabel={$videoSummary.savedBytes > 0 ? `Saved ${formatBytes($videoSummary.savedBytes)}` : undefined}
     onfiles={handleFiles}
     onbrowse={browseFiles}
     onclear={clearVideoFiles}
-    actionLabel={$isCompressing ? "Cancel" : $videoSummary.pending === 0 && $videoFiles.length > 0 ? "Compress More" : "Compress"}
-    onaction={$isCompressing ? cancelCompression : $videoSummary.pending === 0 && $videoFiles.length > 0 ? compressMore : startCompression}
+    actionLabel={$videoMode === "gif"
+      ? (!$gifskiAvailable ? "" : $gifState === "generating" ? "Generando…" : "Exportar GIF")
+      : ($isCompressing ? "Cancel" : $videoSummary.pending === 0 && $videoFiles.length > 0 ? "Compress More" : "Compress")}
+    onaction={$videoMode === "gif"
+      ? startGifExport
+      : ($isCompressing ? cancelCompression : $videoSummary.pending === 0 && $videoFiles.length > 0 ? compressMore : startCompression)}
     {headerText}
     dropZoneTitle="Drop videos here"
     dropZoneFormatTags={["MP4", "MOV", "AVI", "MKV", "WebM", "M4V"]}
@@ -426,68 +509,209 @@
     {/snippet}
 
     {#snippet estimateCard()}
-      {#if estimateState.kind === "loading"}
-        <div class="estimate-card">
-          <div class="estimate-row">
-            <span class="estimate-label">Estimado</span>
-            <span class="estimate-value estimating">Calculando ahorro&hellip;</span>
+      {#if $videoMode === "compress"}
+        {#if estimateState.kind === "loading"}
+          <div class="estimate-card">
+            <div class="estimate-row">
+              <span class="estimate-label">Estimado</span>
+              <span class="estimate-value estimating">Calculando ahorro&hellip;</span>
+            </div>
           </div>
-        </div>
-      {:else if estimateState.kind === "ready"}
-        <div class="estimate-card">
-          <div class="estimate-hero">
-            <span class="estimate-hero-text">
-              Ahorrarás <span class="estimate-hero-number">~{formatMB(estimateState.totalSaved)}</span>
-              <span class="estimate-hero-pct">({Math.round(estimateState.savingsPct)}%)</span>
+        {:else if estimateState.kind === "ready"}
+          <div class="estimate-card">
+            <div class="estimate-hero">
+              <span class="estimate-hero-text">
+                Ahorrarás <span class="estimate-hero-number">~{formatMB(estimateState.totalSaved)}</span>
+                <span class="estimate-hero-pct">({Math.round(estimateState.savingsPct)}%)</span>
+              </span>
+            </div>
+            <span class="estimate-sub">
+              en {estimateState.filesTotal} video{estimateState.filesTotal !== 1 ? "s" : ""}
             </span>
           </div>
-          <span class="estimate-sub">
-            en {estimateState.filesTotal} video{estimateState.filesTotal !== 1 ? "s" : ""}
-          </span>
-        </div>
-      {:else if estimateState.kind === "no-gain"}
-        <div class="estimate-card muted">
-          <div class="estimate-row">
-            <span class="estimate-value estimating">Tus videos ya están bien optimizados</span>
+        {:else if estimateState.kind === "no-gain"}
+          <div class="estimate-card muted">
+            <div class="estimate-row">
+              <span class="estimate-value estimating">Tus videos ya están bien optimizados</span>
+            </div>
           </div>
-        </div>
+        {/if}
       {/if}
     {/snippet}
 
-    <div class="control-group">
-      <span class="label">Preset</span>
-      <div class="pills">
-        {#each presets as p}
-          <button
-            class="pill"
-            class:active={$videoPreset === p.value}
-            onclick={() => videoPreset.set(p.value)}
-          >{p.label}</button>
-        {/each}
-      </div>
+    <!-- Mode switcher — always visible -->
+    <div class="control-group mode-group">
+      <SegmentedControl
+        segments={modeSegments}
+        bind:selected={$videoMode}
+      />
     </div>
-    <div class="control-group privacy-group">
-      <div class="privacy-control-row">
-        <div class="privacy-icon-label">
-          <div class="privacy-icon" class:on={$videoPrivacyMode !== "off"} aria-hidden="true">
-            <ShieldCheck size={16} />
-          </div>
-          <span class="label">Privacidad</span>
+
+    {#if $videoMode === "compress"}
+      <div class="control-group">
+        <span class="label">Preset</span>
+        <div class="pills">
+          {#each presets as p}
+            <button
+              class="pill"
+              class:active={$videoPreset === p.value}
+              onclick={() => videoPreset.set(p.value)}
+            >{p.label}</button>
+          {/each}
         </div>
-        <SegmentedControl
-          segments={privacySegments}
-          bind:selected={$videoPrivacyMode}
-        />
       </div>
-      <p class="privacy-hint">{privacyTooltips[$videoPrivacyMode]}</p>
-    </div>
-    <div class="control-group">
-      <span class="label">Output</span>
-      <button class="btn-ghost output-btn" onclick={browseOutputDir}>
-        <FolderOpen size={14} />
-        {$videoOutputDir?.split(/[\\/]/).pop() ?? "Same as input"}
-      </button>
-    </div>
+      <div class="control-group privacy-group">
+        <div class="privacy-control-row">
+          <div class="privacy-icon-label">
+            <div class="privacy-icon" class:on={$videoPrivacyMode !== "off"} aria-hidden="true">
+              <ShieldCheck size={16} />
+            </div>
+            <span class="label">Privacidad</span>
+          </div>
+          <SegmentedControl
+            segments={privacySegments}
+            bind:selected={$videoPrivacyMode}
+          />
+        </div>
+        <p class="privacy-hint">{privacyTooltips[$videoPrivacyMode]}</p>
+      </div>
+    {:else}
+      <!-- GIF mode controls -->
+      {#if $gifskiAvailable === false}
+        {#if gifGateState === "idle"}
+          <div class="gif-gate" role="alert">
+            <CircleAlert size={14} />
+            <span>Para crear GIFs, ReVault necesita descargar un componente extra. Es rápido y solo pasa una vez.</span>
+            <button class="btn-ghost" onclick={handleGifDownload}>Descargar</button>
+          </div>
+
+        {:else if gifGateState === "downloading"}
+          <div class="gif-gate gif-gate--progress" role="status" aria-live="polite">
+            <div class="gif-gate-progress-wrap">
+              <div class="gif-progress-bar">
+                <div
+                  class="gif-progress-fill"
+                  style="width: {$gifDownloadProgress && $gifDownloadProgress.total > 0 ? ($gifDownloadProgress.done / $gifDownloadProgress.total) * 100 : 0}%"
+                ></div>
+              </div>
+              <span class="gif-progress-text">
+                {#if $gifDownloadProgress && $gifDownloadProgress.total > 0}
+                  Descargando… {formatBytes($gifDownloadProgress.done)} de {formatBytes($gifDownloadProgress.total)}
+                  <span class="gif-progress-pct">{Math.round(($gifDownloadProgress.done / $gifDownloadProgress.total) * 100)}%</span>
+                {:else}
+                  Descargando…
+                {/if}
+              </span>
+            </div>
+          </div>
+
+        {:else if gifGateState === "installing"}
+          <div class="gif-gate" role="status" aria-live="polite">
+            <div class="gif-gate-spinner"></div>
+            <span>Casi listo…</span>
+          </div>
+
+        {:else if gifGateState === "error"}
+          <div class="gif-gate gif-gate--error" role="alert">
+            <CircleAlert size={14} />
+            <div class="gif-gate-error-text">
+              <span>No hemos podido completar la descarga.</span>
+              <small>Comprueba tu conexión e inténtalo de nuevo. Si persiste, prueba más tarde.</small>
+            </div>
+            <button class="btn-ghost" onclick={handleGifDownload}>Reintentar</button>
+          </div>
+        {/if}
+      {/if}
+
+      {#if $gifskiAvailable}
+      <div class="control-group gif-range-group">
+        <span class="label">Fragmento <span class="sub-hint">(máx 15 s)</span></span>
+        <div class="range-inputs">
+          <input
+            type="number"
+            class="num-input"
+            min="0"
+            step="0.5"
+            aria-label="Segundo inicial"
+            value={$gifSettings.startSec}
+            oninput={(e) => gifSettings.update(s => ({ ...s, startSec: Math.max(0, parseFloat((e.target as HTMLInputElement).value) || 0) }))}
+          />
+          <span class="range-sep">–</span>
+          <input
+            type="number"
+            class="num-input"
+            min="0"
+            step="0.5"
+            aria-label="Segundo final"
+            value={$gifSettings.endSec}
+            oninput={(e) => gifSettings.update(s => ({ ...s, endSec: Math.max(s.startSec + 0.5, Math.min(s.startSec + 15, parseFloat((e.target as HTMLInputElement).value) || s.startSec + 3)) }))}
+          />
+        </div>
+      </div>
+      <div class="control-group">
+        <span class="label">Fluidez</span>
+        <div class="pills">
+          {#each fpSegments as seg}
+            <button
+              class="pill"
+              class:active={$gifSettings.fps === parseInt(seg.id)}
+              onclick={() => gifSettings.update(s => ({ ...s, fps: parseInt(seg.id) as 10 | 15 | 24 }))}
+            >{seg.label}</button>
+          {/each}
+        </div>
+      </div>
+      <div class="control-group">
+        <span class="label">Tamaño</span>
+        <div class="pills">
+          {#each widthSegments as seg}
+            <button
+              class="pill"
+              class:active={$gifSettings.width === parseInt(seg.id)}
+              onclick={() => gifSettings.update(s => ({ ...s, width: parseInt(seg.id) as 320 | 480 | 640 | 720 | 1080 }))}
+            >{seg.label}</button>
+          {/each}
+        </div>
+      </div>
+      <div class="control-group">
+        <span class="label">Calidad</span>
+        <input
+          type="range"
+          min="1"
+          max="100"
+          class="quality-slider"
+          value={$gifSettings.quality}
+          oninput={(e) => gifSettings.update(s => ({ ...s, quality: parseInt((e.target as HTMLInputElement).value) }))}
+        />
+        <span class="quality-val">{$gifSettings.quality}</span>
+      </div>
+
+      <!-- GIF result states -->
+      {#if $gifState === "done" && $gifOutputPath}
+        <div class="gif-result-card">
+          <CircleCheck size={16} color="var(--accent)" />
+          <span class="gif-result-path">{$gifOutputPath.split(/[\\/]/).pop()}</span>
+          <button class="btn-ghost" onclick={() => revealVideoOutput($gifOutputPath!)}>
+            <FolderOpen size={14} />
+            Abrir carpeta
+          </button>
+        </div>
+      {:else if $gifState === "error" && $gifError}
+        <div class="gif-error-card" role="alert">
+          <CircleAlert size={14} />
+          <span>{$gifError}</span>
+        </div>
+      {/if}
+      {/if}
+    {/if}
+    {#if $videoMode === "compress" || $gifskiAvailable}
+      <div class="control-group">
+        <span class="label">Carpeta</span>
+        <button class="btn-ghost output-btn" onclick={browseOutputDir}>
+          <FolderOpen size={14} />
+          {$videoOutputDir?.split(/[\\/]/).pop() ?? "Misma que el origen"}
+        </button>
+      </div>
+    {/if}
   </ToolShell>
 
   {#if showPrivacyChip}
@@ -920,6 +1144,147 @@
     border: 1px solid rgba(16, 185, 129, 0.35);
     border-radius: var(--radius-sm);
     box-shadow: var(--shadow-sm);
+  }
+
+  /* ── Mode switcher ── */
+  .mode-group {
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+
+  /* ── GIF controls ── */
+  .num-input {
+    width: 72px;
+    padding: 6px 10px;
+    background: var(--navy-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .gif-range-group .range-inputs {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .range-sep {
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  .sub-hint {
+    color: var(--text-muted);
+    font-weight: 400;
+    margin-left: 6px;
+  }
+
+  .quality-slider {
+    flex: 1;
+    accent-color: var(--accent);
+  }
+
+  .quality-val {
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+    min-width: 28px;
+    text-align: right;
+  }
+
+  .gif-gate {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--navy-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .gif-gate--error {
+    border-color: var(--danger);
+    background: var(--danger-bg);
+    color: var(--danger);
+  }
+
+  .gif-gate--progress {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .gif-gate-progress-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .gif-progress-bar {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .gif-progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 100ms ease;
+  }
+
+  .gif-progress-text {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .gif-gate-spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+
+  .gif-result-card {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--accent-subtle);
+    border: 1px solid var(--accent-glow);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+  }
+
+  .gif-result-path {
+    flex: 1;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .gif-error-card {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--danger-bg);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    color: var(--danger);
   }
 
   /* ── Reduced motion ── */

@@ -4263,6 +4263,7 @@ dependencies = [
  "fast_image_resize",
  "ffmpeg-sidecar",
  "filetime",
+ "flate2",
  "foreign-types",
  "image",
  "image_hasher",
@@ -4278,15 +4279,18 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "tar",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-opener",
  "tempfile",
  "trash",
+ "ureq",
  "webp",
  "which",
  "windows 0.62.2",
+ "zip",
 ]
 
 [[package]]

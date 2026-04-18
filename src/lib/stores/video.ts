@@ -319,6 +319,74 @@ export async function cancelCompression(): Promise<void> {
   await invoke("cancel_video_compress");
 }
 
+// ── GIF export ─────────────────────────────────────────────────────────────────
+
+export type VideoMode = "compress" | "gif";
+
+export type GifSettings = {
+  startSec: number;
+  endSec: number;
+  fps: 10 | 15 | 24;
+  width: 320 | 480 | 640 | 720 | 1080;
+  quality: number;
+};
+
+export const videoMode = persisted<VideoMode>("video_mode", "compress");
+
+export const gifSettings = persisted<GifSettings>("gif_settings", {
+  startSec: 0,
+  endSec: 3,
+  fps: 15,
+  width: 480,
+  quality: 80,
+});
+
+export const gifState = writable<"idle" | "generating" | "done" | "error">("idle");
+export const gifOutputPath = writable<string | null>(null);
+export const gifError = writable<string | null>(null);
+export const gifskiAvailable = writable<boolean | null>(null);
+export const gifDownloadProgress = writable<{ done: number; total: number } | null>(null);
+
+export async function checkGifski(): Promise<void> {
+  try {
+    const available = await invoke<boolean>("check_gifski");
+    gifskiAvailable.set(available);
+  } catch {
+    gifskiAvailable.set(false);
+  }
+}
+
+export async function exportGif(file: VideoFile): Promise<void> {
+  const settings = get(gifSettings);
+  const clampedEnd = Math.min(settings.endSec, settings.startSec + 15);
+  const inputPath = file.path;
+  const outputPath =
+    inputPath.replace(/\.[^/.]+$/, "") + "_gif.gif";
+
+  gifState.set("generating");
+  gifError.set(null);
+  gifOutputPath.set(null);
+
+  try {
+    await invoke<string>("export_gif", {
+      inputPath,
+      outputPath,
+      options: {
+        start_sec: settings.startSec,
+        end_sec: clampedEnd,
+        fps: settings.fps,
+        width: settings.width,
+        quality: settings.quality,
+      },
+    });
+    gifState.set("done");
+    gifOutputPath.set(outputPath);
+  } catch (e) {
+    gifState.set("error");
+    gifError.set(String(e));
+  }
+}
+
 export async function revealVideoOutput(outputPath: string): Promise<void> {
   await invoke("reveal_video_output", { path: outputPath });
 }

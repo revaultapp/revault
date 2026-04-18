@@ -29,8 +29,8 @@
     align-items: stretch;
     width: 100%;
     height: 28px;
-    background: var(--chrome-bg);
-    border-bottom: 1px solid var(--chrome-border);
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
 
