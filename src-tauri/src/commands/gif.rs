@@ -50,7 +50,10 @@ pub async fn download_gifski(app: tauri::AppHandle) -> Result<(), String> {
         e.to_string()
     })?;
     match &result {
-        Ok(path) => eprintln!("[gifski] download_gifski command OK, installed at {}", path.display()),
+        Ok(path) => eprintln!(
+            "[gifski] download_gifski command OK, installed at {}",
+            path.display()
+        ),
         Err(e) => eprintln!("[gifski] download_gifski command ERR: {}", e),
     }
     result.map(|_| ())

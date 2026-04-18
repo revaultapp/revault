@@ -254,24 +254,24 @@ pub fn download_and_install<F>(app_data_dir: &Path, mut emit_progress: F) -> Res
 where
     F: FnMut(u64, u64),
 {
-    eprintln!("[gifski] download_and_install start, app_data_dir={}", app_data_dir.display());
+    eprintln!(
+        "[gifski] download_and_install start, app_data_dir={}",
+        app_data_dir.display()
+    );
     let target = target_triple()?;
     let url = download_url(target);
     eprintln!("[gifski] target={} url={}", target, url);
     let bin_dir = app_data_dir.join("bin");
-    std::fs::create_dir_all(&bin_dir)
-        .map_err(|e| {
-            eprintln!("[gifski] create bin_dir failed: {}", e);
-            format!("No se pudo crear el directorio: {}", e)
-        })?;
+    std::fs::create_dir_all(&bin_dir).map_err(|e| {
+        eprintln!("[gifski] create bin_dir failed: {}", e);
+        format!("No se pudo crear el directorio: {}", e)
+    })?;
     eprintln!("[gifski] bin_dir={}", bin_dir.display());
 
-    let resp = ureq::get(&url)
-        .call()
-        .map_err(|e| {
-            eprintln!("[gifski] HTTP request failed: {:?}", e);
-            "No se pudo descargar el componente".to_string()
-        })?;
+    let resp = ureq::get(&url).call().map_err(|e| {
+        eprintln!("[gifski] HTTP request failed: {:?}", e);
+        "No se pudo descargar el componente".to_string()
+    })?;
     eprintln!("[gifski] HTTP {} {}", resp.status(), url);
     let total: u64 = resp
         .headers()
@@ -285,29 +285,25 @@ where
     let mut reader = resp.into_body().into_reader();
     let mut buffer = Vec::with_capacity(if total > 0 { total as usize } else { 1_024_000 });
     {
-        let mut file = std::fs::File::create(&tmp_path)
-            .map_err(|e| {
-                eprintln!("[gifski] create tmp_path failed: {}", e);
-                format!("No se pudo crear archivo temporal: {}", e)
-            })?;
+        let mut file = std::fs::File::create(&tmp_path).map_err(|e| {
+            eprintln!("[gifski] create tmp_path failed: {}", e);
+            format!("No se pudo crear archivo temporal: {}", e)
+        })?;
         let mut chunk = vec![0u8; 64 * 1024];
         let mut done: u64 = 0;
         loop {
-            let n = reader
-                .read(&mut chunk)
-                .map_err(|e| {
-                    eprintln!("[gifski] stream read failed at {} bytes: {}", done, e);
-                    "No se pudo descargar el componente".to_string()
-                })?;
+            let n = reader.read(&mut chunk).map_err(|e| {
+                eprintln!("[gifski] stream read failed at {} bytes: {}", done, e);
+                "No se pudo descargar el componente".to_string()
+            })?;
             if n == 0 {
                 break;
             }
             use std::io::Write;
-            file.write_all(&chunk[..n])
-                .map_err(|e| {
-                    eprintln!("[gifski] write to tmp failed: {}", e);
-                    format!("No se pudo escribir descarga: {}", e)
-                })?;
+            file.write_all(&chunk[..n]).map_err(|e| {
+                eprintln!("[gifski] write to tmp failed: {}", e);
+                format!("No se pudo escribir descarga: {}", e)
+            })?;
             buffer.extend_from_slice(&chunk[..n]);
             done += n as u64;
             emit_progress(done, total);
@@ -329,11 +325,10 @@ where
     {
         use std::os::unix::fs::PermissionsExt;
         let perms = std::fs::Permissions::from_mode(0o755);
-        std::fs::set_permissions(&unverified, perms)
-            .map_err(|e| {
-                eprintln!("[gifski] chmod failed: {}", e);
-                format!("No se pudo marcar ejecutable: {}", e)
-            })?;
+        std::fs::set_permissions(&unverified, perms).map_err(|e| {
+            eprintln!("[gifski] chmod failed: {}", e);
+            format!("No se pudo marcar ejecutable: {}", e)
+        })?;
         eprintln!("[gifski] chmod 755 OK");
     }
 
@@ -342,7 +337,10 @@ where
             eprintln!("[gifski] verify OK: installed version = {}", v);
         }
         Ok(v) => {
-            eprintln!("[gifski] verify FAIL: expected {}, got {}", GIFSKI_VERSION, v);
+            eprintln!(
+                "[gifski] verify FAIL: expected {}, got {}",
+                GIFSKI_VERSION, v
+            );
             let _ = std::fs::remove_file(&unverified);
             return Err("La instalación ha fallado".to_string());
         }
@@ -354,7 +352,11 @@ where
     }
 
     let final_path = bin_dir.join(gifski_filename());
-    eprintln!("[gifski] rename {} → {}", unverified.display(), final_path.display());
+    eprintln!(
+        "[gifski] rename {} → {}",
+        unverified.display(),
+        final_path.display()
+    );
     std::fs::rename(&unverified, &final_path)
         .map_err(|e| format!("No se pudo instalar el binario: {}", e))?;
     Ok(final_path)
