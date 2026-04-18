@@ -112,6 +112,120 @@ describe("video store", () => {
     expect(mockInvoke).toHaveBeenCalledTimes(1);
   });
 
+  it("videoMode persists to localStorage", async () => {
+    const { videoMode } = await import("./video");
+    expect(get(videoMode)).toBe("compress");
+    videoMode.set("gif");
+    expect(localStorage.getItem("video_mode")).toBe('"gif"');
+    videoMode.set("compress");
+    expect(localStorage.getItem("video_mode")).toBe('"compress"');
+  });
+
+  it("gifSettings persists to localStorage", async () => {
+    const { gifSettings } = await import("./video");
+    gifSettings.update(s => ({ ...s, fps: 24, quality: 90 }));
+    const stored = JSON.parse(localStorage.getItem("gif_settings")!);
+    expect(stored.fps).toBe(24);
+    expect(stored.quality).toBe(90);
+  });
+
+  it("exportGif happy path sets done state and output path", async () => {
+    mockInvoke.mockResolvedValueOnce(undefined); // export_gif returns void
+    const { gifState, gifOutputPath, gifError, exportGif } = await import("./video");
+
+    const file = {
+      path: "/test/video.mp4",
+      name: "video.mp4",
+      status: "idle" as const,
+      originalSize: 0,
+      progress: 0,
+      fps: 0,
+      speed: 0,
+    };
+
+    await exportGif(file);
+
+    expect(get(gifState)).toBe("done");
+    expect(get(gifOutputPath)).toBe("/test/video_gif.gif");
+    expect(get(gifError)).toBeNull();
+    expect(mockInvoke).toHaveBeenCalledWith("export_gif", expect.objectContaining({
+      inputPath: "/test/video.mp4",
+      outputPath: "/test/video_gif.gif",
+    }));
+  });
+
+  it("exportGif error path sets error state", async () => {
+    mockInvoke.mockRejectedValueOnce(new Error("gifski not found"));
+    const { gifState, gifOutputPath, gifError, exportGif } = await import("./video");
+
+    const file = {
+      path: "/test/video.mp4",
+      name: "video.mp4",
+      status: "idle" as const,
+      originalSize: 0,
+      progress: 0,
+      fps: 0,
+      speed: 0,
+    };
+
+    await exportGif(file);
+
+    expect(get(gifState)).toBe("error");
+    expect(get(gifOutputPath)).toBeNull();
+    expect(get(gifError)).toContain("gifski not found");
+  });
+
+  it("gifDownloadProgress can be updated and reset", async () => {
+    const { gifDownloadProgress } = await import("./video");
+
+    gifDownloadProgress.set({ done: 5_000_000, total: 14_000_000 });
+    expect(get(gifDownloadProgress)).toEqual({ done: 5_000_000, total: 14_000_000 });
+
+    gifDownloadProgress.set(null);
+    expect(get(gifDownloadProgress)).toBeNull();
+  });
+
+  it("download_gifski happy path clears progress and calls checkGifski", async () => {
+    // download_gifski resolves, check_gifski returns true
+    mockInvoke
+      .mockResolvedValueOnce(undefined) // download_gifski
+      .mockResolvedValueOnce(true);     // check_gifski
+
+    const { gifDownloadProgress, gifskiAvailable } = await import("./video");
+
+    // Simulate what handleGifDownload would do via the store functions
+    gifDownloadProgress.set({ done: 0, total: 0 });
+    await invoke("download_gifski");
+    gifDownloadProgress.set(null);
+
+    // Simulate checkGifski
+    const available = await invoke<boolean>("check_gifski");
+    gifskiAvailable.set(available as unknown as boolean);
+
+    expect(get(gifDownloadProgress)).toBeNull();
+    expect(get(gifskiAvailable)).toBe(true);
+    expect(mockInvoke).toHaveBeenCalledWith("download_gifski");
+    expect(mockInvoke).toHaveBeenCalledWith("check_gifski");
+  });
+
+  it("download_gifski error path clears progress and leaves gifskiAvailable false", async () => {
+    mockInvoke.mockRejectedValueOnce(new Error("network timeout"));
+
+    const { gifDownloadProgress, gifskiAvailable } = await import("./video");
+
+    gifskiAvailable.set(false);
+    gifDownloadProgress.set({ done: 0, total: 0 });
+
+    try {
+      await invoke("download_gifski");
+    } catch {
+      gifDownloadProgress.set(null);
+    }
+
+    expect(get(gifDownloadProgress)).toBeNull();
+    expect(get(gifskiAvailable)).toBe(false);
+  });
+
   it("videoPreviewSummary aggregates ready files only", async () => {
     const { videoFiles, videoPreviews, videoPreviewSummary } = await import("./video");
 

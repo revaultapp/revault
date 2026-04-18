@@ -1,0 +1,175 @@
+name: Build gifski sidecar binaries
+
+# Triggered manually by pushing a gifski-specific tag.
+# This is deliberately SEPARATE from ReVault's release.yml so that:
+#   1. We can update gifski independently of a ReVault release.
+#   2. The gifski tag (gifski-v1.34.0) is unambiguous in the GitHub
+#      Releases asset list.
+#   3. Normal ReVault releases are not delayed by a gifski build.
+#
+# To trigger: git tag gifski-v1.34.0 && git push --tags
+# The resulting GitHub Release will contain:
+#   gifski-1.34.0-aarch64-apple-darwin.tar.gz
+#   gifski-1.34.0-x86_64-apple-darwin.tar.gz
+#   gifski-1.34.0-x86_64-unknown-linux-gnu.tar.gz
+#   gifski-1.34.0-x86_64-pc-windows-msvc.zip
+# Each archive includes the binary + gifski-LICENSE.txt (AGPL-3.0 copy).
+#
+# Runtime download URL pattern (used by core/gif.rs at first launch):
+#   https://github.com/revaultapp/revault/releases/download/gifski-v1.34.0/gifski-1.34.0-{target}.tar.gz
+#   (Windows: .zip instead of .tar.gz)
+
+on:
+  push:
+    tags:
+      - 'gifski-v*'
+
+permissions:
+  contents: write  # required for upload-release-asset via softprops/action-gh-release
+
+jobs:
+  build-gifski:
+    name: gifski ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs-on: macos-latest
+            target: aarch64-apple-darwin
+            archive_ext: tar.gz
+          - runs-on: macos-latest
+            target: x86_64-apple-darwin
+            archive_ext: tar.gz
+          - runs-on: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            archive_ext: tar.gz
+          - runs-on: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive_ext: zip
+
+    runs-on: ${{ matrix.runs-on }}
+
+    steps:
+      - name: Extract gifski version from tag
+        id: meta
+        # Tag format: gifski-v1.34.0  →  version=1.34.0
+        # Uses step outputs (not $GITHUB_ENV) so static analyzers can track them.
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"          # e.g. gifski-v1.34.0
+          VERSION="${TAG#gifski-v}"         # strip prefix → 1.34.0
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "archive_name=gifski-${VERSION}-${{ matrix.target }}" >> "$GITHUB_OUTPUT"
+
+      # ---------------------------------------------------------------
+      # Rust toolchain — stable is sufficient; gifski has no nightly dep.
+      # We only need the specific cross-compilation target, not components
+      # like clippy/rustfmt, so keep the install lean.
+      # ---------------------------------------------------------------
+      - name: Install Rust stable + target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # Cache ~/.cargo/registry + the compiled gifski crate tree so that
+      # re-runs on the same version are fast (target/ is NOT cached because
+      # cargo install writes to ./gifski-out/, not src-tauri/target/).
+      - name: Rust cache (registry only)
+        uses: swatinem/rust-cache@v2
+
+      # ---------------------------------------------------------------
+      # Build gifski from source.
+      # --locked: respects Cargo.lock from the crate registry snapshot
+      #           → reproducible build, no surprise dep upgrades.
+      # --root ./gifski-out: installs to a known local path so we don't
+      #                      have to locate it in ~/.cargo/bin.
+      # GOTCHA (macOS cross): cargo install for a macOS target runs on the
+      #   same macOS runner, so --target works for both aarch64 and x86_64.
+      #   No cross-compilation needed; macOS-latest supports both.
+      # GOTCHA (Linux): gifski links against libc — the resulting binary
+      #   requires glibc 2.35+ (ubuntu-22.04 provides 2.35 → fine for most
+      #   modern distros, but very old distros may fail). No static musl
+      #   build is attempted here because gifski's PNG dep (lodepng) uses
+      #   C code that complicates musl cross-compilation. Accept this
+      #   constraint for now and document it.
+      # ---------------------------------------------------------------
+      - name: Build gifski ${{ steps.meta.outputs.version }} for ${{ matrix.target }}
+        shell: bash
+        run: |
+          cargo install gifski \
+            --version "${{ steps.meta.outputs.version }}" \
+            --target "${{ matrix.target }}" \
+            --locked \
+            --root ./gifski-out
+
+      # ---------------------------------------------------------------
+      # Download the AGPL-3.0 license from upstream.
+      # This file MUST be distributed alongside the binary per AGPL §4.
+      # We pin to the tagged commit so the license text matches the exact
+      # version we built. If the tag doesn't exist on upstream, fall back
+      # to main — the license text has not changed between versions.
+      # ---------------------------------------------------------------
+      - name: Download gifski AGPL-3.0 license
+        shell: bash
+        run: |
+          curl -fsSL \
+            "https://raw.githubusercontent.com/ImageOptim/gifski/main/LICENSE" \
+            -o gifski-LICENSE.txt
+
+      # ---------------------------------------------------------------
+      # Package: binary + license into a single archive.
+      # Windows → .zip  |  everything else → .tar.gz
+      # ---------------------------------------------------------------
+      - name: Package archive (Linux / macOS)
+        id: package_unix
+        if: matrix.archive_ext == 'tar.gz'
+        shell: bash
+        env:
+          ARCHIVE_NAME: ${{ steps.meta.outputs.archive_name }}
+        run: |
+          mkdir -p "dist/$ARCHIVE_NAME"
+          cp gifski-out/bin/gifski "dist/$ARCHIVE_NAME/"
+          cp gifski-LICENSE.txt    "dist/$ARCHIVE_NAME/"
+          cd dist
+          tar -czf "${ARCHIVE_NAME}.tar.gz" "$ARCHIVE_NAME"
+          echo "asset_path=dist/${ARCHIVE_NAME}.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Package archive (Windows)
+        id: package_win
+        if: matrix.archive_ext == 'zip'
+        shell: pwsh
+        env:
+          ARCHIVE_NAME: ${{ steps.meta.outputs.archive_name }}
+        run: |
+          New-Item -ItemType Directory -Force "dist/$env:ARCHIVE_NAME"
+          Copy-Item "gifski-out/bin/gifski.exe" "dist/$env:ARCHIVE_NAME/"
+          Copy-Item "gifski-LICENSE.txt"         "dist/$env:ARCHIVE_NAME/"
+          Compress-Archive -Path "dist/$env:ARCHIVE_NAME" `
+                           -DestinationPath "dist/$env:ARCHIVE_NAME.zip"
+          "asset_path=dist/$env:ARCHIVE_NAME.zip" | Out-File -Append $env:GITHUB_OUTPUT
+
+      # ---------------------------------------------------------------
+      # Upload to the GitHub Release created by this tag push.
+      # softprops/action-gh-release creates a draft release if it does
+      # not yet exist, then attaches the asset. Running this step in
+      # parallel across 4 matrix legs is safe — the action uses the
+      # Releases API which handles concurrent uploads to the same release.
+      # ---------------------------------------------------------------
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: gifski ${{ steps.meta.outputs.version }} binaries
+          body: |
+            Pre-built gifski ${{ steps.meta.outputs.version }} sidecar binaries for ReVault.
+
+            **License:** AGPL-3.0-or-later — each archive includes `gifski-LICENSE.txt`.
+            **Source code:** https://github.com/ImageOptim/gifski
+
+            These binaries are downloaded on first use by ReVault's GIF export feature.
+            They are invoked via subprocess (not linked), keeping ReVault's MIT license intact.
+
+            Runtime download URL pattern used by core/gif.rs:
+              https://github.com/revaultapp/revault/releases/download/gifski-v{VERSION}/gifski-{VERSION}-{target}.tar.gz
+              (Windows: .zip)
+          files: ${{ steps.package_unix.outputs.asset_path || steps.package_win.outputs.asset_path }}

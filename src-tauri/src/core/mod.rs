@@ -1,5 +1,6 @@
 pub mod compression;
 pub mod dedupe;
+pub mod gif;
 pub mod heic;
 pub mod image_io;
 pub mod paths;

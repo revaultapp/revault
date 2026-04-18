@@ -145,7 +145,9 @@
     <div class="controls">
       {#if estimateCard}{@render estimateCard()}{/if}
       {#if children}{@render children()}{/if}
-      <button class="btn-primary" onclick={onaction}>{actionLabel}</button>
+      {#if actionLabel}
+        <button class="btn-primary" onclick={onaction}>{actionLabel}</button>
+      {/if}
     </div>
   </div>
 {/if}
