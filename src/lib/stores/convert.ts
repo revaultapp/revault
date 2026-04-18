@@ -19,6 +19,11 @@ export const targetFormat = writable<TargetFormat>("Jpeg");
 export const outputDir = writable<string | null>(null);
 export const isConverting = writable(false);
 export const selectedPlatforms = writable<string[]>([]);
+export const heicBannerDismissed = writable(false);
+
+export const hasHeicFiles = derived(files, ($files) =>
+  $files.some((f) => /\.heic$/i.test(f.path))
+);
 
 export const summary = derived(files, ($files) => {
   const done = $files.filter((f) => f.status === "done");
@@ -32,6 +37,7 @@ export const summary = derived(files, ($files) => {
 
 export async function addFiles(paths: string[]) {
   let newPaths: string[] = [];
+  let hasHeic = false;
   files.update((current) => {
     const existing = new Set(current.map((f) => f.path));
     const newFiles: ConvertFile[] = paths
@@ -44,8 +50,13 @@ export async function addFiles(paths: string[]) {
         sourceFormat: p.split(".").pop()?.toUpperCase() ?? "?",
       }));
     newPaths = newFiles.map((f) => f.path);
+    hasHeic = newFiles.some((f) => /\.heic$/i.test(f.path));
     return [...current, ...newFiles];
   });
+  if (hasHeic) {
+    targetFormat.update((f) => (f !== "Jpeg" ? "Jpeg" : f));
+    heicBannerDismissed.set(false);
+  }
   if (newPaths.length === 0) return;
   try {
     const sizes = await invoke<number[]>("get_file_sizes", { paths: newPaths });

@@ -29,6 +29,7 @@
     onaction: () => void;
     headerText: string;
     headerSub?: Snippet;
+    banner?: Snippet;
     estimateCard?: Snippet;
     children?: Snippet;
     fileDetail: Snippet<[T]>;
@@ -48,6 +49,7 @@
     onaction,
     headerText,
     headerSub,
+    banner,
     estimateCard,
     children,
     fileDetail,
@@ -137,6 +139,8 @@
         </div>
       {/each}
     </div>
+
+    {#if banner}{@render banner()}{/if}
 
     <div class="controls">
       {#if estimateCard}{@render estimateCard()}{/if}

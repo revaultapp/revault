@@ -1,7 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
-  import { FolderOpen, CheckCircle, AlertCircle, X, Eye } from "lucide-svelte";
+  import { FolderOpen, CheckCircle, AlertCircle, X, Eye, Info } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
   import BeforeAfterSlider from "./BeforeAfterSlider.svelte";
   import HelperTooltip from "./HelperTooltip.svelte";
@@ -9,7 +9,7 @@
   import { formatBytes, browseOutputDir } from "$lib/utils";
   import {
     files, targetFormat, outputDir, isConverting, summary,
-    selectedPlatforms,
+    selectedPlatforms, hasHeicFiles, heicBannerDismissed,
     addFiles, removeFile, clearFiles,
     type TargetFormat, type ConvertFile,
   } from "$lib/stores/convert";
@@ -235,6 +235,18 @@
     {/if}
   {/snippet}
 
+  {#snippet banner()}
+    {#if $hasHeicFiles && !$heicBannerDismissed}
+      <div class="heic-banner">
+        <Info size={14} />
+        <span>HEIC files detected — output format set to JPEG for broad compatibility.</span>
+        <button class="banner-dismiss" onclick={() => heicBannerDismissed.set(true)} aria-label="Dismiss">
+          <X size={13} />
+        </button>
+      </div>
+    {/if}
+  {/snippet}
+
   <div class="controls-row">
     <div class="control-group">
       <span class="label">Format <HelperTooltip tip="Choose the output image format. JPEG is best for photos, PNG for graphics, WebP/AVIF for modern compression." /></span>
@@ -322,6 +334,38 @@
 {/if}
 
 <style>
+  .heic-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    background: color-mix(in oklch, var(--accent) 12%, transparent);
+    border: 1px solid color-mix(in oklch, var(--accent) 30%, transparent);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .heic-banner :global(svg) {
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  .heic-banner span { flex: 1; }
+
+  .banner-dismiss {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    border-radius: 4px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    transition: color 0.15s;
+  }
+
+  .banner-dismiss:hover { color: var(--text-primary); }
+
   .saved-total {
     font-size: 13px;
     color: var(--accent);
