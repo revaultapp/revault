@@ -70,6 +70,7 @@ jobs:
 
       - name: Cargo audit
         working-directory: src-tauri
+        shell: bash
         run: |
           cargo install cargo-audit --locked 2>/dev/null || true
           cargo audit
