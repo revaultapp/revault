@@ -40,8 +40,6 @@ pub fn run() {
             commands::video::check_ffmpeg,
             commands::video::download_ffmpeg,
             commands::video::reveal_video_output,
-            commands::watermark::apply_text_watermark,
-            commands::watermark::apply_image_watermark,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

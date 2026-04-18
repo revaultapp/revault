@@ -7,6 +7,7 @@
     duplicates: ["Duplicates", "Find duplicate photos"],
     privacy: ["Privacy", "Metadata and sensitive data"],
     video: ["Video", "Compress and optimize videos"],
+    watermark: ["Watermark", "Add text or logo watermarks"],
     settings: ["Settings", "Manage your preferences"],
   };
 

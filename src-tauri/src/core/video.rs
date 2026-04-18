@@ -194,6 +194,12 @@ pub fn compress_video(
         .arg("-pix_fmt")
         .arg(preset.pix_fmt());
 
+    // H.264 only: high profile + level 4.1 is the universal baseline for 1080p
+    // playback on any device/browser from 2012 onward.
+    if !matches!(preset, VideoPreset::HighQuality) {
+        cmd.arg("-profile:v").arg("high").arg("-level").arg("4.1");
+    }
+
     // H.265 only: QuickTime requires hvc1 tag — without it the video stream
     // is undecodable and only audio plays back. Also tune x265 for perceptual
     // quality at the HighQuality preset.
