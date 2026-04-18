@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Film, Shield, Download, Zap, Wifi, CircleCheck, CircleAlert, TriangleAlert, FolderOpen, X } from "lucide-svelte";
+  import { fly } from "svelte/transition";
+  import { Film, Shield, ShieldCheck, Download, Zap, Wifi, CircleCheck, CircleAlert, TriangleAlert, FolderOpen, X } from "lucide-svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import ToolShell from "./ToolShell.svelte";
+  import ToggleSwitch from "./ToggleSwitch.svelte";
   import { formatBytes } from "$lib/utils";
   import { VIDEO_EXTENSIONS, VIDEO_EXTENSIONS_RE } from "$lib/types";
   import {
@@ -13,6 +15,10 @@
     videoSummary,
     ffmpegStatus,
     ffmpegDownloadProgress,
+    videoStripPrivacy,
+    videoPreviews,
+    videoPreviewSummary,
+    computeVideoPreview,
     addVideoFiles,
     removeVideoFile,
     clearVideoFiles,
@@ -113,6 +119,107 @@
     return file.compressedSize >= file.originalSize;
   }
 
+  // ── Inline preview formatting ───────────────────────────────────────────────
+  function formatMB(bytes: number): string {
+    const mb = bytes / (1024 * 1024);
+    if (mb >= 100) return `${Math.round(mb)} MB`;
+    if (mb >= 10) return `${mb.toFixed(0)} MB`;
+    return `${mb.toFixed(1)} MB`;
+  }
+
+  // ── Debounced preview trigger ───────────────────────────────────────────────
+  let previewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  $effect(() => {
+    // Subscribe to the signals that should re-trigger preview estimation.
+    const filesSnapshot = $videoFiles;
+    const presetSnapshot = $videoPreset;
+    const stripSnapshot = $videoStripPrivacy;
+    const compressing = $isCompressing;
+
+    // Cancel pending debounce whenever inputs change.
+    if (previewDebounceTimer !== null) {
+      clearTimeout(previewDebounceTimer);
+      previewDebounceTimer = null;
+    }
+
+    // Guard: don't fire previews during real encode.
+    if (compressing) return;
+
+    // Silence the "unused variable" for reactive tracking only.
+    void presetSnapshot;
+    void stripSnapshot;
+
+    const idlePaths = filesSnapshot
+      .filter((f) => f.status === "idle")
+      .map((f) => f.path);
+
+    if (idlePaths.length === 0) return;
+
+    previewDebounceTimer = setTimeout(() => {
+      for (const path of idlePaths) {
+        computeVideoPreview(path);
+      }
+    }, 300);
+  });
+
+  // ── Post-success privacy micro-moment ──────────────────────────────────────
+  let showPrivacyChip = $state(false);
+  let privacyChipCount = $state(0);
+  let privacyChipTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastAllDoneSignature = "";
+
+  $effect(() => {
+    const files = $videoFiles;
+    const stripping = $videoStripPrivacy;
+
+    // Detect "all files reached done" edge with a stable signature so we only
+    // fire the chip once per completed batch.
+    const signature = files.length > 0
+      ? files.map((f) => `${f.path}:${f.status}`).join("|")
+      : "";
+
+    if (signature === lastAllDoneSignature) return;
+
+    if (
+      files.length > 0 &&
+      files.every((f) => f.status === "done") &&
+      stripping
+    ) {
+      lastAllDoneSignature = signature;
+      privacyChipCount = files.length;
+      showPrivacyChip = true;
+
+      if (privacyChipTimer !== null) clearTimeout(privacyChipTimer);
+      privacyChipTimer = setTimeout(() => {
+        showPrivacyChip = false;
+      }, 4000);
+    } else if (files.length === 0) {
+      // Reset when the list is cleared.
+      lastAllDoneSignature = "";
+      showPrivacyChip = false;
+      if (privacyChipTimer !== null) {
+        clearTimeout(privacyChipTimer);
+        privacyChipTimer = null;
+      }
+    }
+  });
+
+  // ── Estimate card helpers ──────────────────────────────────────────────────
+  let estimateState = $derived.by(() => {
+    const summary = $videoPreviewSummary;
+    if (!summary || summary.filesTotal === 0) return { kind: "hidden" as const };
+    if (summary.filesReady < summary.filesTotal) return { kind: "loading" as const };
+    if (summary.totalSaved > 0) {
+      return {
+        kind: "ready" as const,
+        totalSaved: summary.totalSaved,
+        savingsPct: summary.savingsPct,
+        filesTotal: summary.filesTotal,
+      };
+    }
+    return { kind: "no-gain" as const };
+  });
 
 </script>
 
@@ -225,7 +332,24 @@
 
     {#snippet fileDetail(file)}
       {#if file.status === "idle"}
-        Ready
+        {@const preview = $videoPreviews.get(file.path)}
+        {#if !preview || preview.status === "idle"}
+          Ready
+        {:else if preview.status === "loading"}
+          <span class="preview-loading">Calculando estimación&hellip;</span>
+        {:else if preview.status === "ready"}
+          {#if preview.preview.estimatedSavingsPct < 3}
+            <span class="preview-muted">Ya está bien comprimido</span>
+          {:else}
+            <span class="preview-muted">
+              {formatMB(preview.preview.originalSizeBytes)}
+              &rarr; ~{formatMB(preview.preview.estimatedSizeBytes)}
+              &middot; {Math.round(preview.preview.estimatedSavingsPct)}% menos
+            </span>
+          {/if}
+        {:else}
+          Ready
+        {/if}
       {:else if file.status === "compressing"}
         <span class="compressing-detail">
           {#if file.fps > 0}
@@ -278,6 +402,35 @@
       {/if}
     {/snippet}
 
+    {#snippet estimateCard()}
+      {#if estimateState.kind === "loading"}
+        <div class="estimate-card">
+          <div class="estimate-row">
+            <span class="estimate-label">Estimado</span>
+            <span class="estimate-value estimating">Calculando ahorro&hellip;</span>
+          </div>
+        </div>
+      {:else if estimateState.kind === "ready"}
+        <div class="estimate-card">
+          <div class="estimate-hero">
+            <span class="estimate-hero-text">
+              Ahorrarás <span class="estimate-hero-number">~{formatMB(estimateState.totalSaved)}</span>
+              <span class="estimate-hero-pct">({Math.round(estimateState.savingsPct)}%)</span>
+            </span>
+          </div>
+          <span class="estimate-sub">
+            en {estimateState.filesTotal} video{estimateState.filesTotal !== 1 ? "s" : ""}
+          </span>
+        </div>
+      {:else if estimateState.kind === "no-gain"}
+        <div class="estimate-card muted">
+          <div class="estimate-row">
+            <span class="estimate-value estimating">Tus videos ya están bien optimizados</span>
+          </div>
+        </div>
+      {/if}
+    {/snippet}
+
     <div class="control-group">
       <span class="label">Preset</span>
       <div class="pills">
@@ -290,6 +443,24 @@
         {/each}
       </div>
     </div>
+    <div class="control-group privacy-group">
+      <div class="toggle-row privacy-row">
+        <div class="toggle-label privacy-toggle-label">
+          <div class="privacy-icon" class:on={$videoStripPrivacy} aria-hidden="true">
+            <ShieldCheck size={16} />
+          </div>
+          <div class="privacy-text">
+            <span class="label">Proteger mi privacidad</span>
+            <span class="control-hint">
+              {$videoStripPrivacy
+                ? "Se eliminará la ubicación y los datos del dispositivo"
+                : "Tus videos conservarán la ubicación original"}
+            </span>
+          </div>
+        </div>
+        <ToggleSwitch bind:checked={$videoStripPrivacy} />
+      </div>
+    </div>
     <div class="control-group">
       <span class="label">Output</span>
       <button class="btn-ghost output-btn" onclick={browseOutputDir}>
@@ -298,6 +469,17 @@
       </button>
     </div>
   </ToolShell>
+
+  {#if showPrivacyChip}
+    <div class="privacy-chip-wrap" transition:fly={{ y: -4, duration: 200 }}>
+      <div class="privacy-chip" role="status" aria-live="polite">
+        <ShieldCheck size={14} />
+        <span>
+          Ubicación eliminada &middot; {privacyChipCount} video{privacyChipCount !== 1 ? "s" : ""}
+        </span>
+      </div>
+    </div>
+  {/if}
 {/if}
 
 <style>
@@ -573,6 +755,152 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* ── Inline preview in file rows ── */
+  .preview-loading {
+    font-style: italic;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .preview-muted {
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Estimate card (pre-compression savings banner) ── */
+  .estimate-card {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 16px;
+    background: var(--accent-subtle);
+    border: 1px solid var(--accent-glow);
+    border-radius: var(--radius-sm);
+  }
+
+  .estimate-card.muted {
+    background: var(--navy-bg);
+    border-color: var(--border);
+  }
+
+  .estimate-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .estimate-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+  }
+
+  .estimate-value {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .estimating {
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  .estimate-hero {
+    font-size: 15px;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .estimate-hero-text {
+    font-weight: 500;
+  }
+
+  .estimate-hero-number {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -0.02em;
+  }
+
+  .estimate-hero-pct {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .estimate-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  /* ── Privacy toggle ── */
+  .privacy-group {
+    flex: 1 1 280px;
+    min-width: 260px;
+  }
+
+  .privacy-row {
+    align-items: center;
+  }
+
+  .privacy-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .privacy-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    background: var(--navy-bg);
+    color: var(--text-muted);
+    transition: background 0.2s ease, color 0.2s ease;
+    flex-shrink: 0;
+  }
+
+  .privacy-icon.on {
+    background: var(--accent-subtle);
+    color: var(--accent);
+  }
+
+  .privacy-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  /* ── Privacy success chip ── */
+  .privacy-chip-wrap {
+    position: fixed;
+    bottom: 24px;
+    right: 28px;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  .privacy-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-sm);
+  }
+
   /* ── Reduced motion ── */
   @media (prefers-reduced-motion: reduce) {
     .spinner,
@@ -585,7 +913,8 @@
       transition: none;
     }
 
-    .btn-download {
+    .btn-download,
+    .privacy-icon {
       transition: none;
     }
   }

@@ -1,4 +1,5 @@
 import { writable, derived, get } from "svelte/store";
+import type { Readable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { activity } from "./activity";
@@ -57,6 +58,22 @@ export async function downloadFfmpeg(): Promise<void> {
 
 export type VideoPreset = "Smallest" | "Balanced" | "HighQuality";
 
+export interface VideoCompressionPreview {
+  inputPath: string;
+  durationSec: number;
+  originalSizeBytes: number;
+  estimatedSizeBytes: number;
+  estimatedSavingsPct: number;
+  confidence: number;
+  method: string;
+}
+
+export type VideoPreviewState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "ready"; preview: VideoCompressionPreview; cacheKey: string }
+  | { status: "error"; message: string };
+
 export type VideoFileStatus = "idle" | "compressing" | "done" | "error" | "cancelled";
 
 export interface VideoFile {
@@ -108,7 +125,10 @@ function persisted<T>(key: string, initial: T) {
 export const videoFiles = writable<VideoFile[]>([]);
 export const videoPreset = persisted<VideoPreset>("video_preset", "Balanced");
 export const videoOutputDir = persisted<string | null>("video_output_dir", null);
+export const videoStripPrivacy = persisted<boolean>("video_strip_privacy", true);
 export const isCompressing = writable(false);
+
+export const videoPreviews = writable<Map<string, VideoPreviewState>>(new Map());
 
 export const videoSummary = derived(videoFiles, ($files) => {
   const done = $files.filter((f) => f.status === "done");
@@ -126,6 +146,35 @@ export const videoSummary = derived(videoFiles, ($files) => {
     pending: pending.length,
     savedBytes,
   };
+});
+
+export const videoPreviewSummary: Readable<{
+  filesReady: number;
+  filesTotal: number;
+  totalOriginal: number;
+  totalEstimated: number;
+  totalSaved: number;
+  savingsPct: number;
+}> = derived([videoFiles, videoPreviews], ([$files, $previews]) => {
+  const filesTotal = $files.length;
+  let filesReady = 0;
+  let totalOriginal = 0;
+  let totalEstimated = 0;
+
+  for (const file of $files) {
+    const state = $previews.get(file.path);
+    if (state?.status === "ready") {
+      filesReady++;
+      totalOriginal += state.preview.originalSizeBytes;
+      totalEstimated += state.preview.estimatedSizeBytes;
+    }
+  }
+
+  const totalSaved = Math.max(0, totalOriginal - totalEstimated);
+  const savingsPct =
+    filesReady === 0 ? 0 : Math.min(100, Math.max(0, (totalSaved / totalOriginal) * 100));
+
+  return { filesReady, filesTotal, totalOriginal, totalEstimated, totalSaved, savingsPct };
 });
 
 // ── Actions ────────────────────────────────────────────────────────────────────
@@ -169,6 +218,7 @@ export function removeVideoFile(path: string): void {
 export function clearVideoFiles(): void {
   videoFiles.set([]);
   isCompressing.set(false);
+  clearVideoPreviews();
 }
 
 export function resetVideoFilesToIdle(): void {
@@ -222,6 +272,7 @@ export async function compressVideoFile(
       input: file.path,
       preset,
       outputDir: outputDir ?? null,
+      stripPrivacy: get(videoStripPrivacy),
     });
 
     const isWarning = result.error?.includes("Output was larger") ?? false;
@@ -281,4 +332,100 @@ export async function cancelCompression(): Promise<void> {
 
 export async function revealVideoOutput(outputPath: string): Promise<void> {
   await invoke("reveal_video_output", { path: outputPath });
+}
+
+// ── Preview cache key tracking (module-scoped, not reactive) ──────────────────
+
+// Maps path → the cacheKey of the in-flight request. Used to discard stale results.
+const inflightKeys = new Map<string, string>();
+
+// FIFO serial queue — new work is chained onto the tail.
+let queue: Promise<void> = Promise.resolve();
+
+// Raw shape returned by Rust (snake_case — no rename_all on VideoCompressionPreview)
+interface RawVideoCompressionPreview {
+  input_path: string;
+  duration_sec: number;
+  original_size_bytes: number;
+  estimated_size_bytes: number;
+  estimated_savings_pct: number;
+  confidence: number;
+  method: string;
+}
+
+export function clearVideoPreviews(): void {
+  videoPreviews.set(new Map());
+  inflightKeys.clear();
+}
+
+export function computeVideoPreview(path: string): Promise<void> {
+  const preset = get(videoPreset);
+  const stripPrivacy = get(videoStripPrivacy);
+  const cacheKey = `${path}|${preset}|${String(stripPrivacy)}`;
+
+  // Already ready with same key → no-op
+  const currentState = get(videoPreviews).get(path);
+  if (currentState?.status === "ready" && currentState.cacheKey === cacheKey) {
+    return Promise.resolve();
+  }
+
+  // Mark loading immediately (outside queue so UI responds fast)
+  videoPreviews.update((m) => {
+    const next = new Map(m);
+    next.set(path, { status: "loading" });
+    return next;
+  });
+
+  inflightKeys.set(path, cacheKey);
+
+  const doWork = async () => {
+    // Check if superseded before doing any work
+    if (inflightKeys.get(path) !== cacheKey) return;
+
+    try {
+      const raw = await invoke<RawVideoCompressionPreview>("preview_video_compression", {
+        input: path,
+        preset,
+      });
+
+      // Discard if a newer request has been queued for this path
+      if (inflightKeys.get(path) !== cacheKey) return;
+
+      const preview: VideoCompressionPreview = {
+        inputPath: raw.input_path,
+        durationSec: raw.duration_sec,
+        originalSizeBytes: raw.original_size_bytes,
+        estimatedSizeBytes: raw.estimated_size_bytes,
+        estimatedSavingsPct: raw.estimated_savings_pct,
+        confidence: raw.confidence,
+        method: raw.method,
+      };
+
+      videoPreviews.update((m) => {
+        const next = new Map(m);
+        next.set(path, { status: "ready", preview, cacheKey });
+        return next;
+      });
+    } catch (err) {
+      if (inflightKeys.get(path) !== cacheKey) return;
+
+      const message = err instanceof Error ? err.message : String(err);
+
+      videoPreviews.update((m) => {
+        const next = new Map(m);
+        next.set(path, { status: "error", message });
+        return next;
+      });
+    } finally {
+      if (inflightKeys.get(path) === cacheKey) {
+        inflightKeys.delete(path);
+      }
+    }
+  };
+
+  // Chain onto the FIFO queue. Return a promise that resolves when THIS work item
+  // completes (not just when it's been enqueued).
+  const workPromise = queue.then(doWork);
+  queue = workPromise;
+  return workPromise;
 }
