@@ -289,7 +289,7 @@ where
         }
     }
 
-    groups.sort_by(|a, b| b.files.len().cmp(&a.files.len()));
+    groups.sort_by_key(|g| std::cmp::Reverse(g.files.len()));
     Ok(FindDuplicatesResult {
         groups,
         total_scanned,

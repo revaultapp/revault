@@ -55,7 +55,7 @@ pub async fn preview_compress(
         // Second: compress only the sample (top 5 largest by actual size)
         // Sort all paths by size descending, take top 5
         let mut path_size_pairs: Vec<(String, u64)> = all_file_sizes;
-        path_size_pairs.sort_by(|a, b| b.1.cmp(&a.1)); // descending by size
+        path_size_pairs.sort_by_key(|p| std::cmp::Reverse(p.1)); // descending by size
         let sample_paths: Vec<String> = path_size_pairs
             .iter()
             .take(sample_size)
