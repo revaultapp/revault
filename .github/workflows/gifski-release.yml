@@ -156,7 +156,7 @@ jobs:
       # Releases API which handles concurrent uploads to the same release.
       # ---------------------------------------------------------------
       - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           draft: true
           name: gifski ${{ steps.meta.outputs.version }} binaries
