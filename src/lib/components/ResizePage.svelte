@@ -9,7 +9,7 @@
   import { stripGps } from "$lib/stores/compress";
   import { IMAGE_EXTENSIONS } from "$lib/types";
   import {
-    files, isResizing, outputDir, resizeMode, width, height, summary,
+    files, isResizing, outputDir, resolvedOutputDir, resizeMode, width, height, summary,
     upscaleWarning, upscaleCount,
     addFiles, removeFile, clearFiles,
   } from "$lib/stores/resize";
@@ -82,7 +82,7 @@
     const w = $width;
     const h = $height;
     const mode = $resizeMode;
-    const outDir = $outputDir;
+    const outDir = $resolvedOutputDir;
     isResizing.set(true);
     files.update((all) => all.map((f) => ({ ...f, status: "pending" as const })));
     try {
@@ -217,7 +217,7 @@
     <span class="label">Output</span>
     <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
       <FolderOpen size={14} />
-      {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
+      {$resolvedOutputDir?.split(/[\\/]/).pop() ?? "Same as input"}
     </button>
   </div>
   <div class="control-group">

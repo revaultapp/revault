@@ -8,7 +8,7 @@
   import ToggleSwitch from "./ToggleSwitch.svelte";
   import { formatBytes, browseOutputDir } from "$lib/utils";
   import {
-    files, targetFormat, outputDir, isConverting, summary,
+    files, targetFormat, outputDir, resolvedOutputDir, isConverting, summary,
     selectedPlatforms, hasHeicFiles, heicBannerDismissed,
     addFiles, removeFile, clearFiles,
     type TargetFormat, type ConvertFile,
@@ -88,7 +88,7 @@
         paths: allPaths,
         format: fmt,
         qualityPreset: $qualityPreset,
-        outputDir: $outputDir,
+        outputDir: $resolvedOutputDir,
         stripGps: $stripGps,
       });
       const resultMap = new Map(results.map((r) => [r.input_path, r]));
@@ -142,7 +142,7 @@
               height: platform.height,
               mode: "Fit",
               quality: null,
-              outputDir: $outputDir,
+              outputDir: $resolvedOutputDir,
               stripGps: $stripGps,
               suffix: `_${platform.id}`,
             });
@@ -277,7 +277,7 @@
       <span class="label">Output <HelperTooltip tip="Where to save converted files. Defaults to the same folder as the source images." /></span>
       <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
         <FolderOpen size={14} />
-        {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
+        {$resolvedOutputDir?.split(/[\\/]/).pop() ?? "Same as input"}
       </button>
     </div>
   </div>

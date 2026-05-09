@@ -1,6 +1,7 @@
 import { writable, derived } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { BaseFile } from "$lib/types";
+import { defaultOutputDir } from "./settings";
 
 export type FileStatus = "pending" | "converting" | "done" | "error";
 export type TargetFormat = "Jpeg" | "Png" | "Webp" | "Avif";
@@ -17,6 +18,10 @@ export interface ConvertFile extends BaseFile {
 export const files = writable<ConvertFile[]>([]);
 export const targetFormat = writable<TargetFormat>("Jpeg");
 export const outputDir = writable<string | null>(null);
+export const resolvedOutputDir = derived(
+  [outputDir, defaultOutputDir],
+  ([$out, $def]) => $out ?? $def,
+);
 export const isConverting = writable(false);
 export const selectedPlatforms = writable<string[]>([]);
 export const heicBannerDismissed = writable(false);

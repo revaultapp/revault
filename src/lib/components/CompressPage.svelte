@@ -9,7 +9,7 @@
   import { formatBytes, browseOutputDir } from "$lib/utils";
   import ToggleSwitch from "./ToggleSwitch.svelte";
   import {
-    files, qualityPreset, format, outputDir, isCompressing, isEstimating, summary,
+    files, qualityPreset, format, outputDir, resolvedOutputDir, isCompressing, isEstimating, summary,
     stripGps, estimateSavings,
     addFiles, removeFile, clearFiles,
     type QualityPreset, type OutputFormat, type CompressFile,
@@ -72,7 +72,7 @@
         paths: allPaths,
         qualityPreset: $qualityPreset,
         format: fmt,
-        outputDir: $outputDir,
+        outputDir: $resolvedOutputDir,
         stripGps: gps,
       });
       const resultMap = new Map(results.map((r) => [r.input_path, r]));
@@ -112,7 +112,7 @@
   }
 
   async function openOutputFolder() {
-    const dir = $outputDir ?? ($files[0]?.path ? $files[0].path.substring(0, $files[0].path.lastIndexOf($files[0].path.includes('/') ? '/' : '\\')) : null);
+    const dir = $resolvedOutputDir ?? ($files[0]?.path ? $files[0].path.substring(0, $files[0].path.lastIndexOf($files[0].path.includes('/') ? '/' : '\\')) : null);
     if (dir) await openPath(dir);
   }
 
@@ -277,7 +277,7 @@
     <span class="label">Output <HelperTooltip tip="Folder where compressed images are saved. Defaults to the same folder as the original." /></span>
     <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
       <FolderOpen size={14} />
-      {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
+      {$resolvedOutputDir?.split(/[\\/]/).pop() ?? "Same as input"}
     </button>
   </div>
   <div class="control-group">

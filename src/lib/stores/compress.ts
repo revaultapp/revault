@@ -2,6 +2,7 @@ import { writable, derived } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { BaseFile } from "$lib/types";
 import { persisted } from "$lib/utils";
+import { defaultOutputDir } from "./settings";
 
 export type FileStatus = "pending" | "compressing" | "done" | "error";
 export type OutputFormat = "Jpeg" | "Png" | "Webp" | "Avif";
@@ -41,6 +42,10 @@ export const files = writable<CompressFile[]>([]);
 export const qualityPreset = persisted<QualityPreset>("compress_quality_preset", "Balanced");
 export const format = persisted<OutputFormat | null>("compress_format", null);
 export const outputDir = persisted<string | null>("compress-output-dir", null);
+export const resolvedOutputDir = derived(
+  [outputDir, defaultOutputDir],
+  ([$out, $def]) => $out ?? $def,
+);
 export const isCompressing = writable(false);
 export const isEstimating = writable(false);
 export const stripGps = persisted<boolean>("compress_strip_gps", false);
