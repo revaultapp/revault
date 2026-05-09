@@ -1,11 +1,17 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import type { HTMLButtonAttributes } from "svelte/elements";
+  import { scale } from "svelte/transition";
+  import { cubicOut } from "svelte/easing";
+  import { prefersReducedMotion } from "svelte/motion";
+  import { Check } from "lucide-svelte";
 
   interface Props extends HTMLButtonAttributes {
     variant?: "primary" | "ghost";
     size?: "sm" | "md";
     danger?: boolean;
+    loading?: boolean;
+    success?: boolean;
     alignSelf?: string;
     children: Snippet;
   }
@@ -14,6 +20,8 @@
     variant = "primary",
     size = "md",
     danger = false,
+    loading = false,
+    success = false,
     alignSelf,
     children,
     style: restStyle,
@@ -22,7 +30,14 @@
   }: Props = $props();
 
   let buttonClass = $derived(
-    ["btn-" + variant, size === "sm" ? "btn-sm" : "", danger ? "btn-danger" : "", extraClass ?? ""].filter(Boolean).join(" ")
+    [
+      "btn-" + variant,
+      size === "sm" ? "btn-sm" : "",
+      danger ? "btn-danger" : "",
+      loading ? "btn-loading" : "",
+      success ? "btn-success" : "",
+      extraClass ?? "",
+    ].filter(Boolean).join(" ")
   );
 
   let style = $derived(
@@ -33,8 +48,22 @@
 <button
   class={buttonClass}
   {style}
+  disabled={loading || rest.disabled}
   {...rest}
 >
+  {#if loading}
+    <span class="btn-icon" aria-hidden="true">
+      <span class="spinner"></span>
+    </span>
+  {:else if success}
+    <span
+      class="btn-icon"
+      in:scale={{ duration: prefersReducedMotion.current ? 0 : 280, start: 0.5, easing: cubicOut }}
+      aria-hidden="true"
+    >
+      <Check size={14} strokeWidth={2.5} />
+    </span>
+  {/if}
   {@render children()}
 </button>
 
@@ -121,5 +150,38 @@
   .btn-sm {
     padding: 6px 16px;
     font-size: 13px;
+  }
+
+  .btn-primary.btn-loading {
+    opacity: 0.75;
+    cursor: wait;
+  }
+
+  .btn-primary.btn-success {
+    background: var(--accent-hover);
+  }
+
+  .btn-icon {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .spinner {
+    display: block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: btn-spin 600ms linear infinite;
+  }
+
+  @keyframes btn-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spinner { animation: none; }
   }
 </style>
