@@ -64,7 +64,7 @@ impl VideoPreset {
     pub fn encoder_preset(self) -> &'static str {
         match self {
             VideoPreset::Smallest => "medium",
-            VideoPreset::Balanced => "medium",
+            VideoPreset::Balanced => "slow",
             VideoPreset::HighQuality => "slow",
         }
     }
@@ -449,13 +449,26 @@ pub fn compress_video(
         cmd.arg("-profile:v").arg("high").arg("-level").arg("4.1");
     }
 
+    // H.264 only: psychovisual params improve sharpness in motion and eliminate
+    // macroblocking in low-motion scenes. aq-mode=2 distributes bits better than
+    // the default mode=1. no-fast-pskip=1 removes a quality shortcut that causes
+    // blocking artefacts on talking-head / screencast content.
+    if !matches!(preset, VideoPreset::HighQuality) {
+        cmd.arg("-x264-params")
+            .arg("aq-mode=2:psy-rd=1.0:no-fast-pskip=1");
+    }
+
     // H.265 only: QuickTime requires hvc1 tag — without it the video stream
-    // is undecodable and only audio plays back. Also tune x265 for perceptual
-    // quality at the HighQuality preset.
+    // is undecodable and only audio plays back.
+    // psy-rdoq=2.0: community consensus is 1-2; at 5.0 it forces the encoder to
+    // double the bitrate in some regions which makes CRF raise global QP — net loss.
+    // limit-sao=1: lighter than no-sao, prevents SAO from blurring grain.
+    // no-open-gop=1: closed GOP improves seeking and editing compatibility.
+    // strong-intra-smoothing=0: prevents blurring of solid-colour keyframe blocks.
     if matches!(preset, VideoPreset::HighQuality) {
         cmd.arg("-tag:v").arg("hvc1");
         cmd.arg("-x265-params")
-            .arg("aq-mode=3:psy-rd=1.5:psy-rdoq=5.0:rdoq-level=2");
+            .arg("aq-mode=3:psy-rd=1.5:psy-rdoq=2.0:rdoq-level=2:limit-sao=1:no-open-gop=1:strong-intra-smoothing=0");
     }
 
     if let Some(filter) = build_scale_filter(preset.max_height()) {
@@ -777,7 +790,7 @@ mod tests {
         assert_eq!(VideoPreset::HighQuality.codec(), "libx265");
 
         assert_eq!(VideoPreset::Smallest.encoder_preset(), "medium");
-        assert_eq!(VideoPreset::Balanced.encoder_preset(), "medium");
+        assert_eq!(VideoPreset::Balanced.encoder_preset(), "slow");
         assert_eq!(VideoPreset::HighQuality.encoder_preset(), "slow");
 
         assert_eq!(VideoPreset::Smallest.pix_fmt(), "yuv420p");
