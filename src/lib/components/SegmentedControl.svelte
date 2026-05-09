@@ -92,9 +92,8 @@
       0 1px 3px rgba(0, 0, 0, 0.08),
       0 1px 2px rgba(0, 0, 0, 0.06);
     left: 0;
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-                width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    will-change: transform, width;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform;
     opacity: 0;
     pointer-events: none;
     z-index: 0;

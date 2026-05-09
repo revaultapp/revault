@@ -195,9 +195,9 @@
   <div class="control-group">
     <span class="label">Size</span>
     <div class="dimension-inputs">
-      <input type="number" min="1" max="10000" bind:value={$width} />
+      <input type="number" min="1" max="10000" bind:value={$width} aria-label="Width" />
       <span class="dim-sep">×</span>
-      <input type="number" min="1" max="10000" bind:value={$height} />
+      <input type="number" min="1" max="10000" bind:value={$height} aria-label="Height" />
     </div>
   </div>
   <div class="control-group">
