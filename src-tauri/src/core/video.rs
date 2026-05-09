@@ -341,6 +341,7 @@ pub fn preview_video_compression(
     input_path: &str,
     preset: VideoPreset,
 ) -> Result<VideoCompressionPreview, String> {
+    crate::core::paths::validate_input_path(input_path, false)?;
     let stats = probe_video_stats(input_path)?;
     let original = if stats.size_bytes > 0 {
         stats.size_bytes
@@ -420,6 +421,7 @@ pub fn compress_video(
     cancelled: Arc<AtomicBool>,
     progress_cb: impl Fn(VideoProgress) + Send,
 ) -> Result<VideoCompressionResult, String> {
+    crate::core::paths::validate_input_path(input_path, false)?;
     let output_path = resolve_video_output_path(input_path, output_dir)?;
     let original_size = std::fs::metadata(input_path)
         .map_err(|e| format!("Cannot read input file '{}': {}", input_path, e))?

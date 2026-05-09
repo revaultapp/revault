@@ -101,6 +101,8 @@ pub fn resize_image(
     if width == 0 || height == 0 {
         return Err("target width and height must be greater than zero".into());
     }
+    crate::core::paths::validate_input_path(input, false)
+        .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
     let original_size = checked_size(input)?;
     let img = open_image(input)?;
     let (ow, oh) = (img.width(), img.height());

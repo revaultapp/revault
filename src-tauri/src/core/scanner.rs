@@ -34,7 +34,11 @@ fn collect_files(dir: &Path, recursive: bool, out: &mut Vec<PathBuf>) -> io::Res
 }
 
 pub fn scan_folder(root: &str, recursive: bool) -> Result<ScanResult, Box<dyn std::error::Error>> {
-    let root_path = Path::new(root).canonicalize()?;
+    let root_path = crate::core::paths::validate_input_path(root, true)
+        .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+    if !root_path.is_dir() {
+        return Err(format!("not a directory: {}", root_path.display()).into());
+    }
     let mut files = Vec::new();
     collect_files(&root_path, recursive, &mut files)?;
 
