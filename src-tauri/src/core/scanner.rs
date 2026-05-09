@@ -2,9 +2,7 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
-const IMAGE_EXTENSIONS: &[&str] = &[
-    "jpg", "jpeg", "png", "webp", "heic", "heif", "tiff", "tif", "bmp", "gif", "avif", "jxl",
-];
+use crate::core::image_io::IMAGE_EXTENSIONS;
 
 #[derive(Serialize)]
 pub struct ImageInfo {

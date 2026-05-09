@@ -1,7 +1,6 @@
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import { open } from "@tauri-apps/plugin-dialog";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
 export function persisted<T>(key: string, initial: T): Writable<T> {
   const stored =
@@ -20,9 +19,6 @@ export async function browseOutputDir(): Promise<string | null> {
   return typeof dir === "string" ? dir : null;
 }
 
-export async function openOutputFolder(filePath: string): Promise<void> {
-  await revealItemInDir(filePath);
-}
 
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";

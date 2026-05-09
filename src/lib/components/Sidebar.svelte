@@ -112,7 +112,7 @@
     padding: 0 14px 0 8px;
     border-radius: var(--radius-sm);
     color: var(--chrome-text-muted);
-    font-size: 13.5px;
+    font-size: 14px;
     font-weight: 500;
     transition: background var(--duration-fast), color var(--duration-fast);
   }
@@ -176,7 +176,7 @@
     background: linear-gradient(90deg, rgba(16, 216, 122, 0.12), rgba(14, 207, 116, 0.06));
     border: 1px solid rgba(16, 216, 122, 0.16);
     color: var(--accent);
-    font-size: 12.5px;
+    font-size: 13px;
     font-weight: 600;
     letter-spacing: -0.01em;
     margin: 4px 0;

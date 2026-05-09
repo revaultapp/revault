@@ -13,8 +13,6 @@ pub struct VideoStats {
     pub video_bitrate_bps: Option<u64>,
     pub height: u32,
     pub width: u32,
-    #[allow(dead_code)]
-    pub fps: u32,
     pub creation_time: Option<String>,
 }
 
@@ -131,7 +129,7 @@ pub fn get_ffmpeg_path() -> PathBuf {
     ffmpeg_sidecar::paths::ffmpeg_path()
 }
 
-fn parse_time_to_secs(time: &str) -> Option<f64> {
+pub(crate) fn parse_time_to_secs(time: &str) -> Option<f64> {
     let parts: Vec<&str> = time.split(':').collect();
     if parts.len() != 3 {
         return None;
@@ -220,31 +218,14 @@ fn parse_video_stats_from_json(json: &serde_json::Value) -> Option<VideoStats> {
         .get("bit_rate")
         .and_then(|v| v.as_str())
         .and_then(|s| s.parse::<u64>().ok());
-    let fps = video_stream
-        .get("avg_frame_rate")
-        .and_then(|v| v.as_str())
-        .and_then(parse_frame_rate)
-        .unwrap_or(0);
-
     Some(VideoStats {
         duration_sec,
         size_bytes,
         video_bitrate_bps,
         height,
         width,
-        fps,
         creation_time,
     })
-}
-
-fn parse_frame_rate(s: &str) -> Option<u32> {
-    let (num, den) = s.split_once('/')?;
-    let n: f64 = num.parse().ok()?;
-    let d: f64 = den.parse().ok()?;
-    if d == 0.0 {
-        return None;
-    }
-    Some((n / d).round() as u32)
 }
 
 pub fn build_strip_flags(privacy: PrivacyMode) -> Vec<&'static str> {
@@ -826,7 +807,6 @@ mod tests {
             video_bitrate_bps: bitrate,
             width: w,
             height: h,
-            fps: 30,
             creation_time: creation_time.map(|s| s.to_string()),
         }
     }
@@ -1026,21 +1006,11 @@ mod tests {
         assert_eq!(stats.size_bytes, 10_485_760);
         assert_eq!(stats.width, 1920);
         assert_eq!(stats.height, 1080);
-        assert_eq!(stats.fps, 30);
         assert_eq!(stats.video_bitrate_bps, Some(5_000_000));
         assert_eq!(
             stats.creation_time.as_deref(),
             Some("2024-01-01T12:00:00.000000Z")
         );
-    }
-
-    #[test]
-    fn test_parse_frame_rate() {
-        assert_eq!(parse_frame_rate("30/1"), Some(30));
-        assert_eq!(parse_frame_rate("60000/1001"), Some(60));
-        assert_eq!(parse_frame_rate("24/1"), Some(24));
-        assert_eq!(parse_frame_rate("0/0"), None);
-        assert_eq!(parse_frame_rate("bogus"), None);
     }
 
     #[test]

@@ -78,4 +78,6 @@ export function removeFile(path: string) {
 export function clearFiles() {
   files.set([]);
   isConverting.set(false);
+  selectedPlatforms.set([]);
+  heicBannerDismissed.set(false);
 }

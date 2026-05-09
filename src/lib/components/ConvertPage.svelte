@@ -114,6 +114,8 @@
       savings.addOriginalBytes(originalBytes);
       savings.addCompressedBytes(compressedBytes);
       if (savedBytes > 0) savings.add(savedBytes);
+      const heicCount = doneFiles.filter((f) => /\.(heic|heif)$/i.test(f.path)).length;
+      if (heicCount > 0) savings.incrementHeic(heicCount);
       activity.add({ type: "convert", fileCount: doneFiles.length, savedBytes });
     }
     isConverting.set(false);

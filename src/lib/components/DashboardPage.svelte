@@ -204,7 +204,7 @@
                 <div class="bar-track">
                   <div
                     class="bar-fill"
-                    style="--pct: {group.percentage}%"
+                    style="transform: scaleX({group.percentage / 100})"
                   ></div>
                 </div>
                 <span class="ext-size">{formatBytes(group.totalSize)}</span>
@@ -742,10 +742,11 @@
 
   .bar-fill {
     height: 100%;
-    width: var(--pct);
+    width: 100%;
     background: color-mix(in oklch, var(--accent) 40%, var(--text-muted) 60%);
     border-radius: 3px;
-    transition: width 0.4s ease-out;
+    transform-origin: left;
+    transition: transform 0.4s ease-out;
     flex-shrink: 0;
   }
 

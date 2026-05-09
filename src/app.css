@@ -29,7 +29,16 @@
   --warning-bg: rgba(245, 158, 11, 0.1);
 
   --accent-subtle: rgba(16, 216, 122, 0.08);
+  --accent-hover: color-mix(in oklch, var(--accent) 85%, black);
   --topbar-height: 64px;
+
+  --shadow-lg: 0 24px 48px rgba(0, 0, 0, 0.3);
+
+  --duration-fast: 0.1s;
+  --duration-normal: 0.2s;
+  --duration-slow: 0.3s;
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 
   --font: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
 
