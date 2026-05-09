@@ -1,0 +1,39 @@
+[advisories]
+ignore = [
+    # gtk-rs GTK3 bindings — Linux Tauri/wry internal, unfixable without Tauri upgrading to GTK4
+    "RUSTSEC-2024-0411",
+    "RUSTSEC-2024-0412",
+    "RUSTSEC-2024-0413",
+    "RUSTSEC-2024-0414",
+    "RUSTSEC-2024-0415",
+    "RUSTSEC-2024-0416",
+    "RUSTSEC-2024-0417",
+    "RUSTSEC-2024-0418",
+    "RUSTSEC-2024-0419",
+    "RUSTSEC-2024-0420",
+
+    # glib unsound Iterator — webkit2gtk/Tauri Linux internal, unfixable upstream
+    "RUSTSEC-2024-0429",
+
+    # unic-* unmaintained — Tauri URL pattern parsing internal
+    "RUSTSEC-2025-0075",
+    "RUSTSEC-2025-0080",
+    "RUSTSEC-2025-0081",
+    "RUSTSEC-2025-0098",
+    "RUSTSEC-2025-0100",
+
+    # fxhash unmaintained — Tauri CSS selector engine internal
+    "RUSTSEC-2025-0057",
+
+    # proc-macro-error unmaintained — Tauri macro internal
+    "RUSTSEC-2024-0370",
+
+    # paste unmaintained — Tauri internal
+    "RUSTSEC-2024-0436",
+
+    # core2 unmaintained/yanked — ravif AVIF encoder internal (rav1e dep)
+    "RUSTSEC-2026-0105",
+
+    # rand unsound with custom logger — we don't use custom loggers; via rav1e/phf
+    "RUSTSEC-2026-0097",
+]
