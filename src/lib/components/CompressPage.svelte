@@ -6,6 +6,7 @@
   import ToolShell from "./ToolShell.svelte";
   import BeforeAfterSlider from "./BeforeAfterSlider.svelte";
   import HelperTooltip from "./HelperTooltip.svelte";
+  import PrivacyToast from "./PrivacyToast.svelte";
   import { formatBytes, browseOutputDir } from "$lib/utils";
   import ToggleSwitch from "./ToggleSwitch.svelte";
   import {
@@ -98,6 +99,18 @@
       savings.addCompressedBytes(compressedBytes);
       savings.add($summary.savedBytes);
       activity.add({ type: "compress", fileCount: $summary.done, savedBytes: $summary.savedBytes });
+      if (gps) {
+        const n = $summary.done;
+        toastMessage = n === 1 ? 'GPS removed from 1 file' : `GPS removed from ${n} files`;
+        showToast = true;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => { showToast = false; }, 3000);
+      }
+    }
+    if ($summary.done > 0 || $summary.failed > 0) {
+      compressSuccess = true;
+      clearTimeout(successTimer);
+      successTimer = setTimeout(() => { compressSuccess = false; }, 1500);
     }
     isCompressing.set(false);
   }
@@ -115,6 +128,13 @@
     const dir = $resolvedOutputDir ?? ($files[0]?.path ? $files[0].path.substring(0, $files[0].path.lastIndexOf($files[0].path.includes('/') ? '/' : '\\')) : null);
     if (dir) await openPath(dir);
   }
+
+  let compressSuccess = $state(false);
+  let successTimer: ReturnType<typeof setTimeout>;
+
+  let showToast = $state(false);
+  let toastMessage = $state('');
+  let toastTimer: ReturnType<typeof setTimeout>;
 
   // Real savings estimate from preview compression
   let savingsEstimate = $state<SavingsEstimate | null>(null);
@@ -180,6 +200,8 @@
   onclear={handleClear}
   actionLabel="Compress {$files.length > 1 ? 'All' : ''}"
   onaction={startCompression}
+  actionLoading={$isCompressing}
+  actionSuccess={compressSuccess}
   {headerText}
 >
   {#snippet headerSub()}
@@ -300,6 +322,8 @@
     onclose={() => compareFile = null}
   />
 {/if}
+
+<PrivacyToast visible={showToast} message={toastMessage} />
 
 <style>
   .saved-total {

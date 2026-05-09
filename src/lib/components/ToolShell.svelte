@@ -2,11 +2,16 @@
   import type { Snippet } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { Trash2, ImageIcon, Film } from "lucide-svelte";
+  import { fly, fade, scale } from "svelte/transition";
+  import { cubicOut } from "svelte/easing";
+  import { prefersReducedMotion } from "svelte/motion";
   import DropZone from "./DropZone.svelte";
   import ProgressRing from "./ProgressRing.svelte";
+  import Button from "./Button.svelte";
   import type { BaseFile } from "$lib/types";
 
   let thumbnails = $state<Record<string, string>>({});
+  const rm = $derived(prefersReducedMotion.current);
 
   interface Props {
     files: T[];
@@ -27,6 +32,8 @@
 
     actionLabel: string;
     onaction: () => void;
+    actionLoading?: boolean;
+    actionSuccess?: boolean;
     headerText: string;
     headerSub?: Snippet;
     banner?: Snippet;
@@ -47,6 +54,8 @@
     onclear,
     actionLabel,
     onaction,
+    actionLoading = false,
+    actionSuccess = false,
     headerText,
     headerSub,
     banner,
@@ -91,18 +100,28 @@
 </script>
 
 {#if files.length === 0}
-  <DropZone
-    {onfiles}
-    dropTitle={dropZoneTitle}
-    formatTags={dropZoneFormatTags}
-    acceptedExtensions={dropZoneAcceptedExtensions}
-    filePickerName={dropZoneFilePickerName}
-    filePickerExtensions={dropZoneFilePickerExtensions}
-  />
+  <div out:fade={{ duration: rm ? 0 : 150 }}>
+    <DropZone
+      {onfiles}
+      dropTitle={dropZoneTitle}
+      formatTags={dropZoneFormatTags}
+      acceptedExtensions={dropZoneAcceptedExtensions}
+      filePickerName={dropZoneFilePickerName}
+      filePickerExtensions={dropZoneFilePickerExtensions}
+    />
+  </div>
 {:else if isProcessing}
-  <ProgressRing {targetPct} label={progressLabel} sublabel={progressSublabel} />
+  <div
+    in:scale={{ duration: rm ? 0 : 200, start: 0.95, easing: cubicOut }}
+    out:scale={{ duration: rm ? 0 : 250, start: 1, opacity: 0, easing: cubicOut }}
+  >
+    <ProgressRing {targetPct} label={progressLabel} sublabel={progressSublabel} />
+  </div>
 {:else}
-  <div class="tool-view">
+  <div
+    class="tool-view"
+    in:fly={{ y: 12, duration: rm ? 0 : 280, easing: cubicOut }}
+  >
     <div class="header">
       <div class="header-left">
         <h2>{headerText}</h2>
@@ -118,8 +137,18 @@
     </div>
 
     <div class="file-list">
-      {#each files as file (file.path)}
-        <div class="file-row" class:failed={file.status === "error"}>
+      {#each files as file, i (file.path)}
+        <div
+          class="file-row"
+          class:failed={file.status === "error"}
+          in:fly={{
+            y: 8,
+            opacity: 0,
+            duration: rm ? 0 : 220,
+            delay: rm ? 0 : Math.min(i, 9) * 40,
+            easing: cubicOut,
+          }}
+        >
           {#if showThumbnails && thumbnails[file.path] && thumbnails[file.path] !== "error"}
             <img class="file-thumb" src={thumbnails[file.path]} alt="" draggable="false" />
           {:else}
@@ -146,7 +175,12 @@
       {#if estimateCard}{@render estimateCard()}{/if}
       {#if children}{@render children()}{/if}
       {#if actionLabel}
-        <button class="btn-primary" onclick={onaction}>{actionLabel}</button>
+        <Button
+          class="action-btn"
+          loading={actionLoading}
+          success={actionSuccess}
+          onclick={onaction}
+        >{actionLabel}</Button>
       {/if}
     </div>
   </div>
@@ -284,24 +318,10 @@
     border: 1px solid var(--border);
   }
 
-  .btn-primary {
+  .controls :global(.action-btn) {
     margin-left: auto;
     padding: 8px 24px;
-    border-radius: var(--radius-sm);
-    background: var(--accent);
-    color: #fff;
     font-size: 13px;
-    font-weight: 600;
-    transition: transform 0.1s, opacity 0.15s;
-  }
-
-  .btn-primary:hover {
-    opacity: 0.9;
-    transform: translateY(-1px);
-  }
-
-  .btn-primary:active {
-    transform: translateY(0) scale(0.98);
   }
 
   /*
