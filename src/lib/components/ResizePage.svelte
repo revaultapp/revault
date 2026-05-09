@@ -1,16 +1,16 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
-  import { FolderOpen, CheckCircle, AlertCircle, X } from "lucide-svelte";
+  import { FolderOpen, CheckCircle, AlertCircle, AlertTriangle, X } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
   import HelperTooltip from "./HelperTooltip.svelte";
   import ToggleSwitch from "./ToggleSwitch.svelte";
-  import { browseOutputDir } from "$lib/utils";
+  import { browseOutputDir, formatBytes } from "$lib/utils";
   import { stripGps } from "$lib/stores/compress";
   import { IMAGE_EXTENSIONS } from "$lib/types";
-  import { formatBytes } from "$lib/utils";
   import {
     files, isResizing, outputDir, resizeMode, width, height, summary,
+    upscaleWarning, upscaleCount,
     addFiles, removeFile, clearFiles,
   } from "$lib/stores/resize";
 
@@ -133,13 +133,30 @@
   onaction={startResize}
   {headerText}
 >
+  {#snippet headerSub()}
+    {#if $upscaleWarning}
+      <span class="upscale-chip">
+        <AlertTriangle size={12} />
+        {$upscaleCount} will upscale
+      </span>
+    {/if}
+  {/snippet}
+
   {#snippet fileDetail(file)}
     {#if file.status === "done"}
       {file.size ? formatBytes(file.size) : '—'} → {file.outputSize ? formatBytes(file.outputSize) : '—'} ({file.originalWidth}×{file.originalHeight} → {file.outputWidth}×{file.outputHeight})
     {:else if file.status === "error"}
       {file.error}
     {:else}
-      {$width}×{$height} · {$resizeMode}
+      <span class="file-detail-row">
+        <span>{$width}×{$height} · {$resizeMode}</span>
+        {#if file.originalWidth !== undefined && file.originalHeight !== undefined && ($width > file.originalWidth || $height > file.originalHeight)}
+          <span class="upscale-flag">
+            <AlertTriangle size={14} />
+            will upscale
+          </span>
+        {/if}
+      </span>
     {/if}
   {/snippet}
 
@@ -264,4 +281,30 @@
     color: var(--text-muted);
   }
 
+  .upscale-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    background: var(--warning-bg);
+    color: var(--warning);
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .file-detail-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .upscale-flag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--warning);
+    font-size: 12px;
+    font-weight: 500;
+  }
 </style>

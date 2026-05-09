@@ -124,6 +124,18 @@ pub fn generate_thumbnail(path: &str, max_size: u32) -> Result<String, Box<dyn s
     Ok(format!("data:image/jpeg;base64,{b64}"))
 }
 
+pub fn read_dimensions(path: &str) -> Result<(u32, u32), Box<dyn std::error::Error>> {
+    crate::core::paths::validate_input_path(path, false)
+        .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+    let ext = ext_lowercase(path).unwrap_or_default();
+    if ext == "heic" || ext == "heif" {
+        let img = crate::core::heic::decode_heic(path)?;
+        return Ok((img.width(), img.height()));
+    }
+    let (w, h) = image::image_dimensions(path)?;
+    Ok((w, h))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,5 +172,28 @@ mod tests {
         let result = generate_thumbnail(path.to_str().unwrap(), 80).unwrap();
         assert!(result.starts_with("data:image/jpeg;base64,"));
         assert!(result.len() > 30);
+    }
+
+    #[test]
+    fn dimensions_jpeg_returns_correct_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.jpg");
+        image::RgbImage::new(320, 240).save(&path).unwrap();
+        let (w, h) = read_dimensions(path.to_str().unwrap()).unwrap();
+        assert_eq!((w, h), (320, 240));
+    }
+
+    #[test]
+    fn dimensions_png_returns_correct_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.png");
+        image::RgbaImage::new(100, 200).save(&path).unwrap();
+        let (w, h) = read_dimensions(path.to_str().unwrap()).unwrap();
+        assert_eq!((w, h), (100, 200));
+    }
+
+    #[test]
+    fn dimensions_invalid_path_returns_err() {
+        assert!(read_dimensions("/nonexistent/x.jpg").is_err());
     }
 }
