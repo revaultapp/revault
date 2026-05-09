@@ -1,4 +1,5 @@
 import { writable, derived } from "svelte/store";
+import type { Readable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { BaseFile } from "$lib/types";
 import { persisted } from "$lib/utils";
@@ -31,6 +32,26 @@ export const summary = derived(files, ($files) => ({
   pending: $files.filter((f) => f.status === "pending" || f.status === "resizing").length,
 }));
 
+export const upscaleWarning: Readable<boolean> = derived(
+  [files, width, height],
+  ([$files, $width, $height]) =>
+    $files.some(
+      (f) =>
+        f.originalWidth !== undefined &&
+        ($width > f.originalWidth || $height > (f.originalHeight ?? Infinity)),
+    ),
+);
+
+export const upscaleCount: Readable<number> = derived(
+  [files, width, height],
+  ([$files, $width, $height]) =>
+    $files.filter(
+      (f) =>
+        f.originalWidth !== undefined &&
+        ($width > f.originalWidth || $height > (f.originalHeight ?? Infinity)),
+    ).length,
+);
+
 export async function addFiles(paths: string[]) {
   let newPaths: string[] = [];
   files.update((current) => {
@@ -58,6 +79,20 @@ export async function addFiles(paths: string[]) {
   } catch {
     // sizes stay at 0, not critical
   }
+  await Promise.allSettled(
+    newPaths.map(async (path) => {
+      try {
+        const [w, h] = await invoke<[number, number]>("get_image_dimensions", { path });
+        files.update((current) =>
+          current.map((f) =>
+            f.path === path ? { ...f, originalWidth: w, originalHeight: h } : f,
+          ),
+        );
+      } catch {
+        // dimensions stay undefined — warning simply won't show
+      }
+    }),
+  );
 }
 
 export function removeFile(path: string) {

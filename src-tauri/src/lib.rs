@@ -50,6 +50,7 @@ pub fn run() {
             commands::scanner::scan_folder,
             commands::thumbnail::generate_thumbnail,
             commands::thumbnail::get_file_sizes,
+            commands::thumbnail::get_image_dimensions,
             commands::video::compress_video,
             commands::video::preview_video_compression,
             commands::video::cancel_video_compress,

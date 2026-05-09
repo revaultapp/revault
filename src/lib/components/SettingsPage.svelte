@@ -1,6 +1,17 @@
 <script lang="ts">
-  import { Sun, Moon } from "lucide-svelte";
+  import { Sun, Moon, FolderOpen, RotateCcw } from "lucide-svelte";
   import { theme } from "$lib/stores/theme";
+  import { defaultOutputDir } from "$lib/stores/settings";
+  import { browseOutputDir } from "$lib/utils";
+
+  async function pickOutputDir() {
+    const dir = await browseOutputDir();
+    if (dir) defaultOutputDir.set(dir);
+  }
+
+  function resetOutputDir() {
+    defaultOutputDir.set(null);
+  }
 </script>
 
 <div class="sections">
@@ -25,6 +36,23 @@
           <Moon size={14} strokeWidth={2} />
           <span>Dark</span>
         </button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="label">
+        <span class="name">Default output folder</span>
+        <span class="desc">Used when no per-tool folder is set</span>
+      </div>
+      <div class="output-controls">
+        <button class="btn-ghost" onclick={pickOutputDir}>
+          <FolderOpen size={14} strokeWidth={2} />
+          <span class="output-name">{$defaultOutputDir?.split(/[\\/]/).pop() ?? "Same as input"}</span>
+        </button>
+        {#if $defaultOutputDir}
+          <button class="btn-ghost btn-icon" onclick={resetOutputDir} title="Reset to same as input">
+            <RotateCcw size={14} strokeWidth={2} />
+          </button>
+        {/if}
       </div>
     </div>
   </section>
@@ -132,5 +160,41 @@
     font-size: 13px;
     font-weight: 500;
     color: var(--text-muted);
+  }
+
+  .output-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .btn-ghost {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    transition: background-color 0.15s, border-color 0.15s;
+  }
+
+  .btn-ghost:hover {
+    background: var(--navy-bg);
+    border-color: var(--text-muted);
+  }
+
+  .btn-ghost.btn-icon {
+    padding: 6px;
+    color: var(--text-muted);
+  }
+
+  .output-name {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>

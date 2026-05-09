@@ -20,3 +20,12 @@ pub async fn get_file_sizes(paths: Vec<String>) -> Vec<u64> {
     .await
     .unwrap_or_else(|_| vec![0; len])
 }
+
+#[tauri::command]
+pub async fn get_image_dimensions(path: String) -> Result<(u32, u32), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::core::image_io::read_dimensions(&path).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
