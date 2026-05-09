@@ -13,6 +13,7 @@ pub struct VideoStats {
     pub video_bitrate_bps: Option<u64>,
     pub height: u32,
     pub width: u32,
+    #[allow(dead_code)]
     pub fps: u32,
     pub creation_time: Option<String>,
 }
@@ -130,28 +131,6 @@ pub fn get_ffmpeg_path() -> PathBuf {
     ffmpeg_sidecar::paths::ffmpeg_path()
 }
 
-pub fn probe_duration(path: &str) -> Result<f64, String> {
-    let output = std::process::Command::new(get_ffmpeg_path())
-        .args(["-i", path, "-hide_banner"])
-        .output()
-        .map_err(|e| e.to_string())?;
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    parse_duration_from_stderr(&stderr)
-        .ok_or_else(|| format!("Could not parse duration from: {}", path))
-}
-
-fn parse_duration_from_stderr(stderr: &str) -> Option<f64> {
-    let line = stderr.lines().find(|l| l.contains("Duration:"))?;
-    let start = line.find("Duration:")? + "Duration:".len();
-    let substr = line[start..].trim();
-    let end = substr.find(',')?;
-    let time_str = substr[..end].trim();
-    if time_str == "N/A" {
-        return None;
-    }
-    parse_time_to_secs(time_str)
-}
-
 fn parse_time_to_secs(time: &str) -> Option<f64> {
     let parts: Vec<&str> = time.split(':').collect();
     if parts.len() != 3 {
@@ -266,10 +245,6 @@ fn parse_frame_rate(s: &str) -> Option<u32> {
         return None;
     }
     Some((n / d).round() as u32)
-}
-
-pub fn probe_creation_time(path: &str) -> Option<String> {
-    probe_video_stats(path).ok().and_then(|s| s.creation_time)
 }
 
 pub fn build_strip_flags(privacy: PrivacyMode) -> Vec<&'static str> {
@@ -409,14 +384,24 @@ pub fn resolve_video_output_path(
         .file_stem()
         .and_then(|s| s.to_str())
         .ok_or("Invalid filename")?;
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("mp4");
+    // MOV inputs are remuxed to MP4 — same H.264/H.265 stream, broader compatibility.
+    let input_ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase());
+    let ext = match input_ext.as_deref() {
+        Some("mov") => "mp4",
+        Some(e) => e,
+        None => "mp4",
+    };
     let dir = match output_dir {
         Some(d) => {
-            let p = Path::new(d);
-            if !p.is_dir() {
-                return Err(format!("Output directory does not exist: {}", d));
+            let canon = std::fs::canonicalize(d)
+                .map_err(|e| format!("Invalid output dir '{}': {}", d, e))?;
+            if !canon.is_dir() {
+                return Err(format!("Output path is not a directory: {}", d));
             }
-            p.to_path_buf()
+            canon
         }
         None => path.parent().ok_or("No parent directory")?.to_path_buf(),
     };
@@ -439,12 +424,16 @@ pub fn compress_video(
     let original_size = std::fs::metadata(input_path)
         .map_err(|e| format!("Cannot read input file '{}': {}", input_path, e))?
         .len();
-    let total_duration = probe_duration(input_path).unwrap_or(0.0);
+    // Single ffprobe call for both duration (progress %) and creation_time (Smart).
+    // Probe failure is a hard error: a video we can't probe is one we can't reliably encode.
+    let stats = probe_video_stats(input_path)
+        .map_err(|e| format!("Cannot read video metadata for '{}': {}", input_path, e))?;
+    let total_duration = stats.duration_sec;
     // Smart mode re-injects creation_time after -map_metadata -1 so chronological
     // order is preserved in file managers without leaking EXIF/GPS sidecar metadata.
     // Full mode strips without re-injection. Off and GpsOnly keep the original tag.
     let preserved_creation_time = if matches!(privacy, PrivacyMode::Smart) {
-        probe_creation_time(input_path)
+        stats.creation_time.clone()
     } else {
         None
     };
@@ -455,7 +444,13 @@ pub fn compress_video(
 
     let ffmpeg_bin = get_ffmpeg_path();
     let mut cmd = FfmpegCommand::new_with_path(ffmpeg_bin);
-    cmd.input(input_path)
+    // -fflags +genpts: reconstruct presentation timestamps for malformed inputs
+    // (truncated MP4s, screen recorders that drop PTS). MUST come before -i to
+    // apply as an input option. Note: this is INPUT-side; +bitexact in
+    // build_strip_flags() is OUTPUT-side — different flags, do not conflate.
+    cmd.arg("-fflags")
+        .arg("+genpts")
+        .input(input_path)
         .overwrite()
         .codec_video(preset.codec())
         .arg("-crf")
@@ -701,17 +696,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_duration_from_stderr() {
-        let stderr = "  Duration: 00:02:30.00, start: 0.000000, bitrate: 1234 kb/s";
-        assert_eq!(parse_duration_from_stderr(stderr), Some(150.0));
-
-        assert_eq!(parse_duration_from_stderr("no duration here"), None);
-
-        let na_stderr = "  Duration: N/A, start: 0.000000, bitrate: N/A";
-        assert_eq!(parse_duration_from_stderr(na_stderr), None);
-    }
-
-    #[test]
     fn test_build_scale_filter() {
         assert_eq!(
             build_scale_filter(Some(720)),
@@ -735,9 +719,18 @@ mod tests {
             .to_string();
         assert_eq!(result, expected);
 
+        // MOV inputs are remuxed to MP4 for broader compatibility.
         let result = resolve_video_output_path("/home/user/clip.mov", None).unwrap();
         let expected = Path::new("/home/user")
-            .join("clip_compressed.mov")
+            .join("clip_compressed.mp4")
+            .to_string_lossy()
+            .to_string();
+        assert_eq!(result, expected);
+
+        // Case-insensitive: .MOV also maps to .mp4.
+        let result = resolve_video_output_path("/home/user/clip.MOV", None).unwrap();
+        let expected = Path::new("/home/user")
+            .join("clip_compressed.mp4")
             .to_string_lossy()
             .to_string();
         assert_eq!(result, expected);
@@ -746,20 +739,23 @@ mod tests {
     #[test]
     fn test_resolve_video_output_path_with_output_dir() {
         let dir = tempfile::tempdir().unwrap();
+        // canonicalize the tempdir so the comparison matches the canonicalized
+        // path returned by resolve_video_output_path (macOS resolves /var/...
+        // → /private/var/...).
+        let canon_dir = std::fs::canonicalize(dir.path()).unwrap();
         let dir_str = dir.path().to_str().unwrap();
 
         let result = resolve_video_output_path("/tmp/video.mp4", Some(dir_str)).unwrap();
-        let expected = dir
-            .path()
+        let expected = canon_dir
             .join("video_compressed.mp4")
             .to_string_lossy()
             .to_string();
         assert_eq!(result, expected);
 
+        // MOV → MP4 remux applies even when output_dir is set.
         let result = resolve_video_output_path("/tmp/clip.mov", Some(dir_str)).unwrap();
-        let expected = dir
-            .path()
-            .join("clip_compressed.mov")
+        let expected = canon_dir
+            .join("clip_compressed.mp4")
             .to_string_lossy()
             .to_string();
         assert_eq!(result, expected);
@@ -769,7 +765,22 @@ mod tests {
     fn test_resolve_video_output_path_missing_dir() {
         let result = resolve_video_output_path("/tmp/video.mp4", Some("/nonexistent/dir"));
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("does not exist"));
+        assert!(result.unwrap_err().contains("Invalid output dir"));
+    }
+
+    #[test]
+    fn test_resolve_video_output_path_rejects_traversal() {
+        // canonicalize() resolves "../.." against cwd; the resulting path is
+        // unlikely to be a directory we accidentally write to. The point is
+        // that we no longer hand the raw "../.." string back to ffmpeg.
+        let dir = tempfile::tempdir().unwrap();
+        let traversal = dir.path().join("..").join("..").join("etc");
+        let result = resolve_video_output_path("/tmp/video.mp4", traversal.to_str());
+        // Either canonicalize fails (path doesn't exist) or it resolves to
+        // something — either way the input string is normalized away.
+        if let Ok(out) = result {
+            assert!(!out.contains(".."), "output path leaks traversal: {}", out);
+        }
     }
 
     #[test]

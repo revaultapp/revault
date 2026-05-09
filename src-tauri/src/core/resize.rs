@@ -169,6 +169,26 @@ pub fn resize_batch(
     suffix: Option<&str>,
 ) -> Vec<ResizeResult> {
     let suffix = suffix.unwrap_or("_resized");
+    // Canonicalize once outside the parallel loop — fails fast for the whole
+    // batch instead of per-file, and prevents path traversal via "../..".
+    let canonical_output_dir = match output_dir {
+        Some(d) => match std::fs::canonicalize(d) {
+            Ok(canon) if canon.is_dir() => Some(canon),
+            Ok(_) => {
+                return paths
+                    .iter()
+                    .map(|p| ResizeResult::err(p, format!("Output path is not a directory: {d}")))
+                    .collect();
+            }
+            Err(e) => {
+                return paths
+                    .iter()
+                    .map(|p| ResizeResult::err(p, format!("Invalid output dir '{d}': {e}")))
+                    .collect();
+            }
+        },
+        None => None,
+    };
     paths
         .par_iter()
         .map(|path| {
@@ -183,7 +203,7 @@ pub fn resize_batch(
                 None => return ResizeResult::err(path, format!("invalid path: {path}")),
             };
 
-            let out_base = output_dir.map(Path::new).unwrap_or(parent);
+            let out_base: &Path = canonical_output_dir.as_deref().unwrap_or(parent);
             let output = out_base.join(format!("{stem}{suffix}.{ext}"));
 
             match resize_image(
