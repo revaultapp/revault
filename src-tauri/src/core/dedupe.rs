@@ -10,7 +10,15 @@ const IMAGE_EXTENSIONS: &[&str] = &[
 ];
 
 const HASH_SIZE: u32 = 16;
-const PERCEPTUAL_THRESHOLD: u32 = 10;
+const PERCEPTUAL_THRESHOLD_EXACT: u32 = 10;
+const PERCEPTUAL_THRESHOLD_SIMILAR: u32 = 24;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScanMode {
+    Exact,
+    Similar,
+}
 
 #[derive(Serialize, Clone, Debug)]
 pub struct DuplicateFile {
@@ -23,6 +31,7 @@ pub struct DuplicateFile {
 pub struct DuplicateGroup {
     pub hash: String,
     pub distance: u32,
+    pub max_distance: u32,
     pub files: Vec<DuplicateFile>,
 }
 
@@ -128,18 +137,24 @@ fn sha256_to_hex(hash: &[u8; 32]) -> String {
 pub fn find_duplicates(
     paths: &[String],
     recursive: bool,
+    mode: ScanMode,
 ) -> Result<FindDuplicatesResult, Box<dyn std::error::Error>> {
-    find_duplicates_with_progress(paths, recursive, |_, _, _| {})
+    find_duplicates_with_progress(paths, recursive, mode, |_, _, _| {})
 }
 
 pub fn find_duplicates_with_progress<F>(
     paths: &[String],
     recursive: bool,
+    mode: ScanMode,
     mut on_progress: F,
 ) -> Result<FindDuplicatesResult, Box<dyn std::error::Error>>
 where
     F: FnMut(usize, usize, &str),
 {
+    let threshold = match mode {
+        ScanMode::Exact => PERCEPTUAL_THRESHOLD_EXACT,
+        ScanMode::Similar => PERCEPTUAL_THRESHOLD_SIMILAR,
+    };
     let (image_paths, mut collect_errors) = collect_images(paths, recursive);
     let total = image_paths.len();
     let total_scanned = image_paths.len();
@@ -186,57 +201,66 @@ where
         }
     }
 
-    // Stage 1: Exact match by SHA256
+    // Stage 1: Exact match by SHA256. Only files that land in an actual
+    // duplicate group are marked as used; singletons fall through to Stage 2
+    // so a JPEG with no exact twin can still group perceptually with a
+    // recompressed copy.
     let mut groups: Vec<DuplicateGroup> = Vec::new();
     let mut used: std::collections::HashSet<usize> = std::collections::HashSet::new();
 
-    // Group by exact SHA256
-    for i in 0..files_data.len() {
-        if used.contains(&i) {
-            continue;
-        }
-        let sha256_i = files_data[i].sha256;
-        let mut group_files: Vec<DuplicateFile> = vec![DuplicateFile {
-            path: files_data[i].path.clone(),
-            size: files_data[i].size,
-            modified: files_data[i].modified,
-        }];
-        used.insert(i);
-
-        for (j, fd_j) in files_data.iter().enumerate().skip(i + 1) {
-            if used.contains(&j) {
-                continue;
-            }
-            if fd_j.sha256 == sha256_i {
-                used.insert(j);
-                group_files.push(DuplicateFile {
-                    path: fd_j.path.clone(),
-                    size: fd_j.size,
-                    modified: fd_j.modified,
-                });
-            }
-        }
-
-        if group_files.len() > 1 {
-            groups.push(DuplicateGroup {
-                hash: sha256_to_hex(&sha256_i),
-                distance: 0,
-                files: group_files,
-            });
-        }
-    }
-
-    // Stage 2: Perceptual match by pHash for remaining ungrouped files (same size pre-filter)
-    on_progress(total, total, "grouping");
-    let mut size_groups: std::collections::HashMap<u64, Vec<usize>> =
+    let mut sha_buckets: std::collections::HashMap<[u8; 32], Vec<usize>> =
         std::collections::HashMap::new();
     for (i, fd) in files_data.iter().enumerate() {
-        if !used.contains(&i) {
-            size_groups.entry(fd.size).or_default().push(i);
-        }
+        sha_buckets.entry(fd.sha256).or_default().push(i);
     }
 
-    for (_size, indices) in size_groups {
+    for (sha, indices) in sha_buckets {
+        if indices.len() < 2 {
+            continue;
+        }
+        let group_files: Vec<DuplicateFile> = indices
+            .iter()
+            .map(|&i| DuplicateFile {
+                path: files_data[i].path.clone(),
+                size: files_data[i].size,
+                modified: files_data[i].modified,
+            })
+            .collect();
+        for i in &indices {
+            used.insert(*i);
+        }
+        groups.push(DuplicateGroup {
+            hash: sha256_to_hex(&sha),
+            distance: 0,
+            max_distance: 0,
+            files: group_files,
+        });
+    }
+
+    // Stage 2: Perceptual match by pHash for remaining ungrouped files.
+    // Exact mode keeps a same-size pre-filter; Similar mode bypasses it so
+    // recompressed copies (different bytes, different size) still group.
+    on_progress(total, total, "grouping");
+    let buckets: Vec<Vec<usize>> = match mode {
+        ScanMode::Exact => {
+            let mut size_groups: std::collections::HashMap<u64, Vec<usize>> =
+                std::collections::HashMap::new();
+            for (i, fd) in files_data.iter().enumerate() {
+                if !used.contains(&i) {
+                    size_groups.entry(fd.size).or_default().push(i);
+                }
+            }
+            size_groups.into_values().collect()
+        }
+        ScanMode::Similar => {
+            let all: Vec<usize> = (0..files_data.len())
+                .filter(|i| !used.contains(i))
+                .collect();
+            vec![all]
+        }
+    };
+
+    for indices in buckets {
         if indices.len() < 2 {
             continue;
         }
@@ -257,6 +281,7 @@ where
             }];
             used.insert(*i);
             let mut min_dist: u32 = u32::MAX;
+            let mut max_dist: u32 = 0;
 
             for j in indices.iter() {
                 if used.contains(j) || j == i {
@@ -268,7 +293,7 @@ where
                 };
                 let dist = hash_i.dist(hash_j);
 
-                if dist <= PERCEPTUAL_THRESHOLD {
+                if dist <= threshold {
                     used.insert(*j);
                     group_files.push(DuplicateFile {
                         path: files_data[*j].path.clone(),
@@ -276,6 +301,7 @@ where
                         modified: files_data[*j].modified,
                     });
                     min_dist = min_dist.min(dist);
+                    max_dist = max_dist.max(dist);
                 }
             }
 
@@ -283,6 +309,7 @@ where
                 groups.push(DuplicateGroup {
                     hash: hash_i.to_base64(),
                     distance: min_dist,
+                    max_distance: max_dist,
                     files: group_files,
                 });
             }
@@ -312,13 +339,18 @@ mod tests {
         img.save(&a).unwrap();
         img.save(&b).unwrap();
 
-        let result = find_duplicates(&[dir.path().to_str().unwrap().to_string()], true).unwrap();
+        let result = find_duplicates(
+            &[dir.path().to_str().unwrap().to_string()],
+            true,
+            ScanMode::Exact,
+        )
+        .unwrap();
         assert!(!result.groups.is_empty());
     }
 
     #[test]
     fn no_duplicates_in_empty() {
-        let result = find_duplicates(&[], true);
+        let result = find_duplicates(&[], true, ScanMode::Exact);
         assert!(result.is_ok());
     }
 
@@ -365,7 +397,12 @@ mod tests {
 
         // Corrupt file computes SHA256 (succeeds) but pHash fails silently
         // It should be gracefully skipped - no crash, just excluded from groups
-        let result = find_duplicates(&[dir.path().to_str().unwrap().to_string()], true).unwrap();
+        let result = find_duplicates(
+            &[dir.path().to_str().unwrap().to_string()],
+            true,
+            ScanMode::Exact,
+        )
+        .unwrap();
         // Valid images should still be grouped
         assert!(result.groups.iter().any(|g| g.files.len() == 2));
         // Corrupt file not in any group (pHash failed silently)
@@ -379,7 +416,12 @@ mod tests {
     #[test]
     fn find_duplicates_empty_folder() {
         let dir = tempfile::tempdir().unwrap();
-        let result = find_duplicates(&[dir.path().to_str().unwrap().to_string()], true).unwrap();
+        let result = find_duplicates(
+            &[dir.path().to_str().unwrap().to_string()],
+            true,
+            ScanMode::Exact,
+        )
+        .unwrap();
         assert!(result.groups.is_empty());
         assert_eq!(result.total_scanned, 0);
         assert!(result.errors.is_empty());
@@ -396,7 +438,12 @@ mod tests {
         img.save(&a).unwrap();
         img.save(&b).unwrap();
 
-        let result = find_duplicates(&[dir.path().to_str().unwrap().to_string()], true).unwrap();
+        let result = find_duplicates(
+            &[dir.path().to_str().unwrap().to_string()],
+            true,
+            ScanMode::Exact,
+        )
+        .unwrap();
         assert_eq!(result.groups.len(), 1);
         assert_eq!(result.groups[0].files.len(), 2);
         assert_eq!(result.groups[0].distance, 0); // SHA256 exact match = distance 0
@@ -418,7 +465,12 @@ mod tests {
         img.save(&a).unwrap();
         img.save(&b).unwrap();
 
-        let result = find_duplicates(&[dir.path().to_str().unwrap().to_string()], true).unwrap();
+        let result = find_duplicates(
+            &[dir.path().to_str().unwrap().to_string()],
+            true,
+            ScanMode::Exact,
+        )
+        .unwrap();
         // Either SHA256 groups them (distance 0) or pHash groups them (distance 0)
         assert_eq!(result.groups.len(), 1);
         assert_eq!(result.groups[0].files.len(), 2);
@@ -439,7 +491,12 @@ mod tests {
         img.save(&a).unwrap();
         img.save(&b).unwrap();
 
-        let result = find_duplicates(&[dir.path().to_str().unwrap().to_string()], true).unwrap();
+        let result = find_duplicates(
+            &[dir.path().to_str().unwrap().to_string()],
+            true,
+            ScanMode::Exact,
+        )
+        .unwrap();
         assert_eq!(result.groups.len(), 1);
         assert_eq!(result.groups[0].files.len(), 2);
         assert_eq!(result.groups[0].distance, 0);
@@ -467,7 +524,12 @@ mod tests {
         g3.save(&b2).unwrap();
         g3.save(&b3).unwrap();
 
-        let result = find_duplicates(&[dir.path().to_str().unwrap().to_string()], true).unwrap();
+        let result = find_duplicates(
+            &[dir.path().to_str().unwrap().to_string()],
+            true,
+            ScanMode::Exact,
+        )
+        .unwrap();
         assert_eq!(result.groups.len(), 2);
         // Should be sorted by file count descending (group of 3 first)
         assert_eq!(result.groups[0].files.len(), 3);
@@ -481,18 +543,26 @@ mod tests {
         let a = dir.path().join("photo1.png");
         let b = dir.path().join("photo2.png");
 
-        // Completely different images (red vs blue)
-        let img1: RgbaImage =
-            image::ImageBuffer::from_fn(64, 64, |_x, _y| image::Rgba([255, 0, 0, 255]));
-        let img2: RgbaImage =
-            image::ImageBuffer::from_fn(64, 64, |_x, _y| image::Rgba([0, 0, 255, 255]));
+        // Visually dissimilar content: a top-left corner gradient vs a
+        // bottom-right corner gradient. Different SHA256, different pHash.
+        let img1: RgbaImage = image::ImageBuffer::from_fn(64, 64, |x, y| {
+            image::Rgba([(x * 4) as u8, (y * 4) as u8, 0, 255])
+        });
+        let img2: RgbaImage = image::ImageBuffer::from_fn(64, 64, |x, y| {
+            image::Rgba([0, ((63 - x) * 4) as u8, ((63 - y) * 4) as u8, 255])
+        });
         img1.save(&a).unwrap();
         img2.save(&b).unwrap();
 
-        let result = find_duplicates(&[dir.path().to_str().unwrap().to_string()], true).unwrap();
+        let result = find_duplicates(
+            &[dir.path().to_str().unwrap().to_string()],
+            true,
+            ScanMode::Exact,
+        )
+        .unwrap();
         assert!(
             result.groups.is_empty(),
-            "red and blue should not be grouped"
+            "visually dissimilar gradients should not be grouped"
         );
     }
 
@@ -509,8 +579,113 @@ mod tests {
         img.save(&a).unwrap();
         img.save(&b).unwrap();
 
-        let result = find_duplicates(&[dir.path().to_str().unwrap().to_string()], true).unwrap();
+        let result = find_duplicates(
+            &[dir.path().to_str().unwrap().to_string()],
+            true,
+            ScanMode::Exact,
+        )
+        .unwrap();
         assert_eq!(result.groups.len(), 1);
         assert_eq!(result.groups[0].files.len(), 2);
+    }
+
+    fn save_gradient_jpeg(path: &std::path::Path, quality: u8, invert: bool) {
+        const W: u32 = 256;
+        const H: u32 = 256;
+        let img: image::GrayImage = image::ImageBuffer::from_fn(W, H, |x, y| {
+            let v = ((x + y) % 256) as u8;
+            image::Luma([if invert { 255u8.wrapping_sub(v) } else { v }])
+        });
+        let file = std::fs::File::create(path).unwrap();
+        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(
+            std::io::BufWriter::new(file),
+            quality,
+        );
+        encoder
+            .encode(img.as_raw(), W, H, image::ExtendedColorType::L8)
+            .unwrap();
+    }
+
+    #[test]
+    fn similar_mode_detects_recompressed_jpeg() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a_q95.jpg");
+        let b = dir.path().join("b_q50.jpg");
+        save_gradient_jpeg(&a, 95, false);
+        save_gradient_jpeg(&b, 50, false);
+
+        let result = find_duplicates(
+            &[dir.path().to_str().unwrap().to_string()],
+            true,
+            ScanMode::Similar,
+        )
+        .unwrap();
+        assert_eq!(result.groups.len(), 1);
+        assert_eq!(result.groups[0].files.len(), 2);
+    }
+
+    #[test]
+    fn similar_mode_does_not_group_different_images() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a.jpg");
+        let b = dir.path().join("b_inverted.jpg");
+        save_gradient_jpeg(&a, 90, false);
+        save_gradient_jpeg(&b, 90, true);
+
+        let result = find_duplicates(
+            &[dir.path().to_str().unwrap().to_string()],
+            true,
+            ScanMode::Similar,
+        )
+        .unwrap();
+        assert!(
+            result.groups.is_empty(),
+            "gradient and its inverse should not be grouped in Similar mode"
+        );
+    }
+
+    #[test]
+    fn similar_mode_size_filter_bypassed() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a_q95.jpg");
+        let b = dir.path().join("b_q50.jpg");
+        save_gradient_jpeg(&a, 95, false);
+        save_gradient_jpeg(&b, 50, false);
+
+        let size_a = std::fs::metadata(&a).unwrap().len();
+        let size_b = std::fs::metadata(&b).unwrap().len();
+        assert_ne!(
+            size_a, size_b,
+            "test precondition: recompressed JPEGs must differ in size"
+        );
+
+        let result = find_duplicates(
+            &[dir.path().to_str().unwrap().to_string()],
+            true,
+            ScanMode::Similar,
+        )
+        .unwrap();
+        assert_eq!(result.groups.len(), 1);
+        assert_eq!(result.groups[0].files.len(), 2);
+    }
+
+    #[test]
+    fn exact_mode_uses_lower_threshold() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a_q95.jpg");
+        let b = dir.path().join("b_q50.jpg");
+        save_gradient_jpeg(&a, 95, false);
+        save_gradient_jpeg(&b, 50, false);
+
+        let result = find_duplicates(
+            &[dir.path().to_str().unwrap().to_string()],
+            true,
+            ScanMode::Exact,
+        )
+        .unwrap();
+        assert!(
+            result.groups.is_empty(),
+            "Exact mode (threshold=10) must not group recompressed JPEGs that Similar mode catches"
+        );
     }
 }

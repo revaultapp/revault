@@ -1,6 +1,7 @@
-import { writable } from "svelte/store";
+import { writable, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { persisted } from "$lib/utils";
 
 export interface DuplicateFile {
   path: string;
@@ -11,6 +12,7 @@ export interface DuplicateFile {
 export interface DuplicateGroup {
   hash: string;
   distance: number;
+  max_distance: number;
   files: DuplicateFile[];
 }
 
@@ -26,11 +28,18 @@ export interface ScanProgress {
   phase: string;
 }
 
+export const scanMode = persisted<"exact" | "similar">("dedupe-scan-mode", "exact");
+
 export const duplicateGroups = writable<DuplicateGroup[]>([]);
 export const isScanning = writable(false);
 export const totalFound = writable(0);
 export const scanError = writable<string | null>(null);
 export const scanProgress = writable<ScanProgress | null>(null);
+
+export function setMode(m: "exact" | "similar") {
+  scanMode.set(m);
+  clearResults();
+}
 
 export async function scanForDuplicates(paths: string[], recursive = true) {
   isScanning.set(true);
@@ -45,7 +54,7 @@ export async function scanForDuplicates(paths: string[], recursive = true) {
   });
 
   try {
-    const result = await invoke<FindDuplicatesResult>("find_duplicates", { paths, recursive });
+    const result = await invoke<FindDuplicatesResult>("find_duplicates", { paths, recursive, mode: get(scanMode) });
     const total = result.groups.reduce((acc, g) => acc + g.files.length - 1, 0);
     duplicateGroups.set(result.groups);
     totalFound.set(total);
