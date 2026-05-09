@@ -37,8 +37,11 @@
     gifDownloadProgress,
     gifResult,
     gifSizeEstimate,
+    gifProgress,
+    gifPhase,
     checkGifski,
     exportGif,
+    cancelGifExport,
     refreshGifSizeEstimate,
     type VideoFile,
     type VideoPreset,
@@ -418,10 +421,10 @@
     onbrowse={browseFiles}
     onclear={clearVideoFiles}
     actionLabel={$videoMode === "gif"
-      ? (!$gifskiAvailable ? "" : $gifState === "generating" ? "Generando…" : "Exportar GIF")
+      ? (!$gifskiAvailable ? "" : $gifState === "generating" ? "Cancelar" : "Exportar GIF")
       : ($isCompressing ? "Cancel" : $videoSummary.pending === 0 && $videoFiles.length > 0 ? "Compress More" : "Compress")}
     onaction={$videoMode === "gif"
-      ? startGifExport
+      ? ($gifState === "generating" ? cancelGifExport : startGifExport)
       : ($isCompressing ? cancelCompression : $videoSummary.pending === 0 && $videoFiles.length > 0 ? compressMore : startCompression)}
     {headerText}
     dropZoneTitle="Drop videos here"
@@ -702,6 +705,21 @@
         </div>
       {/if}
     </div>
+
+    <!-- GIF encoding progress -->
+    {#if $videoMode === "gif" && $gifState === "generating"}
+      <div class="gif-progress-block" role="status" aria-live="polite" aria-label="Exportando GIF">
+        <div class="gif-progress-header">
+          <span class="gif-progress-label">
+            {$gifPhase === "complete" ? "Finalizando…" : "Codificando GIF…"}
+          </span>
+          <span class="gif-progress-pct">{$gifProgress}%</span>
+        </div>
+        <div class="gif-enc-track" role="progressbar" aria-valuenow={$gifProgress} aria-valuemin={0} aria-valuemax={100}>
+          <div class="gif-enc-fill" style="transform: scaleX({$gifProgress / 100})"></div>
+        </div>
+      </div>
+    {/if}
 
     <!-- GIF done state -->
     {#if $videoMode === "gif" && $gifState === "done" && $gifOutputPath}
@@ -1265,10 +1283,57 @@
     color: var(--danger);
   }
 
+  /* ── GIF encoding progress block ── */
+  .gif-progress-block {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+
+  .gif-progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .gif-progress-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .gif-progress-pct {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .gif-enc-track {
+    height: 4px;
+    background: var(--navy-bg);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .gif-enc-fill {
+    height: 100%;
+    width: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transform-origin: left center;
+    transform: scaleX(0);
+    transition: transform 0.2s ease;
+  }
+
   /* ── Reduced motion ── */
   @media (prefers-reduced-motion: reduce) {
     .spinner, .icon-glow.pulse, .progress-shine { animation: none; }
-    .big-progress-fill { transition: none; }
+    .big-progress-fill, .gif-enc-fill { transition: none; }
     .btn-download, .privacy-icon, .accordion-chevron { transition: none; }
   }
 </style>

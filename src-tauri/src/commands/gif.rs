@@ -1,6 +1,10 @@
 use crate::core::gif;
 use serde_json::json;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
+
+static ACTIVE_GIF_CANCEL: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
 
 #[tauri::command]
 pub async fn export_gif(
@@ -10,11 +14,38 @@ pub async fn export_gif(
     options: gif::GifOptions,
 ) -> Result<gif::GifResult, String> {
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || {
-        gif::export_gif(&app_data, &input_path, &output_path, options)
+    let cancel_flag = Arc::new(AtomicBool::new(false));
+    *ACTIVE_GIF_CANCEL.lock().map_err(|e| e.to_string())? = Some(cancel_flag.clone());
+    let app_for_emit = app.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        gif::export_gif(
+            &app_data,
+            &input_path,
+            &output_path,
+            options,
+            cancel_flag,
+            move |progress| {
+                let _ = app_for_emit.emit("gif-export-progress", &progress);
+            },
+        )
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+
+    *ACTIVE_GIF_CANCEL.lock().map_err(|e| e.to_string())? = None;
+    result
+}
+
+#[tauri::command]
+pub async fn cancel_gif_export() -> Result<(), String> {
+    if let Some(flag) = ACTIVE_GIF_CANCEL
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_ref()
+    {
+        flag.store(true, Ordering::SeqCst);
+    }
+    Ok(())
 }
 
 #[tauri::command]
