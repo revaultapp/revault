@@ -4,6 +4,7 @@
   import { CircleCheck, CircleAlert, X, FolderOpen } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
   import ToggleSwitch from "./ToggleSwitch.svelte";
+  import PrivacyToast from "./PrivacyToast.svelte";
   import { runWithConcurrency, browseOutputDir } from "$lib/utils";
   import { IMAGE_EXTENSIONS } from "$lib/types";
   import {
@@ -53,6 +54,20 @@
   let techCount = $derived($files.filter(f => f.technical).length);
   let totalFound = $derived(gpsCount + deviceCount + datetimeCount + authorCount + techCount);
   let allStripped = $derived($summary.stripped > 0 && $summary.stripped === $files.filter(f => f.hasMetadata !== undefined).length);
+
+  let showToast = $state(false);
+  let toastMessage = $state('');
+  let toastTimer: ReturnType<typeof setTimeout>;
+
+  function showPrivacyToast(strippedCount: number, hadGps: number) {
+    if (strippedCount === 0) return;
+    toastMessage = hadGps > 0
+      ? (hadGps === 1 ? 'GPS removed from 1 file' : `GPS removed from ${hadGps} files`)
+      : (strippedCount === 1 ? 'Metadata removed from 1 file' : `Metadata removed from ${strippedCount} files`);
+    showToast = true;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { showToast = false; }, 3000);
+  }
 
   async function browseFiles() {
     const selected = await open({
@@ -165,11 +180,15 @@
         stripAuthor: opts.author,
       });
       const resultMap = new Map(results.map((r) => [r.input_path, r]));
+      let successCount = 0;
+      let gpsStrippedCount = 0;
       files.update((all) =>
         all.map((f) => {
           const r = resultMap.get(f.path);
           if (!r) return f;
           if (r.error) return { ...f, status: "error" as const, error: r.error };
+          successCount++;
+          if (f.gps && opts.gps) gpsStrippedCount++;
           return {
             ...f,
             status: "done" as const,
@@ -179,6 +198,7 @@
           };
         })
       );
+      showPrivacyToast(successCount, gpsStrippedCount);
     } catch (err) {
       files.update((all) =>
         all.map((f) => f.status === "stripping" ? { ...f, status: "error" as const, error: String(err) } : f)
@@ -270,6 +290,8 @@
   </div>
 
 </ToolShell>
+
+<PrivacyToast visible={showToast} message={toastMessage} />
 
 <style>
   .strip-options {
