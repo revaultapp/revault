@@ -114,6 +114,8 @@ pub fn decode_rgb(path: &str) -> Result<(usize, usize, Vec<u8>), Box<dyn std::er
 }
 
 pub fn generate_thumbnail(path: &str, max_size: u32) -> Result<String, Box<dyn std::error::Error>> {
+    crate::core::paths::validate_input_path(path, false)
+        .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
     let img = open_image(path)?;
     let thumb = img.thumbnail(max_size, max_size).to_rgb8();
     let (w, h) = (thumb.width() as usize, thumb.height() as usize);
