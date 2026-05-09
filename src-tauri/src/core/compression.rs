@@ -175,7 +175,7 @@ impl QualityPreset {
     fn avif_speed(self) -> u8 {
         match self {
             QualityPreset::Smallest => 2,
-            QualityPreset::Balanced => 5,
+            QualityPreset::Balanced => 4,
             QualityPreset::HighQuality => 3,
         }
     }
@@ -264,9 +264,7 @@ fn encode_jpeg_bytes_inner(
         cinfo.set_use_scans_in_trellis(true);
         if progressive {
             cinfo.set_progressive_mode();
-            if quality >= 80.0 {
-                cinfo.set_optimize_scans(true);
-            }
+            cinfo.set_optimize_scans(true);
         }
         let mut cinfo = cinfo.start_compress(Vec::new())?;
         cinfo.write_scanlines(pixels)?;
@@ -283,6 +281,7 @@ pub(crate) fn encode_webp_bytes(
     let mut config = webp::WebPConfig::new().map_err(|_| "failed to create WebP config")?;
     config.quality = quality;
     config.method = 6;
+    config.thread_level = 1;
     config.sns_strength = match quality {
         40.0 => 80, // Smallest
         72.0 => 60, // Balanced
@@ -300,17 +299,31 @@ pub(crate) fn encode_avif_bytes(
     quality: f32,
     speed: u8,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let rgba = img.to_rgba8();
-    let (w, h) = (rgba.width() as usize, rgba.height() as usize);
-    let mut pixels = Vec::with_capacity(w * h);
-    for chunk in rgba.as_raw().chunks_exact(4) {
-        pixels.push(ravif::RGBA8::new(chunk[0], chunk[1], chunk[2], chunk[3]));
-    }
-    let encoded = ravif::Encoder::new()
+    let (w, h) = (img.width() as usize, img.height() as usize);
+    let encoder = ravif::Encoder::new()
         .with_quality(quality)
-        .with_speed(speed)
-        .with_alpha_quality(100.0)
-        .encode_rgba(ravif::Img::new(&pixels, w, h))?;
+        .with_speed(speed);
+    // Use RGB path for opaque images (5-10% smaller — avoids alpha processing overhead).
+    // Only use RGBA when the source actually has transparency.
+    let encoded = if img.color().has_alpha() {
+        let rgba = img.to_rgba8();
+        let pixels: Vec<ravif::RGBA8> = rgba
+            .as_raw()
+            .chunks_exact(4)
+            .map(|c| ravif::RGBA8::new(c[0], c[1], c[2], c[3]))
+            .collect();
+        encoder
+            .with_alpha_quality(100.0)
+            .encode_rgba(ravif::Img::new(&pixels, w, h))?
+    } else {
+        let rgb = img.to_rgb8();
+        let pixels: Vec<ravif::RGB8> = rgb
+            .as_raw()
+            .chunks_exact(3)
+            .map(|c| ravif::RGB8::new(c[0], c[1], c[2]))
+            .collect();
+        encoder.encode_rgb(ravif::Img::new(&pixels, w, h))?
+    };
     Ok(encoded.avif_file)
 }
 
@@ -500,7 +513,7 @@ pub fn compress_png(
         let (w, h) = (img.width(), img.height());
         let mut opts = oxipng::Options {
             deflater: oxipng::Deflater::Zopfli(oxipng::ZopfliOptions {
-                iteration_count: std::num::NonZeroU64::new(15).unwrap(),
+                iteration_count: std::num::NonZeroU64::new(20).unwrap(),
                 ..Default::default()
             }),
             optimize_alpha: true,
@@ -514,12 +527,14 @@ pub fn compress_png(
         let data = oxipng::optimize_from_memory(&png_data, &opts)?;
         (data, w, h)
     } else {
-        // Non-PNG input: encode to PNG directly, skip oxipng (too slow on large images)
+        // Non-PNG input (JPEG, HEIC, etc.) converted to PNG: use standard zlib
+        // compression instead of Fast. Fast zlib produces 15-25% larger files with
+        // no benefit. Full Zopfli is skipped here as it is too slow on large images.
         let img = open_image(input_path)?;
         let rgba = img.to_rgba8();
         let (w, h) = (rgba.width(), rgba.height());
         let mut buf = Cursor::new(Vec::with_capacity((w * h * 4) as usize));
-        PngEncoder::new_with_quality(&mut buf, CompressionType::Fast, FilterType::Sub)
+        PngEncoder::new_with_quality(&mut buf, CompressionType::Default, FilterType::Sub)
             .write_image(rgba.as_raw(), w, h, image::ExtendedColorType::Rgba8)?;
         (buf.into_inner(), w, h)
     };
