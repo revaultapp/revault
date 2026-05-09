@@ -316,7 +316,11 @@ export async function compressVideoFile(
 }
 
 export async function cancelCompression(): Promise<void> {
-  await invoke("cancel_video_compress");
+  try {
+    await invoke("cancel_video_compress");
+  } catch {
+    // best-effort cancel — process may have already exited
+  }
 }
 
 // ── GIF export ─────────────────────────────────────────────────────────────────
@@ -366,6 +370,26 @@ export async function checkGifski(): Promise<void> {
     gifskiAvailable.set(available);
   } catch {
     gifskiAvailable.set(false);
+  }
+}
+
+export async function downloadGifski(): Promise<void> {
+  gifDownloadProgress.set({ done: 0, total: 0 });
+  const unlisten = await listen<{ bytes_done: number; bytes_total: number }>(
+    "gifski-download-progress",
+    (event) => {
+      gifDownloadProgress.set({ done: event.payload.bytes_done, total: event.payload.bytes_total });
+    }
+  );
+  try {
+    await invoke("download_gifski");
+    gifDownloadProgress.set(null);
+    await checkGifski();
+  } catch (err) {
+    gifDownloadProgress.set(null);
+    throw err;
+  } finally {
+    unlisten();
   }
 }
 
@@ -460,7 +484,11 @@ export async function exportGif(file: VideoFile): Promise<void> {
 }
 
 export async function cancelGifExport(): Promise<void> {
-  await invoke("cancel_gif_export");
+  try {
+    await invoke("cancel_gif_export");
+  } catch {
+    // best-effort cancel — process may have already exited
+  }
 }
 
 export async function revealVideoOutput(outputPath: string): Promise<void> {

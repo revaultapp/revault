@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount } from "svelte";
   import { fly, slide } from "svelte/transition";
   import { Film, Shield, ShieldCheck, Download, Zap, Wifi, CircleCheck, CircleAlert, TriangleAlert, FolderOpen, X, ChevronDown } from "lucide-svelte";
   import { open } from "@tauri-apps/plugin-dialog";
@@ -40,6 +40,7 @@
     gifProgress,
     gifPhase,
     checkGifski,
+    downloadGifski,
     exportGif,
     cancelGifExport,
     refreshGifSizeEstimate,
@@ -47,8 +48,6 @@
     type VideoPreset,
     type PrivacyMode,
   } from "$lib/stores/video";
-  import { invoke } from "@tauri-apps/api/core";
-  import { listen } from "@tauri-apps/api/event";
 
   const modeSegments = [
     { id: "compress", label: "Comprimir" },
@@ -135,18 +134,10 @@
     return "idle";
   });
 
-  let unlistenGifProgress: (() => void) | undefined;
-
-  onMount(async () => {
+  onMount(() => {
     checkFfmpeg();
     checkGifski();
-    unlistenGifProgress = await listen<{ bytes_done: number; bytes_total: number }>(
-      "gifski-download-progress",
-      (e) => gifDownloadProgress.set({ done: e.payload.bytes_done, total: e.payload.bytes_total })
-    );
   });
-
-  onDestroy(() => unlistenGifProgress?.());
 
   $effect(() => {
     const settings = $gifSettings;
@@ -167,15 +158,10 @@
   async function handleGifDownload() {
     gifDownloadError = null;
     isGifInstalling = false;
-    gifDownloadProgress.set({ done: 0, total: 0 });
     try {
-      await invoke("download_gifski");
-      gifDownloadProgress.set(null);
+      await downloadGifski();
       isGifInstalling = true;
-      await checkGifski();
-    } catch (err) {
-      gifDownloadProgress.set(null);
-      isGifInstalling = false;
+    } catch {
       gifDownloadError = "No hemos podido descargar el componente. Comprueba tu conexión e inténtalo de nuevo más tarde.";
     } finally {
       isGifInstalling = false;
@@ -250,18 +236,11 @@
   }
 
   // ── Debounced preview trigger ───────────────────────────────────────────────
-  let previewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-
   $effect(() => {
     const filesSnapshot = $videoFiles;
     const presetSnapshot = $videoPreset;
     const privacySnapshot = $videoPrivacyMode;
     const compressing = $isCompressing;
-
-    if (previewDebounceTimer !== null) {
-      clearTimeout(previewDebounceTimer);
-      previewDebounceTimer = null;
-    }
 
     if (compressing) return;
 
@@ -274,11 +253,12 @@
 
     if (idlePaths.length === 0) return;
 
-    previewDebounceTimer = setTimeout(() => {
+    const timer = setTimeout(() => {
       for (const path of idlePaths) {
         computeVideoPreview(path);
       }
     }, 300);
+    return () => clearTimeout(timer);
   });
 
   // ── Post-success privacy chip ───────────────────────────────────────────────
@@ -393,7 +373,7 @@
       <p class="subtitle">Solo una vez. No volverás a ver esta pantalla.</p>
       <div class="big-progress-wrap">
         <div class="big-progress-track" role="progressbar" aria-valuenow={Math.round($ffmpegDownloadProgress.percent)} aria-valuemin={0} aria-valuemax={100}>
-          <div class="big-progress-fill" style="--progress: {$ffmpegDownloadProgress.percent}%">
+          <div class="big-progress-fill" style="transform: scaleX({$ffmpegDownloadProgress.percent / 100})">
             <div class="progress-shine"></div>
           </div>
         </div>
@@ -598,7 +578,7 @@
                     <div class="gif-progress-bar">
                       <div
                         class="gif-progress-fill"
-                        style="width: {$gifDownloadProgress && $gifDownloadProgress.total > 0 ? ($gifDownloadProgress.done / $gifDownloadProgress.total) * 100 : 0}%"
+                        style="transform: scaleX({$gifDownloadProgress && $gifDownloadProgress.total > 0 ? $gifDownloadProgress.done / $gifDownloadProgress.total : 0})"
                       ></div>
                     </div>
                     <span class="gif-progress-text">
@@ -934,12 +914,13 @@
 
   .big-progress-fill {
     height: 100%;
-    width: var(--progress);
+    width: 100%;
     background: var(--accent);
     border-radius: 4px;
     position: relative;
     overflow: hidden;
-    transition: width 0.3s ease;
+    transform-origin: left;
+    transition: transform 0.3s ease;
   }
 
   .progress-shine {
@@ -1137,8 +1118,8 @@
     font-size: 13px;
     font-weight: 500;
     color: var(--accent);
-    background: rgba(16, 185, 129, 0.15);
-    border: 1px solid rgba(16, 185, 129, 0.35);
+    background: rgba(16, 216, 122, 0.15);
+    border: 1px solid rgba(16, 216, 122, 0.35);
     border-radius: var(--radius-sm);
     box-shadow: var(--shadow-sm);
   }
@@ -1200,9 +1181,11 @@
 
   .gif-progress-fill {
     height: 100%;
+    width: 100%;
     background: var(--accent);
     border-radius: 2px;
-    transition: width 100ms ease;
+    transform-origin: left;
+    transition: transform 100ms ease;
   }
 
   .gif-progress-text { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
