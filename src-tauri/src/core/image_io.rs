@@ -6,6 +6,10 @@ use std::io::BufReader;
 use std::path::Path;
 
 pub const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
+
+pub const IMAGE_EXTENSIONS: &[&str] = &[
+    "jpg", "jpeg", "png", "webp", "heic", "heif", "tiff", "tif", "bmp", "gif", "avif", "jxl",
+];
 /// Threshold for using memory-mapped I/O instead of reading into RAM.
 /// 10MB+ files benefit from mmap as OS handles caching better.
 const MMAP_THRESHOLD: u64 = 10 * 1024 * 1024;

@@ -80,6 +80,69 @@ pub struct PreviewResponse {
     pub sample_results: Vec<PreviewResult>,
 }
 
+/// Compresses a sample of `paths` in a temp dir and returns size estimates.
+/// Reads metadata for all paths (total size), but compresses only the largest 5
+/// to keep the preview fast.
+pub fn preview_batch(
+    paths: &[String],
+    preset: QualityPreset,
+    format: Option<OutputFormat>,
+) -> Result<PreviewResponse, String> {
+    use std::cmp::Reverse;
+    use tempfile::TempDir;
+
+    let mut total_original_size: u64 = 0;
+    let mut path_sizes: Vec<(String, u64)> = Vec::with_capacity(paths.len());
+
+    for path in paths {
+        let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+        total_original_size += size;
+        path_sizes.push((path.clone(), size));
+    }
+
+    path_sizes.sort_by_key(|(_, s)| Reverse(*s));
+    let sample: Vec<String> = path_sizes.iter().take(5).map(|(p, _)| p.clone()).collect();
+
+    let temp_dir = TempDir::new().map_err(|e| e.to_string())?;
+    let temp_path = temp_dir.path().to_string_lossy().to_string();
+
+    let mut sample_results = Vec::with_capacity(sample.len());
+    for path in &sample {
+        let fmt = format.unwrap_or_else(|| detect_format(path));
+        let output = match resolve_output_path(path, &fmt, Some(&temp_path), "_preview") {
+            Ok(o) => o,
+            Err(e) => {
+                sample_results.push(PreviewResult {
+                    input_path: path.clone(),
+                    original_size: 0,
+                    compressed_size: 0,
+                    may_increase: false,
+                    error: Some(e),
+                });
+                continue;
+            }
+        };
+        let result = compress_image(path, &output, &fmt, preset);
+        let (compressed_size, error) = match result {
+            Ok(r) => (r.compressed_size, r.error),
+            Err(e) => (0, Some(e.to_string())),
+        };
+        let original_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+        sample_results.push(PreviewResult {
+            input_path: path.clone(),
+            original_size,
+            compressed_size,
+            may_increase: error.is_none() && compressed_size >= original_size,
+            error,
+        });
+    }
+
+    Ok(PreviewResponse {
+        total_original_bytes: total_original_size,
+        sample_results,
+    })
+}
+
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub enum QualityPreset {
     Smallest,

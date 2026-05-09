@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::core::paths::validate_input_path;
-use crate::core::video::{get_ffmpeg_path, probe_video_stats};
+use crate::core::video::{get_ffmpeg_path, parse_time_to_secs, probe_video_stats};
 
 pub const GIFSKI_VERSION: &str = "1.34.0";
 const GIFSKI_RELEASE_BASE: &str = "https://github.com/revaultapp/revault/releases/download";
@@ -69,8 +69,8 @@ impl GifOptions {
     }
 }
 
-#[allow(dead_code)]
-pub fn resolve_gif_output_path(
+#[cfg(test)]
+fn resolve_gif_output_path(
     input_path: &str,
     output_dir: Option<&str>,
 ) -> Result<String, String> {
@@ -391,17 +391,6 @@ pub fn build_gif_seek_args(opts: &GifOptions) -> (f32, f32, f32) {
     (pre_seek, inner_seek, duration)
 }
 
-fn parse_time_to_secs_local(time: &str) -> Option<f64> {
-    let parts: Vec<&str> = time.split(':').collect();
-    if parts.len() != 3 {
-        return None;
-    }
-    let h: f64 = parts[0].parse().ok()?;
-    let m: f64 = parts[1].parse().ok()?;
-    let s: f64 = parts[2].parse().ok()?;
-    Some(h * 3600.0 + m * 60.0 + s)
-}
-
 pub fn export_gif(
     app_data_dir: &Path,
     input_path: &str,
@@ -472,7 +461,7 @@ pub fn export_gif(
     'event_loop: for event in child.iter().map_err(|e| e.to_string())? {
         match event {
             FfmpegEvent::Progress(p) => {
-                let current_secs = parse_time_to_secs_local(&p.time).unwrap_or(0.0);
+                let current_secs = parse_time_to_secs(&p.time).unwrap_or(0.0);
                 let percent = if duration > 0.0 {
                     ((current_secs / duration as f64) * 95.0).min(95.0) as f32
                 } else {

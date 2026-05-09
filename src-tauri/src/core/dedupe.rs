@@ -5,9 +5,7 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::Path;
 
-const IMAGE_EXTENSIONS: &[&str] = &[
-    "jpg", "jpeg", "png", "webp", "heic", "heif", "tiff", "tif", "bmp", "gif", "avif", "jxl",
-];
+use crate::core::image_io::IMAGE_EXTENSIONS;
 
 const HASH_SIZE: u32 = 16;
 const PERCEPTUAL_THRESHOLD_EXACT: u32 = 10;
@@ -133,8 +131,8 @@ fn sha256_to_hex(hash: &[u8; 32]) -> String {
     hash.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
-#[allow(dead_code)]
-pub fn find_duplicates(
+#[cfg(test)]
+fn find_duplicates(
     paths: &[String],
     recursive: bool,
     mode: ScanMode,

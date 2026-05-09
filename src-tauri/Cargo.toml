@@ -7,7 +7,7 @@ edition = "2021"
 
 [lib]
 name = "revault_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -18,7 +18,6 @@ tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-mozjpeg = { version = "0.10", default-features = false }
 # image["avif"] enables AVIF *decoding* via open_image(); ravif is used for *encoding*
 image = { version = "0.25", features = ["avif"] }
 oxipng = { version = "10", features = ["zopfli", "parallel"] }
@@ -38,19 +37,22 @@ rayon = "1.11"
 memmap2 = "0.9"
 trash = "5"
 ffmpeg-sidecar = "2.5"
-which = "8"
 dirs = "6"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 flate2 = "1"
 tar = "0.4"
 zip = { version = "8", default-features = false, features = ["deflate"] }
+
+# mozjpeg: enable SIMD (nasm_simd) on macOS/Linux; skip on Windows where nasm is unavailable
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+mozjpeg = { version = "0.10" }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+mozjpeg = { version = "0.10", default-features = false }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Imaging", "Win32_System_Com"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"
 core-graphics = "0.25"
 foreign-types = "0.5"
-
-[target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Imaging", "Win32_System_Com"] }
-
-

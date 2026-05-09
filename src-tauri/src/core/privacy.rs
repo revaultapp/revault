@@ -317,9 +317,9 @@ const DATETIME_EXIF_TAG_IDS: &[u16] = &[
     0x9003, 0x9004, 0x9010, 0x9011, 0x9012, 0x9290, 0x9291, 0x9292,
 ];
 
-/// Author tag hex IDs: Artist in GENERIC, Copyright in GENERIC; OwnerName in EXIF
+/// Author tag hex IDs: Artist in GENERIC, Copyright in GENERIC
 const AUTHOR_GENERIC_TAG_IDS: &[u16] = &[0x013b, 0x8298];
-const AUTHOR_EXIF_TAG_IDS: &[u16] = &[0xa430];
+const AUTHOR_EXIF_TAG_IDS: &[u16] = &[];
 
 fn remove_tags_by_group(
     metadata: &mut little_exif::metadata::Metadata,
