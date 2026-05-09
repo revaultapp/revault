@@ -6,9 +6,27 @@
   import { Trash2, FolderOpen, Search, ChevronDown, ChevronRight, FolderSearch } from "lucide-svelte";
   import ProgressRing from "./ProgressRing.svelte";
   import Button from "./Button.svelte";
-  import { duplicateGroups, isScanning, totalFound, scanError, scanForDuplicates, clearResults, scanProgress } from "$lib/stores/dedupe";
+  import SegmentedControl from "./SegmentedControl.svelte";
+  import { duplicateGroups, isScanning, totalFound, scanError, scanForDuplicates, clearResults, scanProgress, scanMode, setMode } from "$lib/stores/dedupe";
   import { formatBytes } from "$lib/utils";
   import { activity } from "$lib/stores/activity";
+
+  const modeSegments = [
+    { id: "exact", label: "Exact" },
+    { id: "similar", label: "Similar" },
+  ] as const;
+
+  let modeSelection = $state<string>($scanMode);
+
+  $effect(() => {
+    modeSelection = $scanMode;
+  });
+
+  $effect(() => {
+    if (modeSelection !== $scanMode) {
+      setMode(modeSelection as "exact" | "similar");
+    }
+  });
 
   let selectedFolders = $state<string[]>([]);
   let expandedGroups = $state<Set<string>>(new Set());
@@ -132,6 +150,7 @@
       </div>
       <h2 class="drop-title">Add folders to scan for duplicates</h2>
       <p class="drop-subtitle">Drop folders here or click to browse</p>
+      <SegmentedControl segments={modeSegments} bind:selected={modeSelection} />
       <Button onclick={browseFolders} aria-label="Choose folders to scan">
         <FolderOpen size={16} />
         Choose folders
@@ -179,7 +198,10 @@
     {/if}
     <div class="header">
       <div class="header-left">
-        <h2>{visibleGroups.length} duplicate group{visibleGroups.length > 1 ? "s" : ""} found</h2>
+        <div class="title-row">
+          <h2>{visibleGroups.length} {$scanMode === "similar" ? "similar" : "duplicate"} group{visibleGroups.length > 1 ? "s" : ""} found</h2>
+          <span class="mode-tag">{$scanMode === "similar" ? "Similar" : "Exact"} mode</span>
+        </div>
         <span class="sub">{visibleFileCount} files · {formatBytes(totalWastedSpace)} wasted</span>
       </div>
       <div class="header-actions">
@@ -195,6 +217,7 @@
     </div>
 
     <div class="folders-bar">
+      <SegmentedControl segments={modeSegments} bind:selected={modeSelection} />
       {#each selectedFolders as folder}
         <span class="folder-chip">
           <FolderOpen size={12} />
@@ -223,11 +246,15 @@
               {:else}
                 <ChevronRight size={16} />
               {/if}
-              <span class="group-hash">{group.hash.slice(0, 12)}</span>
+              {#if $scanMode === "similar"}
+                <span class="similarity-badge">~{Math.round((1 - group.max_distance / 256) * 100)}% match</span>
+              {:else}
+                <span class="group-hash">{group.hash.slice(0, 12)}</span>
+              {/if}
               <span class="group-count">{group.files.length} files</span>
             </div>
             <div class="group-meta">
-              <span class="wasted-badge">{formatBytes(wasted)} duplicate</span>
+              <span class="wasted-badge">{formatBytes(wasted)} {$scanMode === "similar" ? "redundant" : "duplicate"}</span>
             </div>
           </button>
 
@@ -243,7 +270,11 @@
                   <div class="dup-meta">
                     <span class="dup-size">{formatBytes(file.size)}</span>
                     {#if fi === 0}
-                      <span class="original-tag">Original</span>
+                      {#if $scanMode === "similar"}
+                        <span class="largest-tag">Largest</span>
+                      {:else}
+                        <span class="original-tag">Original</span>
+                      {/if}
                     {:else if !isDeleted}
                       <button class="btn-icon delete-btn" onclick={() => deleteDuplicate(file.path)} title="Move to trash" aria-label="Move duplicate to trash">
                         <Trash2 size={14} />
@@ -361,10 +392,27 @@
     gap: 4px;
   }
 
+  .title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
   .header h2 {
     font-size: 18px;
     font-weight: 600;
     letter-spacing: -0.02em;
+  }
+
+  .mode-tag {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    background: var(--navy-bg);
+    padding: 2px 8px;
+    border-radius: 4px;
   }
 
   .sub {
@@ -461,6 +509,16 @@
     border-radius: 4px;
   }
 
+  .similarity-badge {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--navy-bg);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+
   .group-count {
     font-size: 13px;
     font-weight: 500;
@@ -545,6 +603,17 @@
     background: var(--accent-subtle);
     padding: 2px 8px;
     border-radius: 4px;
+  }
+
+  .largest-tag {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--navy-bg);
+    padding: 2px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
   }
 
   .deleted-tag {
