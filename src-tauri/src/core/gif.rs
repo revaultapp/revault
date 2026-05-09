@@ -70,10 +70,7 @@ impl GifOptions {
 }
 
 #[cfg(test)]
-fn resolve_gif_output_path(
-    input_path: &str,
-    output_dir: Option<&str>,
-) -> Result<String, String> {
+fn resolve_gif_output_path(input_path: &str, output_dir: Option<&str>) -> Result<String, String> {
     let path = Path::new(input_path);
     let stem = path
         .file_stem()
