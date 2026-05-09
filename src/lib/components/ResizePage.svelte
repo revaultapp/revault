@@ -12,7 +12,6 @@
   import {
     files, isResizing, outputDir, resizeMode, width, height, summary,
     addFiles, removeFile, clearFiles,
-    type ResizeFile,
   } from "$lib/stores/resize";
 
   type Preset = { label: string; w: number; h: number };
@@ -32,6 +31,7 @@
       presets: [
         { label: "IG Post", w: 1080, h: 1350 },
         { label: "IG Square", w: 1080, h: 1080 },
+        { label: "IG 3:4", w: 1080, h: 1440 },
         { label: "IG Story", w: 1080, h: 1920 },
         { label: "YouTube", w: 1280, h: 720 },
         { label: "Twitter/X", w: 1200, h: 675 },

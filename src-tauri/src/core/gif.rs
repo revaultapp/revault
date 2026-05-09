@@ -3,9 +3,12 @@ use ffmpeg_sidecar::event::FfmpegEvent;
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use crate::core::paths::validate_input_path;
-use crate::core::video::get_ffmpeg_path;
+use crate::core::video::{get_ffmpeg_path, probe_video_stats};
 
 pub const GIFSKI_VERSION: &str = "1.34.0";
 const GIFSKI_RELEASE_BASE: &str = "https://github.com/revaultapp/revault/releases/download";
@@ -13,6 +16,16 @@ const GIFSKI_RELEASE_BASE: &str = "https://github.com/revaultapp/revault/release
 const MAX_RANGE_SEC: f32 = 15.0;
 const ALLOWED_FPS: [u32; 3] = [10, 15, 24];
 const ALLOWED_WIDTH: [u32; 5] = [320, 480, 640, 720, 1080];
+
+#[derive(Debug, Serialize)]
+pub struct GifResult {
+    pub output_path: String,
+    pub size_bytes: u64,
+    pub duration_sec: f32,
+    pub width: u32,
+    pub height: u32,
+    pub fps: u32,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct GifOptions {
@@ -85,7 +98,6 @@ pub fn resolve_gif_output_path(
 
 /// Heuristic only — for UI preview before encoding. Assumes ~50KB/frame at
 /// default resolutions/quality. Real output varies ±50% based on content entropy.
-#[allow(dead_code)]
 pub fn estimate_gif_size(opts: &GifOptions) -> u64 {
     let duration = (opts.end_sec - opts.start_sec).max(0.0);
     let frames = (duration * opts.fps as f32) as u64;
@@ -362,68 +374,84 @@ where
     Ok(final_path)
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct GifProgress {
+    pub percent: f32,
+    pub phase: String, // "encoding" | "complete"
+}
+
+/// Returns (pre_seek, inner_seek, duration) for hybrid seeking.
+/// pre_seek goes BEFORE -i (fast, keyframe-based).
+/// inner_seek goes AFTER -i (frame-accurate, decodes only the gap).
+/// duration goes after -i as -t.
+pub fn build_gif_seek_args(opts: &GifOptions) -> (f32, f32, f32) {
+    let pre_seek = (opts.start_sec - 2.0).max(0.0);
+    let inner_seek = opts.start_sec - pre_seek; // 0..=2.0
+    let duration = opts.end_sec - opts.start_sec;
+    (pre_seek, inner_seek, duration)
+}
+
+fn parse_time_to_secs_local(time: &str) -> Option<f64> {
+    let parts: Vec<&str> = time.split(':').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    let h: f64 = parts[0].parse().ok()?;
+    let m: f64 = parts[1].parse().ok()?;
+    let s: f64 = parts[2].parse().ok()?;
+    Some(h * 3600.0 + m * 60.0 + s)
+}
+
 pub fn export_gif(
     app_data_dir: &Path,
     input_path: &str,
     output_path: &str,
     opts: GifOptions,
-) -> Result<u64, String> {
+    cancelled: Arc<AtomicBool>,
+    progress_cb: impl Fn(GifProgress) + Send,
+) -> Result<GifResult, String> {
     opts.validate()?;
     validate_input_path(input_path, false)?;
     let gifski = gifski_binary_path(app_data_dir)?;
 
-    let tmp = tempfile::tempdir().map_err(|e| format!("tempdir: {}", e))?;
-    let frame_pattern = tmp.path().join("frame_%04d.png");
-    let frame_pattern_str = frame_pattern
-        .to_str()
-        .ok_or("tempdir path is not valid UTF-8")?;
+    // Probe input ONCE — for clip duration (progress denom) + dimensions (output height calc)
+    let stats =
+        probe_video_stats(input_path).map_err(|e| format!("Cannot read video metadata: {}", e))?;
+    let (pre_seek, inner_seek, duration) = build_gif_seek_args(&opts);
+
+    if cancelled.load(Ordering::SeqCst) {
+        return Err("cancelled".to_string());
+    }
 
     let filter = format!("fps={},scale={}:-1:flags=lanczos", opts.fps, opts.width);
     let mut ff = FfmpegCommand::new_with_path(get_ffmpeg_path());
-    ff.arg("-ss")
-        .arg(format!("{}", opts.start_sec))
-        .arg("-to")
-        .arg(format!("{}", opts.end_sec))
+    ff.arg("-fflags")
+        .arg("+genpts")
+        .arg("-ss")
+        .arg(format!("{}", pre_seek))
         .input(input_path)
+        .arg("-ss")
+        .arg(format!("{}", inner_seek))
+        .arg("-t")
+        .arg(format!("{}", duration))
         .arg("-vf")
-        .arg(filter)
-        .overwrite()
-        .arg(frame_pattern_str);
+        .arg(&filter)
+        .arg("-f")
+        .arg("yuv4mpegpipe")
+        .arg("-pix_fmt")
+        .arg("yuv420p")
+        .pipe_stdout();
 
     let mut child = ff.spawn().map_err(|e| format!("ffmpeg spawn: {}", e))?;
-    let mut ffmpeg_errors: Vec<String> = Vec::new();
-    for event in child.iter().map_err(|e| e.to_string())? {
-        if let FfmpegEvent::Log(level, msg) = event {
-            use ffmpeg_sidecar::event::LogLevel;
-            if matches!(level, LogLevel::Fatal | LogLevel::Error) {
-                ffmpeg_errors.push(msg);
-            }
-        }
-    }
-    if !ffmpeg_errors.is_empty() {
-        return Err(format!(
-            "ffmpeg frame extraction failed: {}",
-            ffmpeg_errors.join("; ")
-        ));
-    }
 
-    let mut frames: Vec<PathBuf> = std::fs::read_dir(tmp.path())
-        .map_err(|e| format!("read tempdir: {}", e))?
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .map(|n| n.starts_with("frame_") && n.ends_with(".png"))
-                .unwrap_or(false)
-        })
-        .collect();
-    if frames.is_empty() {
-        return Err("ffmpeg produced no frames — check start/end range".to_string());
-    }
-    frames.sort();
+    // CRITICAL: take_stdout BEFORE child.iter() — iter constructor consumes stdout otherwise
+    let stdout = child
+        .take_stdout()
+        .ok_or_else(|| "could not access ffmpeg stdout pipe".to_string())?;
 
-    let mut cmd = std::process::Command::new(&gifski);
-    cmd.arg("--fps")
+    // Spawn gifski BEFORE the event loop — otherwise ffmpeg deadlocks on full pipe buffer
+    let mut gifski_child = std::process::Command::new(&gifski)
+        .arg("--fps")
         .arg(opts.fps.to_string())
         .arg("--width")
         .arg(opts.width.to_string())
@@ -431,16 +459,94 @@ pub fn export_gif(
         .arg(opts.quality.to_string())
         .arg("-o")
         .arg(output_path)
-        .args(&frames);
-    let out = cmd.output().map_err(|e| format!("gifski spawn: {}", e))?;
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr);
+        .arg("-")
+        .stdin(Stdio::from(stdout))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("gifski spawn: {}", e))?;
+
+    let mut ffmpeg_errors: Vec<String> = Vec::new();
+    let mut iter_err: Option<String> = None;
+
+    'event_loop: for event in child.iter().map_err(|e| e.to_string())? {
+        match event {
+            FfmpegEvent::Progress(p) => {
+                let current_secs = parse_time_to_secs_local(&p.time).unwrap_or(0.0);
+                let percent = if duration > 0.0 {
+                    ((current_secs / duration as f64) * 95.0).min(95.0) as f32
+                } else {
+                    0.0
+                };
+                progress_cb(GifProgress {
+                    percent,
+                    phase: "encoding".to_string(),
+                });
+            }
+            FfmpegEvent::Log(level, msg) => {
+                use ffmpeg_sidecar::event::LogLevel;
+                if matches!(level, LogLevel::Fatal | LogLevel::Error) {
+                    ffmpeg_errors.push(msg);
+                }
+            }
+            _ => {}
+        }
+        if cancelled.load(Ordering::SeqCst) {
+            // Kill gifski FIRST → ffmpeg gets EPIPE → exits on its own
+            let _ = gifski_child.kill();
+            let _ = child.kill();
+            iter_err = Some("cancelled".to_string());
+            break 'event_loop;
+        }
+    }
+
+    // Wait gifski FIRST (drains last frames + writes file). Reverse order deadlocks.
+    let gifski_out = gifski_child
+        .wait_with_output()
+        .map_err(|e| format!("gifski wait: {}", e))?;
+    let _ = child.wait();
+
+    if let Some(e) = iter_err {
+        let _ = std::fs::remove_file(output_path);
+        return Err(e);
+    }
+
+    if !ffmpeg_errors.is_empty() {
+        let _ = std::fs::remove_file(output_path);
+        return Err(format!("ffmpeg failed: {}", ffmpeg_errors.join("; ")));
+    }
+
+    if !gifski_out.status.success() {
+        let stderr = String::from_utf8_lossy(&gifski_out.stderr);
+        let _ = std::fs::remove_file(output_path);
         return Err(format!("gifski failed: {}", stderr));
     }
 
-    std::fs::metadata(output_path)
+    progress_cb(GifProgress {
+        percent: 100.0,
+        phase: "complete".to_string(),
+    });
+
+    let size_bytes = std::fs::metadata(output_path)
         .map(|m| m.len())
-        .map_err(|e| format!("gifski produced no output: {}", e))
+        .map_err(|e| format!("gifski produced no output: {}", e))?;
+
+    // Compute output height deterministically — avoids post-encode probe
+    let output_height: u32 = if stats.width > 0 {
+        let h = (opts.width as u64 * stats.height as u64) / stats.width as u64;
+        ((h + 1) & !1) as u32 // round to even
+    } else {
+        0
+    };
+
+    Ok(GifResult {
+        output_path: output_path.to_string(),
+        size_bytes,
+        duration_sec: duration,
+        width: opts.width,
+        height: output_height,
+        fps: opts.fps,
+    })
 }
 
 #[cfg(test)]
@@ -480,6 +586,31 @@ mod tests {
     fn resolve_gif_output_path_rejects_missing_dir() {
         let err = resolve_gif_output_path("/tmp/clip.mp4", Some("/nonexistent/xyz")).unwrap_err();
         assert!(err.contains("does not exist"));
+    }
+
+    #[test]
+    fn gif_result_serializes_expected_fields() {
+        let r = GifResult {
+            output_path: "/tmp/clip.gif".to_string(),
+            size_bytes: 1234,
+            duration_sec: 3.5,
+            width: 480,
+            height: 270,
+            fps: 15,
+        };
+        let json = serde_json::to_value(&r).unwrap();
+        assert_eq!(json["output_path"], "/tmp/clip.gif");
+        assert_eq!(json["size_bytes"], 1234);
+        assert_eq!(json["duration_sec"], 3.5);
+        assert_eq!(json["width"], 480);
+        assert_eq!(json["height"], 270);
+        assert_eq!(json["fps"], 15);
+    }
+
+    #[test]
+    fn estimate_gif_size_returns_positive_for_valid_opts() {
+        let size = estimate_gif_size(&base_opts());
+        assert!(size > 0, "expected >0, got {}", size);
     }
 
     #[test]
@@ -551,6 +682,58 @@ mod tests {
         .validate()
         .unwrap_err();
         assert!(err.contains("end_sec"));
+    }
+
+    #[test]
+    fn build_gif_seek_args_zero_start() {
+        let opts = GifOptions {
+            start_sec: 0.0,
+            end_sec: 3.0,
+            ..base_opts()
+        };
+        let (pre, inner, dur) = build_gif_seek_args(&opts);
+        assert!((pre - 0.0).abs() < 1e-6);
+        assert!((inner - 0.0).abs() < 1e-6);
+        assert!((dur - 3.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn build_gif_seek_args_under_two_seconds() {
+        let opts = GifOptions {
+            start_sec: 1.0,
+            end_sec: 4.0,
+            ..base_opts()
+        };
+        let (pre, inner, dur) = build_gif_seek_args(&opts);
+        assert!((pre - 0.0).abs() < 1e-6);
+        assert!((inner - 1.0).abs() < 1e-6);
+        assert!((dur - 3.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn build_gif_seek_args_far_into_clip() {
+        let opts = GifOptions {
+            start_sec: 10.0,
+            end_sec: 13.0,
+            ..base_opts()
+        };
+        let (pre, inner, dur) = build_gif_seek_args(&opts);
+        assert!((pre - 8.0).abs() < 1e-6);
+        assert!((inner - 2.0).abs() < 1e-6);
+        assert!((dur - 3.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn build_gif_seek_args_fractional_start() {
+        let opts = GifOptions {
+            start_sec: 2.5,
+            end_sec: 5.5,
+            ..base_opts()
+        };
+        let (pre, inner, dur) = build_gif_seek_args(&opts);
+        assert!((pre - 0.5).abs() < 1e-6);
+        assert!((inner - 2.0).abs() < 1e-6);
+        assert!((dur - 3.0).abs() < 1e-6);
     }
 
     #[test]

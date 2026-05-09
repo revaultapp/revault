@@ -548,7 +548,18 @@ pub fn resolve_output_path(
         OutputFormat::Webp => "webp",
         OutputFormat::Avif => "avif",
     };
-    let out_base = output_dir.map(Path::new).unwrap_or(parent);
+    let canonical_dir = match output_dir {
+        Some(d) => {
+            let canon =
+                std::fs::canonicalize(d).map_err(|e| format!("Invalid output dir '{d}': {e}"))?;
+            if !canon.is_dir() {
+                return Err(format!("Output path is not a directory: {d}"));
+            }
+            Some(canon)
+        }
+        None => None,
+    };
+    let out_base: &Path = canonical_dir.as_deref().unwrap_or(parent);
     Ok(out_base
         .join(format!("{stem}{suffix}.{ext}"))
         .to_string_lossy()

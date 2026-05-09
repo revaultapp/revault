@@ -1,6 +1,7 @@
 import { writable, derived } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { BaseFile } from "$lib/types";
+import { persisted } from "$lib/utils";
 
 export type FileStatus = "pending" | "resizing" | "done" | "error";
 export type ResizeMode = "Fit" | "Exact";
@@ -19,7 +20,7 @@ export interface ResizeFile extends BaseFile {
 
 export const files = writable<ResizeFile[]>([]);
 export const isResizing = writable(false);
-export const outputDir = writable<string | null>(null);
+export const outputDir = persisted<string | null>("resize-output-dir", null);
 export const resizeMode = writable<ResizeMode>("Fit");
 export const width = writable(1920);
 export const height = writable(1080);

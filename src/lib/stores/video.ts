@@ -341,11 +341,24 @@ export const gifSettings = persisted<GifSettings>("gif_settings", {
   quality: 80,
 });
 
+export interface GifResult {
+  output_path: string;
+  size_bytes: number;
+  duration_sec: number;
+  width: number;
+  height: number;
+  fps: number;
+}
+
 export const gifState = writable<"idle" | "generating" | "done" | "error">("idle");
 export const gifOutputPath = writable<string | null>(null);
+export const gifResult = writable<GifResult | null>(null);
 export const gifError = writable<string | null>(null);
 export const gifskiAvailable = writable<boolean | null>(null);
 export const gifDownloadProgress = writable<{ done: number; total: number } | null>(null);
+export const gifSizeEstimate = writable<number | null>(null);
+export const gifProgress = writable<number>(0);
+export const gifPhase = writable<"idle" | "encoding" | "complete">("idle");
 
 export async function checkGifski(): Promise<void> {
   try {
@@ -356,19 +369,66 @@ export async function checkGifski(): Promise<void> {
   }
 }
 
+function clampGifEnd(s: GifSettings): number {
+  return Math.min(s.endSec, s.startSec + 15);
+}
+
+export async function refreshGifSizeEstimate(): Promise<void> {
+  const settings = get(gifSettings);
+  const clampedEnd = clampGifEnd(settings);
+  try {
+    const bytes = await invoke<number>("estimate_gif_size", {
+      options: {
+        start_sec: settings.startSec,
+        end_sec: clampedEnd,
+        fps: settings.fps,
+        width: settings.width,
+        quality: settings.quality,
+      },
+    });
+    gifSizeEstimate.set(bytes);
+  } catch {
+    gifSizeEstimate.set(null);
+  }
+}
+
 export async function exportGif(file: VideoFile): Promise<void> {
   const settings = get(gifSettings);
-  const clampedEnd = Math.min(settings.endSec, settings.startSec + 15);
+  const clampedEnd = clampGifEnd(settings);
   const inputPath = file.path;
-  const outputPath =
-    inputPath.replace(/\.[^/.]+$/, "") + "_gif.gif";
+  const baseName = (file.name || inputPath.split(/[\\/]/).pop() || "video")
+    .replace(/\.[^/.]+$/, "");
+  const filename = `${baseName}_gif.gif`;
+  const customDir = get(videoOutputDir);
+  const inputParent = inputPath.substring(
+    0,
+    Math.max(inputPath.lastIndexOf("/"), inputPath.lastIndexOf("\\"))
+  );
+  const outputDir = customDir ?? inputParent;
+  const sep = outputDir.includes("\\") && !outputDir.includes("/") ? "\\" : "/";
+  const outputPath = `${outputDir}${outputDir.endsWith(sep) ? "" : sep}${filename}`;
 
   gifState.set("generating");
   gifError.set(null);
   gifOutputPath.set(null);
+  gifResult.set(null);
+  gifSizeEstimate.set(null);
+  gifProgress.set(0);
+  gifPhase.set("encoding");
+
+  const unlisten = await listen<{ percent: number; phase: string }>(
+    "gif-export-progress",
+    (event) => {
+      const { percent, phase } = event.payload;
+      gifProgress.set(Math.round(percent));
+      if (phase === "complete" || phase === "encoding") {
+        gifPhase.set(phase);
+      }
+    }
+  );
 
   try {
-    await invoke<string>("export_gif", {
+    const result = await invoke<GifResult>("export_gif", {
       inputPath,
       outputPath,
       options: {
@@ -379,12 +439,28 @@ export async function exportGif(file: VideoFile): Promise<void> {
         quality: settings.quality,
       },
     });
+    gifProgress.set(100);
+    gifPhase.set("complete");
+    gifResult.set(result);
+    gifOutputPath.set(result.output_path);
     gifState.set("done");
-    gifOutputPath.set(outputPath);
   } catch (e) {
-    gifState.set("error");
-    gifError.set(String(e));
+    const msg = String(e);
+    if (msg.includes("cancelled")) {
+      gifState.set("idle");
+      gifProgress.set(0);
+      gifPhase.set("idle");
+    } else {
+      gifState.set("error");
+      gifError.set(msg);
+    }
+  } finally {
+    unlisten();
   }
+}
+
+export async function cancelGifExport(): Promise<void> {
+  await invoke("cancel_gif_export");
 }
 
 export async function revealVideoOutput(outputPath: string): Promise<void> {

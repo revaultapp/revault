@@ -40,7 +40,7 @@ export interface SavingsEstimate {
 export const files = writable<CompressFile[]>([]);
 export const qualityPreset = persisted<QualityPreset>("compress_quality_preset", "Balanced");
 export const format = persisted<OutputFormat | null>("compress_format", null);
-export const outputDir = writable<string | null>(null);
+export const outputDir = persisted<string | null>("compress-output-dir", null);
 export const isCompressing = writable(false);
 export const isEstimating = writable(false);
 export const stripGps = persisted<boolean>("compress_strip_gps", false);
