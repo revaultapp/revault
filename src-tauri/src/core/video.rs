@@ -387,11 +387,74 @@ pub fn resolve_video_output_path(
         }
         None => path.parent().ok_or("No parent directory")?.to_path_buf(),
     };
-    let output = dir.join(format!("{}_compressed.{}", stem, ext));
+    let output = first_available_path(&dir.join(format!("{}_compressed.{}", stem, ext)));
     output
         .to_str()
         .map(|s| s.to_string())
         .ok_or("Invalid path".to_string())
+}
+
+fn first_available_path(base: &Path) -> PathBuf {
+    if !base.exists() {
+        return base.to_path_buf();
+    }
+
+    let parent = base.parent().unwrap_or_else(|| Path::new("."));
+    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+    let ext = base.extension().and_then(|e| e.to_str());
+
+    for n in 2..10_000 {
+        let filename = match ext {
+            Some(ext) => format!("{stem}_{n}.{ext}"),
+            None => format!("{stem}_{n}"),
+        };
+        let candidate = parent.join(filename);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+
+    base.to_path_buf()
+}
+
+fn temporary_output_path(final_path: &Path) -> Result<PathBuf, String> {
+    let parent = final_path
+        .parent()
+        .ok_or_else(|| "Output path has no parent directory".to_string())?;
+    let stem = final_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("video");
+    let ext = final_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("mp4");
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    Ok(parent.join(format!(
+        ".{stem}.revault-tmp-{}-{nonce}.{ext}",
+        std::process::id()
+    )))
+}
+
+fn install_temp_output(temp_path: &Path, final_path: &Path) -> Result<(), String> {
+    match std::fs::hard_link(temp_path, final_path) {
+        Ok(()) => std::fs::remove_file(temp_path)
+            .map_err(|e| format!("Failed to clean temporary output: {}", e)),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            let _ = std::fs::remove_file(temp_path);
+            Err(format!(
+                "Output already exists, refusing to overwrite: {}",
+                final_path.display()
+            ))
+        }
+        Err(e) => {
+            let _ = std::fs::remove_file(temp_path);
+            Err(format!("Failed to move output into place: {}", e))
+        }
+    }
 }
 
 pub fn compress_video(
@@ -404,6 +467,12 @@ pub fn compress_video(
 ) -> Result<VideoCompressionResult, String> {
     crate::core::paths::validate_input_path(input_path, false)?;
     let output_path = resolve_video_output_path(input_path, output_dir)?;
+    let output_file = PathBuf::from(&output_path);
+    let temp_output = temporary_output_path(&output_file)?;
+    let temp_output_str = temp_output
+        .to_str()
+        .ok_or_else(|| "Temporary output path contains invalid UTF-8".to_string())?
+        .to_string();
     let original_size = std::fs::metadata(input_path)
         .map_err(|e| format!("Cannot read input file '{}': {}", input_path, e))?
         .len();
@@ -510,7 +579,7 @@ pub fn compress_video(
         .arg(preset.audio_bitrate())
         .arg("-movflags")
         .arg("+faststart")
-        .output(&output_path);
+        .output(&temp_output_str);
 
     let mut child = cmd.spawn().map_err(|e| e.to_string())?;
 
@@ -543,7 +612,7 @@ pub fn compress_video(
             }
             if cancelled.load(Ordering::SeqCst) {
                 let _ = child.kill();
-                let _ = std::fs::remove_file(&output_path);
+                let _ = std::fs::remove_file(&temp_output);
                 return Err("cancelled".to_string());
             }
         }
@@ -554,17 +623,18 @@ pub fn compress_video(
     })();
 
     if let Err(e) = encode_result {
-        let _ = std::fs::remove_file(&output_path);
+        let _ = std::fs::remove_file(&temp_output);
         return Err(e);
     }
 
-    let compressed_size = std::fs::metadata(&output_path)
+    let compressed_size = std::fs::metadata(&temp_output)
         .map_err(|e| format!("FFmpeg produced no output — encoding likely failed: {}", e))?
         .len();
 
     if compressed_size >= original_size {
-        std::fs::remove_file(&output_path).map_err(|e| e.to_string())?;
-        std::fs::copy(input_path, &output_path).map_err(|e| e.to_string())?;
+        let _ = std::fs::remove_file(&temp_output);
+        std::fs::copy(input_path, &temp_output).map_err(|e| e.to_string())?;
+        install_temp_output(&temp_output, &output_file)?;
         return Ok(VideoCompressionResult {
             input_path: input_path.to_string(),
             output_path,
@@ -573,6 +643,8 @@ pub fn compress_video(
             error: Some("Output was larger — original copied".to_string()),
         });
     }
+
+    install_temp_output(&temp_output, &output_file)?;
 
     Ok(VideoCompressionResult {
         input_path: input_path.to_string(),
@@ -584,17 +656,7 @@ pub fn compress_video(
 }
 
 pub fn reveal_in_file_manager(path: &str) -> Result<(), String> {
-    let canonical =
-        std::fs::canonicalize(path).map_err(|e| format!("Invalid path '{}': {}", path, e))?;
-    let parent = Path::new(path)
-        .parent()
-        .ok_or("No parent directory")?
-        .to_path_buf();
-    let parent_canonical = std::fs::canonicalize(&parent)
-        .map_err(|e| format!("Invalid parent '{}': {}", parent.display(), e))?;
-    if !canonical.starts_with(&parent_canonical) {
-        return Err("Path resolves outside allowed directory".into());
-    }
+    let canonical = crate::core::paths::validate_input_path(path, false)?;
     let canonical_str = canonical
         .to_str()
         .ok_or_else(|| "Path contains invalid UTF-8".to_string())?;
@@ -755,6 +817,50 @@ mod tests {
             .to_string_lossy()
             .to_string();
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_resolve_video_output_path_does_not_clobber_existing_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let existing = dir.path().join("clip_compressed.mp4");
+        std::fs::write(&existing, b"existing").unwrap();
+
+        let result =
+            resolve_video_output_path("/tmp/clip.mp4", Some(dir.path().to_str().unwrap())).unwrap();
+        let expected = std::fs::canonicalize(dir.path())
+            .unwrap()
+            .join("clip_compressed_2.mp4")
+            .to_string_lossy()
+            .to_string();
+        assert_eq!(result, expected);
+        assert_eq!(std::fs::read(&existing).unwrap(), b"existing");
+    }
+
+    #[test]
+    fn test_install_temp_output_refuses_existing_final() {
+        let dir = tempfile::tempdir().unwrap();
+        let temp = dir.path().join(".out.revault-tmp.mp4");
+        let final_path = dir.path().join("out.mp4");
+        std::fs::write(&temp, b"new").unwrap();
+        std::fs::write(&final_path, b"old").unwrap();
+
+        let err = install_temp_output(&temp, &final_path).unwrap_err();
+        assert!(err.contains("refusing to overwrite"));
+        assert_eq!(std::fs::read(&final_path).unwrap(), b"old");
+        assert!(!temp.exists());
+    }
+
+    #[test]
+    fn test_install_temp_output_moves_without_overwriting() {
+        let dir = tempfile::tempdir().unwrap();
+        let temp = dir.path().join(".out.revault-tmp.mp4");
+        let final_path = dir.path().join("out.mp4");
+        std::fs::write(&temp, b"new").unwrap();
+
+        install_temp_output(&temp, &final_path).unwrap();
+
+        assert_eq!(std::fs::read(&final_path).unwrap(), b"new");
+        assert!(!temp.exists());
     }
 
     #[test]

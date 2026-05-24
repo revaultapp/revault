@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { HardDrive, Image, Minimize2, Zap, Search, Shield, FolderOpen } from "lucide-svelte";
+  import { HardDrive, Image, Minimize2, Zap, Search, Shield, FolderOpen, Film } from "lucide-svelte";
   import Button from "./Button.svelte";
   import { savings } from "$lib/stores/savings";
   import { activity, formatTimeAgo } from "$lib/stores/activity";
@@ -9,7 +9,7 @@
 
   let avgCompression = $derived(
     $savings.totalOriginalBytes > 0
-      ? Math.round(($savings.totalOriginalBytes - $savings.totalCompressedBytes) / $savings.totalOriginalBytes * 100)
+      ? Math.max(0, Math.round(($savings.totalOriginalBytes - $savings.totalCompressedBytes) / $savings.totalOriginalBytes * 100))
       : 0
   );
 
@@ -22,6 +22,9 @@
     convert: "Converted",
     resize: "Resized",
     analyze: "Analyzed",
+    video: "Compressed video",
+    gif: "Exported GIF",
+    privacy: "Stripped metadata",
   };
 </script>
 
@@ -45,8 +48,8 @@
       </div>
       <div class="stat-content">
         <span class="stat-value">{$savings.operationsCount}</span>
-        <span class="stat-label">Images Cleaned</span>
-        <span class="stat-sub">metadata stripped</span>
+        <span class="stat-label">Files Optimized</span>
+        <span class="stat-sub">successful operations</span>
       </div>
     </div>
 
@@ -126,6 +129,10 @@
                   <Minimize2 size={14} />
                 {:else if item.type === "convert"}
                   <Zap size={14} />
+                {:else if item.type === "video"}
+                  <Film size={14} />
+                {:else if item.type === "privacy"}
+                  <Shield size={14} />
                 {:else}
                   <Image size={14} />
                 {/if}

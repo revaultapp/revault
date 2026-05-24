@@ -4,10 +4,11 @@ use img_parts::ImageEXIF;
 use little_exif::metadata::Metadata;
 use rayon::prelude::*;
 use serde::Serialize;
+use std::collections::HashSet;
 use std::error::Error;
 use std::fs;
 use std::io::BufReader;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct GpsInfo {
@@ -180,6 +181,8 @@ fn extract_technical(exif: &exif::Exif) -> Option<String> {
 }
 
 pub fn read_metadata(path: &str) -> Result<MetadataResult, Box<dyn Error>> {
+    crate::core::paths::validate_input_path(path, false)
+        .map_err(|e| -> Box<dyn Error> { e.into() })?;
     checked_size(path)?;
 
     let file = fs::File::open(path)?;
@@ -261,27 +264,78 @@ pub fn strip_metadata(input: &str, output: &str) -> Result<StripResult, Box<dyn 
     Ok(StripResult::ok(input, output, original_size, stripped_size))
 }
 
-fn build_output_path(input: &str, output_dir: Option<&str>) -> String {
+fn supported_strip_extension(input: &str) -> Result<(), Box<dyn Error>> {
+    match ext_lowercase(input).as_deref() {
+        Some("jpg" | "jpeg" | "png" | "webp" | "heic" | "heif") => Ok(()),
+        Some(ext) => Err(format!("metadata stripping not supported for .{ext}").into()),
+        None => Err("file has no extension".into()),
+    }
+}
+
+fn first_available_path(base: &Path, reserved: &mut HashSet<PathBuf>) -> PathBuf {
+    let parent = base.parent().unwrap_or_else(|| Path::new("."));
+    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+    let ext = base.extension().and_then(|e| e.to_str()).unwrap_or("jpg");
+
+    for n in 1..10_000 {
+        let candidate = if n == 1 {
+            base.to_path_buf()
+        } else {
+            parent.join(format!("{stem}_{n}.{ext}"))
+        };
+        if !candidate.exists() && reserved.insert(candidate.clone()) {
+            return candidate;
+        }
+    }
+
+    base.to_path_buf()
+}
+
+fn build_output_path(
+    input: &str,
+    output_dir: Option<&str>,
+    reserved: &mut HashSet<PathBuf>,
+) -> Result<String, String> {
     let p = Path::new(input);
     let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("jpg");
-    let dir = output_dir
-        .map(Path::new)
-        .unwrap_or_else(|| p.parent().unwrap_or(Path::new(".")));
-    dir.join(format!("{stem}_stripped.{ext}"))
-        .to_string_lossy()
-        .into_owned()
+    let dir = match output_dir {
+        Some(d) => {
+            let canon = std::fs::canonicalize(d)
+                .map_err(|e| format!("Invalid output dir '{}': {}", d, e))?;
+            if !canon.is_dir() {
+                return Err(format!("Output path is not a directory: {}", d));
+            }
+            canon
+        }
+        None => p.parent().unwrap_or(Path::new(".")).to_path_buf(),
+    };
+    let output = first_available_path(&dir.join(format!("{stem}_stripped.{ext}")), reserved);
+    output
+        .to_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Invalid output path".to_string())
+}
+
+fn build_output_paths(paths: &[String], output_dir: Option<&str>) -> Vec<Result<String, String>> {
+    let mut reserved = HashSet::new();
+    paths
+        .iter()
+        .map(|input| build_output_path(input, output_dir, &mut reserved))
+        .collect()
 }
 
 pub fn strip_batch(paths: &[String], output_dir: Option<&str>) -> Vec<StripResult> {
+    let outputs = build_output_paths(paths, output_dir);
     paths
         .par_iter()
-        .map(|input| {
-            let output = build_output_path(input, output_dir);
-            match strip_metadata(input, &output) {
+        .zip(outputs.into_par_iter())
+        .map(|(input, output)| match output {
+            Ok(output) => match strip_metadata(input, &output) {
                 Ok(r) => r,
                 Err(e) => StripResult::err(input, e.to_string()),
-            }
+            },
+            Err(e) => StripResult::err(input, e),
         })
         .collect()
 }
@@ -341,6 +395,7 @@ pub fn strip_metadata_selective(
     }
 
     crate::core::paths::validate_input_path(input, false)?;
+    supported_strip_extension(input)?;
     let original_size = checked_size(input)?;
     let mtime = filetime::FileTime::from_last_modification_time(&fs::metadata(input)?);
 
@@ -351,7 +406,11 @@ pub fn strip_metadata_selective(
     let mut metadata = match Metadata::new_from_path(output_path) {
         Ok(m) => m,
         Err(_) => {
-            return strip_metadata(input, output);
+            let result = strip_metadata(input, output);
+            if result.is_err() {
+                let _ = fs::remove_file(output);
+            }
+            return result;
         }
     };
 
@@ -381,9 +440,10 @@ pub fn strip_metadata_selective(
         remove_tags_by_group(&mut metadata, AUTHOR_EXIF_TAG_IDS, ExifTagGroup::EXIF);
     }
 
-    metadata
-        .write_to_file(output_path)
-        .map_err(|e| format!("failed to write metadata: {e}"))?;
+    if let Err(e) = metadata.write_to_file(output_path) {
+        let _ = fs::remove_file(output);
+        return Err(format!("failed to write metadata: {e}").into());
+    }
 
     filetime::set_file_mtime(output, mtime)?;
     let stripped_size = fs::metadata(output)?.len();
@@ -396,20 +456,24 @@ pub fn strip_selective_batch(
     opts: StripOptions,
     output_dir: Option<&str>,
 ) -> Vec<StripResult> {
+    let outputs = build_output_paths(paths, output_dir);
     paths
         .par_iter()
-        .map(|input| {
-            let output = build_output_path(input, output_dir);
-            match strip_metadata_selective(input, &output, opts) {
+        .zip(outputs.into_par_iter())
+        .map(|(input, output)| match output {
+            Ok(output) => match strip_metadata_selective(input, &output, opts) {
                 Ok(r) => r,
                 Err(e) => StripResult::err(input, e.to_string()),
-            }
+            },
+            Err(e) => StripResult::err(input, e),
         })
         .collect()
 }
 
 /// Strip only GPS metadata from a file in-place (used by compression flow).
 pub fn strip_gps_in_place(path: &str) -> Result<(), Box<dyn Error>> {
+    crate::core::paths::validate_input_path(path, false)
+        .map_err(|e| -> Box<dyn Error> { e.into() })?;
     let file_path = Path::new(path);
 
     let mtime = filetime::FileTime::from_last_modification_time(&fs::metadata(file_path)?);
@@ -487,6 +551,27 @@ mod tests {
         let result = strip_metadata(input.to_str().unwrap(), output.to_str().unwrap());
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("not supported"));
+    }
+
+    #[test]
+    fn strip_selective_unsupported_format_leaves_no_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("test.avif");
+        fs::write(&input, b"fake avif data").unwrap();
+        let output = dir.path().join("test_stripped.avif");
+        let opts = StripOptions {
+            gps: true,
+            device: false,
+            datetime: false,
+            author: false,
+        };
+
+        let result =
+            strip_metadata_selective(input.to_str().unwrap(), output.to_str().unwrap(), opts);
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not supported"));
+        assert!(!output.exists());
     }
 
     #[test]
@@ -578,13 +663,48 @@ mod tests {
 
     #[test]
     fn build_output_path_same_dir() {
-        let out = build_output_path("/photos/vacation.jpg", None);
+        let mut reserved = HashSet::new();
+        let out = build_output_path("/photos/vacation.jpg", None, &mut reserved).unwrap();
         assert_eq!(Path::new(&out), Path::new("/photos/vacation_stripped.jpg"));
     }
 
     #[test]
     fn build_output_path_custom_dir() {
-        let out = build_output_path("/photos/vacation.jpg", Some("/output"));
-        assert_eq!(Path::new(&out), Path::new("/output/vacation_stripped.jpg"));
+        let dir = tempfile::tempdir().unwrap();
+        let mut reserved = HashSet::new();
+        let out = build_output_path(
+            "/photos/vacation.jpg",
+            Some(dir.path().to_str().unwrap()),
+            &mut reserved,
+        )
+        .unwrap();
+        let expected = std::fs::canonicalize(dir.path())
+            .unwrap()
+            .join("vacation_stripped.jpg");
+        assert_eq!(Path::new(&out), expected);
+    }
+
+    #[test]
+    fn build_output_paths_avoids_existing_and_batch_collisions() {
+        let dir = tempfile::tempdir().unwrap();
+        let input_a = dir.path().join("a").join("photo.jpg");
+        let input_b = dir.path().join("b").join("photo.jpg");
+        std::fs::create_dir_all(input_a.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(input_b.parent().unwrap()).unwrap();
+        fs::write(&input_a, b"a").unwrap();
+        fs::write(&input_b, b"b").unwrap();
+        fs::write(dir.path().join("photo_stripped.jpg"), b"existing").unwrap();
+
+        let paths = vec![
+            input_a.to_str().unwrap().to_string(),
+            input_b.to_str().unwrap().to_string(),
+        ];
+        let outputs = build_output_paths(&paths, Some(dir.path().to_str().unwrap()));
+        let first = outputs[0].as_ref().unwrap();
+        let second = outputs[1].as_ref().unwrap();
+
+        assert!(first.ends_with("photo_stripped_2.jpg"));
+        assert!(second.ends_with("photo_stripped_3.jpg"));
+        assert_ne!(first, second);
     }
 }

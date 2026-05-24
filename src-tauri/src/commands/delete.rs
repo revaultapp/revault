@@ -1,7 +1,30 @@
 use serde::Serialize;
 
+fn delete_one(path: String) -> DeleteResult {
+    match crate::core::paths::validate_input_path(&path, false) {
+        Ok(canonical) => match trash::delete(&canonical) {
+            Ok(()) => DeleteResult {
+                path,
+                success: true,
+                error: None,
+            },
+            Err(e) => DeleteResult {
+                path,
+                success: false,
+                error: Some(e.to_string()),
+            },
+        },
+        Err(e) => DeleteResult {
+            path,
+            success: false,
+            error: Some(e),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::fs::File;
     use tempfile::TempDir;
 
@@ -22,6 +45,14 @@ mod tests {
         // in CI/headless environments. We just verify it doesn't panic.
         let _ = trash::delete(&temp_file);
     }
+
+    #[test]
+    fn delete_one_rejects_directories() {
+        let temp_dir = TempDir::new().unwrap();
+        let result = delete_one(temp_dir.path().to_str().unwrap().to_string());
+        assert!(!result.success);
+        assert!(result.error.unwrap().contains("not a regular file"));
+    }
 }
 
 #[derive(Serialize)]
@@ -34,21 +65,7 @@ pub struct DeleteResult {
 #[tauri::command]
 pub async fn delete_files(paths: Vec<String>) -> Result<Vec<DeleteResult>, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let results: Vec<DeleteResult> = paths
-            .into_iter()
-            .map(|path| match trash::delete(&path) {
-                Ok(()) => DeleteResult {
-                    path,
-                    success: true,
-                    error: None,
-                },
-                Err(e) => DeleteResult {
-                    path,
-                    success: false,
-                    error: Some(e.to_string()),
-                },
-            })
-            .collect();
+        let results: Vec<DeleteResult> = paths.into_iter().map(delete_one).collect();
         Ok(results)
     })
     .await

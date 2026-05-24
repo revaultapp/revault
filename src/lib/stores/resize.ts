@@ -31,6 +31,19 @@ export const resizeMode = writable<ResizeMode>("Fit");
 export const width = writable(1920);
 export const height = writable(1080);
 
+export function willUpscale(
+  file: Pick<ResizeFile, "originalWidth" | "originalHeight">,
+  targetWidth: number,
+  targetHeight: number,
+  mode: ResizeMode,
+): boolean {
+  if (file.originalWidth === undefined || file.originalHeight === undefined) return false;
+  if (mode === "Exact") {
+    return targetWidth > file.originalWidth || targetHeight > file.originalHeight;
+  }
+  return targetWidth > file.originalWidth && targetHeight > file.originalHeight;
+}
+
 export const summary = derived(files, ($files) => ({
   done: $files.filter((f) => f.status === "done").length,
   failed: $files.filter((f) => f.status === "error").length,
@@ -38,23 +51,15 @@ export const summary = derived(files, ($files) => ({
 }));
 
 export const upscaleWarning: Readable<boolean> = derived(
-  [files, width, height],
-  ([$files, $width, $height]) =>
-    $files.some(
-      (f) =>
-        f.originalWidth !== undefined &&
-        ($width > f.originalWidth || $height > (f.originalHeight ?? Infinity)),
-    ),
+  [files, width, height, resizeMode],
+  ([$files, $width, $height, $resizeMode]) =>
+    $files.some((f) => willUpscale(f, $width, $height, $resizeMode)),
 );
 
 export const upscaleCount: Readable<number> = derived(
-  [files, width, height],
-  ([$files, $width, $height]) =>
-    $files.filter(
-      (f) =>
-        f.originalWidth !== undefined &&
-        ($width > f.originalWidth || $height > (f.originalHeight ?? Infinity)),
-    ).length,
+  [files, width, height, resizeMode],
+  ([$files, $width, $height, $resizeMode]) =>
+    $files.filter((f) => willUpscale(f, $width, $height, $resizeMode)).length,
 );
 
 export async function addFiles(paths: string[]) {

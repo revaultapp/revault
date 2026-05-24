@@ -612,6 +612,7 @@ pub fn resolve_output_path(
     output_dir: Option<&str>,
     suffix: &str,
 ) -> Result<String, String> {
+    crate::core::paths::validate_output_suffix(suffix)?;
     let input = Path::new(path);
     let stem = input
         .file_stem()

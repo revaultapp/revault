@@ -66,4 +66,31 @@ describe("dedupe store", () => {
     expect(get(totalFound)).toBe(2);
     expect(get(duplicateGroups)).toHaveLength(1);
   });
+
+  it("ignores stale scan results after clearResults", async () => {
+    let resolveScan: (value: unknown) => void = () => {};
+    mockInvoke.mockReturnValueOnce(new Promise((resolve) => {
+      resolveScan = resolve;
+    }));
+
+    const scanPromise = scanForDuplicates(["/some/folder"]);
+    clearResults();
+    resolveScan({
+      groups: [
+        {
+          hash: "stale",
+          distance: 0,
+          max_distance: 0,
+          files: [{ path: "a", size: 1, modified: 0 }, { path: "b", size: 1, modified: 0 }],
+        },
+      ],
+      total_scanned: 2,
+      errors: [],
+    });
+    await scanPromise;
+
+    expect(get(duplicateGroups)).toEqual([]);
+    expect(get(totalFound)).toBe(0);
+    expect(get(isScanning)).toBe(false);
+  });
 });

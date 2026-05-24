@@ -11,7 +11,7 @@
   import {
     files, isResizing, outputDir, resolvedOutputDir, resizeMode, width, height, summary,
     upscaleWarning, upscaleCount,
-    addFiles, removeFile, clearFiles,
+    addFiles, removeFile, clearFiles, willUpscale,
   } from "$lib/stores/resize";
 
   type Preset = { label: string; w: number; h: number };
@@ -150,7 +150,7 @@
     {:else}
       <span class="file-detail-row">
         <span>{$width}×{$height} · {$resizeMode}</span>
-        {#if file.originalWidth !== undefined && file.originalHeight !== undefined && ($width > file.originalWidth || $height > file.originalHeight)}
+        {#if willUpscale(file, $width, $height, $resizeMode)}
           <span class="upscale-flag">
             <AlertTriangle size={14} />
             will upscale

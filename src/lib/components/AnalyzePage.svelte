@@ -45,6 +45,9 @@
         });
         if (newFolders.length > 0) {
           selectedFolders = [...selectedFolders, ...newFolders];
+          clearResults();
+          deletedPaths = new Set();
+          expandedGroups = new Set();
         }
       }
     });
@@ -90,11 +93,19 @@
       const folders = Array.isArray(selected) ? selected : [selected];
       const newFolders = folders.filter((f) => !selectedFolders.includes(f));
       selectedFolders = [...selectedFolders, ...newFolders];
+      if (newFolders.length > 0) {
+        clearResults();
+        deletedPaths = new Set();
+        expandedGroups = new Set();
+      }
     }
   }
 
   function removeFolder(path: string) {
     selectedFolders = selectedFolders.filter((f) => f !== path);
+    clearResults();
+    deletedPaths = new Set();
+    expandedGroups = new Set();
   }
 
   async function startScan() {
@@ -117,6 +128,12 @@
   }
 
   async function deleteDuplicate(filePath: string) {
+    if ($scanMode === "similar") {
+      const ok = window.confirm(
+        "This is a visually similar file, not a byte-identical duplicate. Move it to trash?"
+      );
+      if (!ok) return;
+    }
     try {
       const results = await invoke<{ path: string; success: boolean; error?: string }[]>("delete_files", { paths: [filePath] });
       const result = results[0];
@@ -249,7 +266,7 @@
               {#if $scanMode === "similar"}
                 <span class="similarity-badge">~{Math.round((1 - group.max_distance / 256) * 100)}% match</span>
               {:else}
-                <span class="group-hash">{group.hash.slice(0, 12)}</span>
+                <span class="group-hash" title="Byte-identical SHA duplicate">{group.hash.slice(0, 12)}</span>
               {/if}
               <span class="group-count">{group.files.length} files</span>
             </div>

@@ -171,6 +171,12 @@ pub fn resize_batch(
     suffix: Option<&str>,
 ) -> Vec<ResizeResult> {
     let suffix = suffix.unwrap_or("_resized");
+    if let Err(e) = crate::core::paths::validate_output_suffix(suffix) {
+        return paths
+            .iter()
+            .map(|p| ResizeResult::err(p, e.clone()))
+            .collect();
+    }
     // Canonicalize once outside the parallel loop — fails fast for the whole
     // batch instead of per-file, and prevents path traversal via "../..".
     let canonical_output_dir = match output_dir {
@@ -290,5 +296,32 @@ mod tests {
         assert!(results[0].error.is_none());
         assert!(results[0].new_width > 0);
         assert!(results[1].error.is_some());
+    }
+
+    #[test]
+    fn resize_batch_rejects_unsafe_suffix() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("test.png");
+        create_test_png(input.to_str().unwrap(), 400, 300);
+
+        let paths = vec![input.to_string_lossy().to_string()];
+        let results = resize_batch(
+            &paths,
+            200,
+            150,
+            ResizeMode::Fit,
+            None,
+            None,
+            false,
+            Some("/../../test"),
+        );
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0]
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("output suffix"));
+        assert!(!dir.path().join("test.jpg").exists());
     }
 }

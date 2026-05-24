@@ -15,25 +15,38 @@ pub async fn export_gif(
 ) -> Result<gif::GifResult, String> {
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let cancel_flag = Arc::new(AtomicBool::new(false));
-    *ACTIVE_GIF_CANCEL.lock().map_err(|e| e.to_string())? = Some(cancel_flag.clone());
+    {
+        let mut active = ACTIVE_GIF_CANCEL.lock().map_err(|e| e.to_string())?;
+        if active.is_some() {
+            return Err("GIF export already running".to_string());
+        }
+        *active = Some(cancel_flag.clone());
+    }
+    let cancel_for_worker = cancel_flag.clone();
     let app_for_emit = app.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
+    let join_result = tauri::async_runtime::spawn_blocking(move || {
         gif::export_gif(
             &app_data,
             &input_path,
             &output_path,
             options,
-            cancel_flag,
+            cancel_for_worker,
             move |progress| {
                 let _ = app_for_emit.emit("gif-export-progress", &progress);
             },
         )
     })
-    .await
-    .map_err(|e| e.to_string())?;
+    .await;
 
-    *ACTIVE_GIF_CANCEL.lock().map_err(|e| e.to_string())? = None;
-    result
+    let mut active = ACTIVE_GIF_CANCEL.lock().map_err(|e| e.to_string())?;
+    if active
+        .as_ref()
+        .map(|flag| Arc::ptr_eq(flag, &cancel_flag))
+        .unwrap_or(false)
+    {
+        *active = None;
+    }
+    join_result.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

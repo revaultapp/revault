@@ -468,6 +468,7 @@ export async function exportGif(file: VideoFile): Promise<void> {
     gifResult.set(result);
     gifOutputPath.set(result.output_path);
     gifState.set("done");
+    activity.add({ type: "gif", fileCount: 1, savedBytes: 0 });
   } catch (e) {
     const msg = String(e);
     if (msg.includes("cancelled")) {

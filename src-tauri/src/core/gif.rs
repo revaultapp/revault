@@ -78,19 +78,101 @@ fn resolve_gif_output_path(input_path: &str, output_dir: Option<&str>) -> Result
         .ok_or("Invalid filename")?;
     let dir = match output_dir {
         Some(d) => {
-            let p = Path::new(d);
+            let p = std::fs::canonicalize(d)
+                .map_err(|e| format!("Output directory does not exist: {} ({})", d, e))?;
             if !p.is_dir() {
-                return Err(format!("Output directory does not exist: {}", d));
+                return Err(format!("Output path is not a directory: {}", d));
             }
-            p.to_path_buf()
+            p
         }
         None => path.parent().ok_or("No parent directory")?.to_path_buf(),
     };
-    let output = dir.join(format!("{}.gif", stem));
+    let output = first_available_path(&dir.join(format!("{}_gif.gif", stem)));
     output
         .to_str()
         .map(|s| s.to_string())
         .ok_or("Invalid path".to_string())
+}
+
+fn first_available_path(base: &Path) -> PathBuf {
+    if !base.exists() {
+        return base.to_path_buf();
+    }
+
+    let parent = base.parent().unwrap_or_else(|| Path::new("."));
+    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("clip");
+    for n in 2..10_000 {
+        let candidate = parent.join(format!("{stem}_{n}.gif"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    base.to_path_buf()
+}
+
+fn validate_gif_output_path(output_path: &str) -> Result<PathBuf, String> {
+    let requested = Path::new(output_path);
+    if requested
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| !e.eq_ignore_ascii_case("gif"))
+        .unwrap_or(true)
+    {
+        return Err("GIF output path must end in .gif".to_string());
+    }
+
+    let filename = requested
+        .file_name()
+        .ok_or_else(|| "Invalid GIF output filename".to_string())?;
+    let parent = requested
+        .parent()
+        .ok_or_else(|| "GIF output path has no parent directory".to_string())?;
+    let parent = std::fs::canonicalize(parent)
+        .map_err(|e| format!("Invalid GIF output directory '{}': {}", parent.display(), e))?;
+    if !parent.is_dir() {
+        return Err(format!(
+            "GIF output parent is not a directory: {}",
+            parent.display()
+        ));
+    }
+
+    Ok(first_available_path(&parent.join(filename)))
+}
+
+fn temporary_output_path(final_path: &Path) -> Result<PathBuf, String> {
+    let parent = final_path
+        .parent()
+        .ok_or_else(|| "GIF output path has no parent directory".to_string())?;
+    let stem = final_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("gif");
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    Ok(parent.join(format!(
+        ".{stem}.revault-tmp-{}-{nonce}.gif",
+        std::process::id()
+    )))
+}
+
+fn install_temp_output(temp_path: &Path, final_path: &Path) -> Result<(), String> {
+    match std::fs::hard_link(temp_path, final_path) {
+        Ok(()) => std::fs::remove_file(temp_path)
+            .map_err(|e| format!("Failed to clean temporary GIF: {}", e)),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            let _ = std::fs::remove_file(temp_path);
+            Err(format!(
+                "Output already exists, refusing to overwrite: {}",
+                final_path.display()
+            ))
+        }
+        Err(e) => {
+            let _ = std::fs::remove_file(temp_path);
+            Err(format!("Failed to move GIF into place: {}", e))
+        }
+    }
 }
 
 /// Heuristic only — for UI preview before encoding. Assumes ~50KB/frame at
@@ -398,6 +480,8 @@ pub fn export_gif(
 ) -> Result<GifResult, String> {
     opts.validate()?;
     validate_input_path(input_path, false)?;
+    let output_path = validate_gif_output_path(output_path)?;
+    let temp_output = temporary_output_path(&output_path)?;
     let gifski = gifski_binary_path(app_data_dir)?;
 
     // Probe input ONCE — for clip duration (progress denom) + dimensions (output height calc)
@@ -444,7 +528,7 @@ pub fn export_gif(
         .arg("--quality")
         .arg(opts.quality.to_string())
         .arg("-o")
-        .arg(output_path)
+        .arg(&temp_output)
         .arg("-")
         .stdin(Stdio::from(stdout))
         .stdout(Stdio::piped())
@@ -493,18 +577,18 @@ pub fn export_gif(
     let _ = child.wait();
 
     if let Some(e) = iter_err {
-        let _ = std::fs::remove_file(output_path);
+        let _ = std::fs::remove_file(&temp_output);
         return Err(e);
     }
 
     if !ffmpeg_errors.is_empty() {
-        let _ = std::fs::remove_file(output_path);
+        let _ = std::fs::remove_file(&temp_output);
         return Err(format!("ffmpeg failed: {}", ffmpeg_errors.join("; ")));
     }
 
     if !gifski_out.status.success() {
         let stderr = String::from_utf8_lossy(&gifski_out.stderr);
-        let _ = std::fs::remove_file(output_path);
+        let _ = std::fs::remove_file(&temp_output);
         return Err(format!("gifski failed: {}", stderr));
     }
 
@@ -513,9 +597,11 @@ pub fn export_gif(
         phase: "complete".to_string(),
     });
 
-    let size_bytes = std::fs::metadata(output_path)
+    let size_bytes = std::fs::metadata(&temp_output)
         .map(|m| m.len())
         .map_err(|e| format!("gifski produced no output: {}", e))?;
+
+    install_temp_output(&temp_output, &output_path)?;
 
     // Compute output height deterministically — avoids post-encode probe
     let output_height: u32 = if stats.width > 0 {
@@ -526,7 +612,7 @@ pub fn export_gif(
     };
 
     Ok(GifResult {
-        output_path: output_path.to_string(),
+        output_path: output_path.to_string_lossy().to_string(),
         size_bytes,
         duration_sec: duration,
         width: opts.width,
@@ -553,7 +639,7 @@ mod tests {
     fn resolve_gif_output_path_default_dir() {
         let result = resolve_gif_output_path("/tmp/clip.mp4", None).unwrap();
         let expected = Path::new("/tmp")
-            .join("clip.gif")
+            .join("clip_gif.gif")
             .to_string_lossy()
             .to_string();
         assert_eq!(result, expected);
@@ -564,8 +650,68 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let dir_str = dir.path().to_str().unwrap();
         let result = resolve_gif_output_path("/tmp/clip.mov", Some(dir_str)).unwrap();
-        let expected = dir.path().join("clip.gif").to_string_lossy().to_string();
+        let expected = std::fs::canonicalize(dir.path())
+            .unwrap()
+            .join("clip_gif.gif")
+            .to_string_lossy()
+            .to_string();
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn resolve_gif_output_path_does_not_clobber_existing_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let existing = dir.path().join("clip_gif.gif");
+        std::fs::write(&existing, b"old").unwrap();
+
+        let result =
+            resolve_gif_output_path("/tmp/clip.mov", Some(dir.path().to_str().unwrap())).unwrap();
+        let expected = std::fs::canonicalize(dir.path())
+            .unwrap()
+            .join("clip_gif_2.gif")
+            .to_string_lossy()
+            .to_string();
+        assert_eq!(result, expected);
+        assert_eq!(std::fs::read(&existing).unwrap(), b"old");
+    }
+
+    #[test]
+    fn validate_gif_output_path_rejects_non_gif_and_missing_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let not_gif = dir.path().join("clip.png");
+        let err = validate_gif_output_path(not_gif.to_str().unwrap()).unwrap_err();
+        assert!(err.contains(".gif"));
+
+        let missing_parent = dir.path().join("missing").join("clip.gif");
+        let err = validate_gif_output_path(missing_parent.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("Invalid GIF output directory"));
+    }
+
+    #[test]
+    fn install_temp_output_refuses_existing_final() {
+        let dir = tempfile::tempdir().unwrap();
+        let temp = dir.path().join(".clip.revault-tmp.gif");
+        let final_path = dir.path().join("clip.gif");
+        std::fs::write(&temp, b"new").unwrap();
+        std::fs::write(&final_path, b"old").unwrap();
+
+        let err = install_temp_output(&temp, &final_path).unwrap_err();
+        assert!(err.contains("refusing to overwrite"));
+        assert_eq!(std::fs::read(&final_path).unwrap(), b"old");
+        assert!(!temp.exists());
+    }
+
+    #[test]
+    fn install_temp_output_moves_without_overwriting() {
+        let dir = tempfile::tempdir().unwrap();
+        let temp = dir.path().join(".clip.revault-tmp.gif");
+        let final_path = dir.path().join("clip.gif");
+        std::fs::write(&temp, b"new").unwrap();
+
+        install_temp_output(&temp, &final_path).unwrap();
+
+        assert_eq!(std::fs::read(&final_path).unwrap(), b"new");
+        assert!(!temp.exists());
     }
 
     #[test]

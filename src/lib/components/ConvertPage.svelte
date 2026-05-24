@@ -241,7 +241,7 @@
     {#if $hasHeicFiles && !$heicBannerDismissed}
       <div class="heic-banner">
         <Info size={14} />
-        <span>HEIC files detected — output format set to JPEG for broad compatibility.</span>
+        <span>HEIC files detected — JPEG is recommended for broad compatibility.</span>
         <button class="banner-dismiss" onclick={() => heicBannerDismissed.set(true)} aria-label="Dismiss">
           <X size={13} />
         </button>

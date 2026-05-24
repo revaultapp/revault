@@ -6,13 +6,16 @@
   import ToggleSwitch from "./ToggleSwitch.svelte";
   import PrivacyToast from "./PrivacyToast.svelte";
   import { runWithConcurrency, browseOutputDir } from "$lib/utils";
-  import { IMAGE_EXTENSIONS } from "$lib/types";
+  import { activity } from "$lib/stores/activity";
   import {
     files, isProcessing, summary, outputDir,
     stripGps, stripDevice, stripDatetime, stripAuthor,
     addFiles, removeFile, clearFiles,
     type PrivacyFile,
   } from "$lib/stores/privacy";
+
+  const PRIVACY_SUPPORTED_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "heic", "heif"] as const;
+  const PRIVACY_SUPPORTED_RE = /\.(jpe?g|png|webp|heic|heif)$/i;
 
   async function handleBrowseOutputDir() {
     const dir = await browseOutputDir();
@@ -72,7 +75,7 @@
   async function browseFiles() {
     const selected = await open({
       multiple: true,
-      filters: [{ name: "Images", extensions: [...IMAGE_EXTENSIONS] }],
+      filters: [{ name: "Privacy-supported images", extensions: [...PRIVACY_SUPPORTED_EXTENSIONS] }],
     });
     if (selected) handleAddFiles(selected);
   }
@@ -112,7 +115,7 @@
   function handleAddFiles(paths: string[]) {
     const currentFiles = $files;
     const existing = new Set(currentFiles.map((f) => f.path));
-    const newPaths = paths.filter((p) => !existing.has(p));
+    const newPaths = paths.filter((p) => !existing.has(p) && PRIVACY_SUPPORTED_RE.test(p));
     addFiles(newPaths);
     // Scan new files silently in background (no processing state, no progress ring)
     const newFiles = newPaths.map((p) => ({
@@ -162,8 +165,15 @@
   async function startStrip() {
     const currentFiles = $files;
     if (currentFiles.length === 0) return;
-    isProcessing.set(true);
     const opts: StripOpts = { gps: $stripGps, device: $stripDevice, datetime: $stripDatetime, author: $stripAuthor };
+    if (!opts.gps && !opts.device && !opts.datetime && !opts.author) {
+      toastMessage = "Select at least one metadata category to strip";
+      showToast = true;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { showToast = false; }, 3000);
+      return;
+    }
+    isProcessing.set(true);
     files.update((all) =>
       all.map((f) => f.status === "done" ? { ...f, status: "scanned" as const } : f)
     );
@@ -198,6 +208,9 @@
           };
         })
       );
+      if (successCount > 0) {
+        activity.add({ type: "privacy", fileCount: successCount, savedBytes: 0 });
+      }
       showPrivacyToast(successCount, gpsStrippedCount);
     } catch (err) {
       files.update((all) =>
@@ -217,6 +230,9 @@
   onfiles={handleAddFiles}
   onbrowse={browseFiles}
   onclear={clearFiles}
+  dropZoneAcceptedExtensions={PRIVACY_SUPPORTED_RE}
+  dropZoneFilePickerName="Privacy-supported images"
+  dropZoneFilePickerExtensions={[...PRIVACY_SUPPORTED_EXTENSIONS]}
   actionLabel="Strip Metadata"
   onaction={startStrip}
   {headerText}

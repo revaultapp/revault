@@ -36,12 +36,15 @@ export const totalFound = writable(0);
 export const scanError = writable<string | null>(null);
 export const scanProgress = writable<ScanProgress | null>(null);
 
+let scanRequestId = 0;
+
 export function setMode(m: "exact" | "similar") {
   scanMode.set(m);
   clearResults();
 }
 
 export async function scanForDuplicates(paths: string[], recursive = true) {
+  const requestId = ++scanRequestId;
   isScanning.set(true);
   duplicateGroups.set([]);
   totalFound.set(0);
@@ -50,24 +53,31 @@ export async function scanForDuplicates(paths: string[], recursive = true) {
 
   // Listen for progress events from Rust — scoped to this call
   let unlisten: (() => void) | null = await listen<ScanProgress>("dedupe-progress", (event) => {
+    if (requestId !== scanRequestId) return;
     scanProgress.set(event.payload);
   });
 
   try {
     const result = await invoke<FindDuplicatesResult>("find_duplicates", { paths, recursive, mode: get(scanMode) });
+    if (requestId !== scanRequestId) return;
     const total = result.groups.reduce((acc, g) => acc + g.files.length - 1, 0);
     duplicateGroups.set(result.groups);
     totalFound.set(total);
   } catch (err) {
+    if (requestId !== scanRequestId) return;
     scanError.set(String(err));
   } finally {
-    isScanning.set(false);
-    scanProgress.set(null);
+    if (requestId === scanRequestId) {
+      isScanning.set(false);
+      scanProgress.set(null);
+    }
     unlisten?.();
   }
 }
 
 export function clearResults() {
+  scanRequestId++;
+  isScanning.set(false);
   duplicateGroups.set([]);
   totalFound.set(0);
   scanError.set(null);

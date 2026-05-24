@@ -59,7 +59,6 @@ export async function addFiles(paths: string[]) {
     return [...current, ...newFiles];
   });
   if (hasHeic) {
-    targetFormat.update((f) => (f !== "Jpeg" ? "Jpeg" : f));
     heicBannerDismissed.set(false);
   }
   if (newPaths.length === 0) return;

@@ -2,7 +2,7 @@ import { writable } from "svelte/store";
 
 export interface ActivityItem {
   id: string;
-  type: "compress" | "convert" | "resize" | "analyze" | "video";
+  type: "compress" | "convert" | "resize" | "analyze" | "video" | "gif" | "privacy";
   fileCount: number;
   savedBytes: number;
   timestamp: number;
@@ -16,7 +16,12 @@ function loadActivity(): ActivityItem[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed.slice(0, MAX_ITEMS);
+      if (Array.isArray(parsed)) {
+        return parsed.slice(0, MAX_ITEMS).map((item) => ({
+          ...item,
+          savedBytes: Math.max(0, Number(item.savedBytes) || 0),
+        }));
+      }
     }
   } catch {
     // ignore parse errors
@@ -39,10 +44,13 @@ function createActivity() {
   return {
     subscribe,
     add(entry: Omit<ActivityItem, "id" | "timestamp">) {
-      if (entry.savedBytes < 0) return;
       update((items) => {
+        const normalized = {
+          ...entry,
+          savedBytes: Math.max(0, entry.savedBytes),
+        };
         const next: ActivityItem[] = [
-          { ...entry, id: crypto.randomUUID(), timestamp: Date.now() },
+          { ...normalized, id: crypto.randomUUID(), timestamp: Date.now() },
           ...items,
         ].slice(0, MAX_ITEMS);
         saveActivity(next);

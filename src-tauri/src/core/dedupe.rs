@@ -2,13 +2,14 @@ use crate::core::image_io;
 use image_hasher::{HashAlg, HasherConfig, ImageHash};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::fs;
+use std::io::Read;
 use std::path::Path;
 
 use crate::core::image_io::IMAGE_EXTENSIONS;
 
 const HASH_SIZE: u32 = 16;
-const PERCEPTUAL_THRESHOLD_EXACT: u32 = 10;
 const PERCEPTUAL_THRESHOLD_SIMILAR: u32 = 24;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -57,9 +58,16 @@ fn is_image(path: &Path) -> bool {
 }
 
 fn compute_sha256(path: &str) -> Result<[u8; 32], Box<dyn std::error::Error>> {
-    let data = fs::read(path)?;
+    let mut file = fs::File::open(path)?;
     let mut hasher = Sha256::new();
-    hasher.update(&data);
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buffer)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
     let result = hasher.finalize();
     let mut hash = [0u8; 32];
     hash.copy_from_slice(&result);
@@ -80,11 +88,10 @@ fn collect_images_recursive(
     recursive: bool,
     images: &mut Vec<String>,
     errors: &mut Vec<String>,
+    seen: &mut HashSet<std::path::PathBuf>,
 ) {
     if path.is_file() && is_image(path) {
-        if let Some(s) = path.to_str() {
-            images.push(s.to_string());
-        }
+        collect_image(path, images, errors, seen);
     } else if path.is_dir() {
         match fs::read_dir(path) {
             Ok(entries) => {
@@ -99,12 +106,10 @@ fn collect_images_recursive(
                     };
                     if ft.is_file() {
                         if is_image(&entry_path) {
-                            if let Some(s) = entry_path.to_str() {
-                                images.push(s.to_string());
-                            }
+                            collect_image(&entry_path, images, errors, seen);
                         }
                     } else if ft.is_dir() && recursive {
-                        collect_images_recursive(&entry_path, true, images, errors);
+                        collect_images_recursive(&entry_path, true, images, errors, seen);
                     }
                 }
             }
@@ -113,13 +118,38 @@ fn collect_images_recursive(
     }
 }
 
+fn collect_image(
+    path: &Path,
+    images: &mut Vec<String>,
+    errors: &mut Vec<String>,
+    seen: &mut HashSet<std::path::PathBuf>,
+) {
+    match path.canonicalize() {
+        Ok(canonical) => {
+            if seen.insert(canonical.clone()) {
+                if let Some(s) = canonical.to_str() {
+                    images.push(s.to_string());
+                }
+            }
+        }
+        Err(e) => errors.push(format!("{}: {}", path.display(), e)),
+    }
+}
+
 fn collect_images(paths: &[String], recursive: bool) -> (Vec<String>, Vec<String>) {
     let mut images = Vec::new();
     let mut errors = Vec::new();
+    let mut seen = HashSet::new();
     for path_str in paths {
         match crate::core::paths::validate_input_path(path_str, true) {
             Ok(canonical) => {
-                collect_images_recursive(&canonical, recursive, &mut images, &mut errors);
+                collect_images_recursive(
+                    &canonical,
+                    recursive,
+                    &mut images,
+                    &mut errors,
+                    &mut seen,
+                );
             }
             Err(e) => errors.push(e),
         }
@@ -149,10 +179,6 @@ pub fn find_duplicates_with_progress<F>(
 where
     F: FnMut(usize, usize, &str),
 {
-    let threshold = match mode {
-        ScanMode::Exact => PERCEPTUAL_THRESHOLD_EXACT,
-        ScanMode::Similar => PERCEPTUAL_THRESHOLD_SIMILAR,
-    };
     let (image_paths, mut collect_errors) = collect_images(paths, recursive);
     let total = image_paths.len();
     let total_scanned = image_paths.len();
@@ -184,7 +210,11 @@ where
             }
         };
 
-        let perceptual_hash = compute_perceptual_hash(path).ok();
+        let perceptual_hash = if matches!(mode, ScanMode::Similar) {
+            compute_perceptual_hash(path).ok()
+        } else {
+            None
+        };
 
         files_data.push(FileData {
             path: path.clone(),
@@ -199,10 +229,8 @@ where
         }
     }
 
-    // Stage 1: Exact match by SHA256. Only files that land in an actual
-    // duplicate group are marked as used; singletons fall through to Stage 2
-    // so a JPEG with no exact twin can still group perceptually with a
-    // recompressed copy.
+    // Stage 1: Exact match by SHA256. Exact mode stops here so the label means
+    // byte-identical, not visually similar.
     let mut groups: Vec<DuplicateGroup> = Vec::new();
     let mut used: std::collections::HashSet<usize> = std::collections::HashSet::new();
 
@@ -235,28 +263,22 @@ where
         });
     }
 
-    // Stage 2: Perceptual match by pHash for remaining ungrouped files.
-    // Exact mode keeps a same-size pre-filter; Similar mode bypasses it so
-    // recompressed copies (different bytes, different size) still group.
+    if matches!(mode, ScanMode::Exact) {
+        groups.sort_by_key(|g| std::cmp::Reverse(g.files.len()));
+        return Ok(FindDuplicatesResult {
+            groups,
+            total_scanned,
+            errors: collect_errors,
+        });
+    }
+
+    // Stage 2: Perceptual match by pHash for remaining ungrouped files in
+    // Similar mode. Recompressed copies can differ in bytes and size.
     on_progress(total, total, "grouping");
-    let buckets: Vec<Vec<usize>> = match mode {
-        ScanMode::Exact => {
-            let mut size_groups: std::collections::HashMap<u64, Vec<usize>> =
-                std::collections::HashMap::new();
-            for (i, fd) in files_data.iter().enumerate() {
-                if !used.contains(&i) {
-                    size_groups.entry(fd.size).or_default().push(i);
-                }
-            }
-            size_groups.into_values().collect()
-        }
-        ScanMode::Similar => {
-            let all: Vec<usize> = (0..files_data.len())
-                .filter(|i| !used.contains(i))
-                .collect();
-            vec![all]
-        }
-    };
+    let all: Vec<usize> = (0..files_data.len())
+        .filter(|i| !used.contains(i))
+        .collect();
+    let buckets: Vec<Vec<usize>> = vec![all];
 
     for indices in buckets {
         if indices.len() < 2 {
@@ -291,7 +313,7 @@ where
                 };
                 let dist = hash_i.dist(hash_j);
 
-                if dist <= threshold {
+                if dist <= PERCEPTUAL_THRESHOLD_SIMILAR {
                     used.insert(*j);
                     group_files.push(DuplicateFile {
                         path: files_data[*j].path.clone(),
@@ -380,6 +402,30 @@ mod tests {
     }
 
     #[test]
+    fn collect_images_dedupes_overlapping_roots() {
+        use image::RgbaImage;
+        let dir = tempfile::tempdir().unwrap();
+        let subdir = dir.path().join("subdir");
+        std::fs::create_dir_all(&subdir).unwrap();
+        let photo = subdir.join("photo.png");
+        let img: RgbaImage =
+            image::ImageBuffer::from_fn(4, 4, |_x, _y| image::Rgba([20, 40, 60, 255]));
+        img.save(&photo).unwrap();
+
+        let (images, errors) = collect_images(
+            &[
+                dir.path().to_str().unwrap().to_string(),
+                subdir.to_str().unwrap().to_string(),
+            ],
+            true,
+        );
+
+        assert!(errors.is_empty());
+        assert_eq!(images.len(), 1);
+        assert!(images[0].ends_with("photo.png"));
+    }
+
+    #[test]
     fn find_duplicates_handles_corrupt_image_gracefully() {
         use image::RgbaImage;
         let dir = tempfile::tempdir().unwrap();
@@ -448,7 +494,7 @@ mod tests {
     }
 
     #[test]
-    fn perceptual_hash_groups_visually_identical_different_bytes() {
+    fn similar_mode_groups_visually_identical_different_bytes() {
         use image::RgbaImage;
         let dir = tempfile::tempdir().unwrap();
         let a = dir.path().join("photo_a.png");
@@ -466,13 +512,43 @@ mod tests {
         let result = find_duplicates(
             &[dir.path().to_str().unwrap().to_string()],
             true,
-            ScanMode::Exact,
+            ScanMode::Similar,
         )
         .unwrap();
         // Either SHA256 groups them (distance 0) or pHash groups them (distance 0)
         assert_eq!(result.groups.len(), 1);
         assert_eq!(result.groups[0].files.len(), 2);
         assert_eq!(result.groups[0].distance, 0);
+    }
+
+    #[test]
+    fn exact_mode_does_not_group_same_pixels_with_different_bytes() {
+        use image::RgbaImage;
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("photo_a.png");
+        let b = dir.path().join("photo_b.png");
+
+        let img: RgbaImage =
+            image::ImageBuffer::from_fn(32, 32, |_x, _y| image::Rgba([120, 80, 40, 255]));
+        img.save(&a).unwrap();
+        let mut bytes = std::fs::read(&a).unwrap();
+        bytes.extend_from_slice(b"trailing-a");
+        std::fs::write(&a, &bytes).unwrap();
+        let last = bytes.last_mut().unwrap();
+        *last = b'b';
+        std::fs::write(&b, &bytes).unwrap();
+
+        let result = find_duplicates(
+            &[dir.path().to_str().unwrap().to_string()],
+            true,
+            ScanMode::Exact,
+        )
+        .unwrap();
+
+        assert!(
+            result.groups.is_empty(),
+            "Exact mode must be SHA/byte-exact only"
+        );
     }
 
     #[test]
