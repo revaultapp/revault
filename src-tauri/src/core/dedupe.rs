@@ -6,11 +6,13 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::Read;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::core::image_io::IMAGE_EXTENSIONS;
 
 const HASH_SIZE: u32 = 16;
 const PERCEPTUAL_THRESHOLD_SIMILAR: u32 = 24;
+const CANCELLED_ERROR: &str = "dedupe scan cancelled";
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -57,11 +59,23 @@ fn is_image(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn compute_sha256(path: &str) -> Result<[u8; 32], Box<dyn std::error::Error>> {
+fn check_cancelled(cancel: &AtomicBool) -> Result<(), Box<dyn std::error::Error>> {
+    if cancel.load(Ordering::Relaxed) {
+        return Err(CANCELLED_ERROR.into());
+    }
+    Ok(())
+}
+
+fn is_cancelled_error(err: &(dyn std::error::Error + 'static)) -> bool {
+    err.to_string().contains(CANCELLED_ERROR)
+}
+
+fn compute_sha256(path: &str, cancel: &AtomicBool) -> Result<[u8; 32], Box<dyn std::error::Error>> {
     let mut file = fs::File::open(path)?;
     let mut hasher = Sha256::new();
     let mut buffer = [0u8; 64 * 1024];
     loop {
+        check_cancelled(cancel)?;
         let n = file.read(&mut buffer)?;
         if n == 0 {
             break;
@@ -89,13 +103,16 @@ fn collect_images_recursive(
     images: &mut Vec<String>,
     errors: &mut Vec<String>,
     seen: &mut HashSet<std::path::PathBuf>,
-) {
+    cancel: &AtomicBool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    check_cancelled(cancel)?;
     if path.is_file() && is_image(path) {
         collect_image(path, images, errors, seen);
     } else if path.is_dir() {
         match fs::read_dir(path) {
             Ok(entries) => {
                 for entry in entries.flatten() {
+                    check_cancelled(cancel)?;
                     let entry_path = entry.path();
                     let ft = match entry.file_type() {
                         Ok(ft) => ft,
@@ -109,13 +126,14 @@ fn collect_images_recursive(
                             collect_image(&entry_path, images, errors, seen);
                         }
                     } else if ft.is_dir() && recursive {
-                        collect_images_recursive(&entry_path, true, images, errors, seen);
+                        collect_images_recursive(&entry_path, true, images, errors, seen, cancel)?;
                     }
                 }
             }
             Err(e) => errors.push(format!("{}: {}", path.display(), e)),
         }
     }
+    Ok(())
 }
 
 fn collect_image(
@@ -136,11 +154,22 @@ fn collect_image(
     }
 }
 
+#[cfg(test)]
 fn collect_images(paths: &[String], recursive: bool) -> (Vec<String>, Vec<String>) {
+    let cancel = AtomicBool::new(false);
+    collect_images_with_cancel(paths, recursive, &cancel).unwrap_or_default()
+}
+
+fn collect_images_with_cancel(
+    paths: &[String],
+    recursive: bool,
+    cancel: &AtomicBool,
+) -> Result<(Vec<String>, Vec<String>), Box<dyn std::error::Error>> {
     let mut images = Vec::new();
     let mut errors = Vec::new();
     let mut seen = HashSet::new();
     for path_str in paths {
+        check_cancelled(cancel)?;
         match crate::core::paths::validate_input_path(path_str, true) {
             Ok(canonical) => {
                 collect_images_recursive(
@@ -149,12 +178,13 @@ fn collect_images(paths: &[String], recursive: bool) -> (Vec<String>, Vec<String
                     &mut images,
                     &mut errors,
                     &mut seen,
-                );
+                    cancel,
+                )?;
             }
             Err(e) => errors.push(e),
         }
     }
-    (images, errors)
+    Ok((images, errors))
 }
 
 fn sha256_to_hex(hash: &[u8; 32]) -> String {
@@ -167,24 +197,27 @@ fn find_duplicates(
     recursive: bool,
     mode: ScanMode,
 ) -> Result<FindDuplicatesResult, Box<dyn std::error::Error>> {
-    find_duplicates_with_progress(paths, recursive, mode, |_, _, _| {})
+    let cancel = AtomicBool::new(false);
+    find_duplicates_with_progress_and_cancel(paths, recursive, mode, |_, _, _| {}, &cancel)
 }
 
-pub fn find_duplicates_with_progress<F>(
+pub fn find_duplicates_with_progress_and_cancel<F>(
     paths: &[String],
     recursive: bool,
     mode: ScanMode,
     mut on_progress: F,
+    cancel: &AtomicBool,
 ) -> Result<FindDuplicatesResult, Box<dyn std::error::Error>>
 where
     F: FnMut(usize, usize, &str),
 {
-    let (image_paths, mut collect_errors) = collect_images(paths, recursive);
+    let (image_paths, mut collect_errors) = collect_images_with_cancel(paths, recursive, cancel)?;
     let total = image_paths.len();
     let total_scanned = image_paths.len();
 
     let mut files_data: Vec<FileData> = Vec::with_capacity(image_paths.len());
     for (idx, path) in image_paths.iter().enumerate() {
+        check_cancelled(cancel)?;
         let meta = match fs::metadata(path) {
             Ok(m) => m,
             Err(e) => {
@@ -202,15 +235,19 @@ where
             .unwrap_or(0);
         let size = meta.len();
 
-        let sha256 = match compute_sha256(path) {
+        let sha256 = match compute_sha256(path, cancel) {
             Ok(h) => h,
             Err(e) => {
+                if is_cancelled_error(e.as_ref()) {
+                    return Err(e);
+                }
                 collect_errors.push(format!("{}: {}", path, e));
                 continue;
             }
         };
 
         let perceptual_hash = if matches!(mode, ScanMode::Similar) {
+            check_cancelled(cancel)?;
             compute_perceptual_hash(path).ok()
         } else {
             None
@@ -227,6 +264,7 @@ where
         if progress % 10 == 0 || progress == total {
             on_progress(progress, total, "hashing");
         }
+        check_cancelled(cancel)?;
     }
 
     // Stage 1: Exact match by SHA256. Exact mode stops here so the label means
@@ -237,10 +275,12 @@ where
     let mut sha_buckets: std::collections::HashMap<[u8; 32], Vec<usize>> =
         std::collections::HashMap::new();
     for (i, fd) in files_data.iter().enumerate() {
+        check_cancelled(cancel)?;
         sha_buckets.entry(fd.sha256).or_default().push(i);
     }
 
     for (sha, indices) in sha_buckets {
+        check_cancelled(cancel)?;
         if indices.len() < 2 {
             continue;
         }
@@ -274,6 +314,7 @@ where
 
     // Stage 2: Perceptual match by pHash for remaining ungrouped files in
     // Similar mode. Recompressed copies can differ in bytes and size.
+    check_cancelled(cancel)?;
     on_progress(total, total, "grouping");
     let all: Vec<usize> = (0..files_data.len())
         .filter(|i| !used.contains(i))
@@ -281,11 +322,13 @@ where
     let buckets: Vec<Vec<usize>> = vec![all];
 
     for indices in buckets {
+        check_cancelled(cancel)?;
         if indices.len() < 2 {
             continue;
         }
 
         for i in &indices {
+            check_cancelled(cancel)?;
             if used.contains(i) {
                 continue;
             }
@@ -304,6 +347,7 @@ where
             let mut max_dist: u32 = 0;
 
             for j in indices.iter() {
+                check_cancelled(cancel)?;
                 if used.contains(j) || j == i {
                     continue;
                 }
@@ -347,6 +391,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     #[test]
     fn duplicate_grouping() {
@@ -372,6 +417,45 @@ mod tests {
     fn no_duplicates_in_empty() {
         let result = find_duplicates(&[], true, ScanMode::Exact);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn find_duplicates_returns_error_when_cancelled_before_scan() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = AtomicBool::new(true);
+
+        let result = find_duplicates_with_progress_and_cancel(
+            &[dir.path().to_str().unwrap().to_string()],
+            true,
+            ScanMode::Exact,
+            |_, _, _| {},
+            &cancel,
+        );
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("cancelled"));
+    }
+
+    #[test]
+    fn find_duplicates_returns_error_when_cancelled_during_scan() {
+        use image::RgbaImage;
+        let dir = tempfile::tempdir().unwrap();
+        let photo = dir.path().join("photo.png");
+        let img: RgbaImage =
+            image::ImageBuffer::from_fn(4, 4, |_x, _y| image::Rgba([200, 200, 200, 255]));
+        img.save(&photo).unwrap();
+        let cancel = AtomicBool::new(false);
+
+        let result = find_duplicates_with_progress_and_cancel(
+            &[dir.path().to_str().unwrap().to_string()],
+            true,
+            ScanMode::Exact,
+            |_, _, _| cancel.store(true, Ordering::SeqCst),
+            &cancel,
+        );
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("cancelled"));
     }
 
     #[test]
