@@ -37,6 +37,7 @@ pub fn run() {
             commands::compress::preview_compress,
             commands::convert::convert_images,
             commands::dedupe::find_duplicates,
+            commands::dedupe::cancel_dedupe_scan,
             commands::delete::delete_files,
             commands::gif::export_gif,
             commands::gif::cancel_gif_export,

@@ -2,9 +2,10 @@ use image::codecs::png::{CompressionType, FilterType, PngEncoder};
 use image::ImageEncoder;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::io::Cursor;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::core::image_io::{
     checked_size, decode_rgb, ext_lowercase, open_image, read_file_mmap_or_default,
@@ -612,6 +613,17 @@ pub fn resolve_output_path(
     output_dir: Option<&str>,
     suffix: &str,
 ) -> Result<String, String> {
+    let mut reserved = HashSet::new();
+    resolve_output_path_reserved(path, fmt, output_dir, suffix, &mut reserved)
+}
+
+fn resolve_output_path_reserved(
+    path: &str,
+    fmt: &OutputFormat,
+    output_dir: Option<&str>,
+    suffix: &str,
+    reserved: &mut HashSet<PathBuf>,
+) -> Result<String, String> {
     crate::core::paths::validate_output_suffix(suffix)?;
     let input = Path::new(path);
     let stem = input
@@ -639,10 +651,45 @@ pub fn resolve_output_path(
         None => None,
     };
     let out_base: &Path = canonical_dir.as_deref().unwrap_or(parent);
-    Ok(out_base
-        .join(format!("{stem}{suffix}.{ext}"))
-        .to_string_lossy()
-        .to_string())
+    first_available_path(&out_base.join(format!("{stem}{suffix}.{ext}")), reserved)
+        .to_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Invalid output path".to_string())
+}
+
+fn first_available_path(base: &Path, reserved: &mut HashSet<PathBuf>) -> PathBuf {
+    if !base.exists() && reserved.insert(base.to_path_buf()) {
+        return base.to_path_buf();
+    }
+
+    let parent = base.parent().unwrap_or_else(|| Path::new("."));
+    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+    let ext = base.extension().and_then(|e| e.to_str()).unwrap_or("jpg");
+    let mut n = 2;
+    loop {
+        let candidate = parent.join(format!("{stem}_{n}.{ext}"));
+        if !candidate.exists() && reserved.insert(candidate.clone()) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
+fn resolve_batch_output_paths(
+    paths: &[String],
+    format: Option<OutputFormat>,
+    output_dir: Option<&str>,
+    suffix: &str,
+) -> Vec<Result<(OutputFormat, String), String>> {
+    let mut reserved = HashSet::new();
+    paths
+        .iter()
+        .map(|path| {
+            let fmt = format.unwrap_or_else(|| detect_format(path));
+            resolve_output_path_reserved(path, &fmt, output_dir, suffix, &mut reserved)
+                .map(|output| (fmt, output))
+        })
+        .collect()
 }
 
 pub fn compress_batch(
@@ -655,6 +702,7 @@ pub fn compress_batch(
 ) -> Vec<CompressionResult> {
     let num_paths = paths.len();
     let num_cores = rayon::current_num_threads();
+    let outputs = resolve_batch_output_paths(paths, format, output_dir, suffix);
 
     // Adaptive parallelism: use parallel only when batch is large enough to justify thread overhead.
     // Threshold of 8 was chosen based on typical thread pool steal cost vs parallel work.
@@ -662,12 +710,14 @@ pub fn compress_batch(
     if num_paths >= 8 && num_cores > 1 {
         paths
             .par_iter()
-            .map(|path| compress_single(path, format, output_dir, suffix, preset, strip_gps))
+            .zip(outputs.into_par_iter())
+            .map(|(path, output)| compress_single(path, output, preset, strip_gps))
             .collect()
     } else {
         paths
             .iter()
-            .map(|path| compress_single(path, format, output_dir, suffix, preset, strip_gps))
+            .zip(outputs)
+            .map(|(path, output)| compress_single(path, output, preset, strip_gps))
             .collect()
     }
 }
@@ -675,17 +725,14 @@ pub fn compress_batch(
 /// Compress a single file (extracted for reuse in both parallel and sequential paths).
 fn compress_single(
     path: &str,
-    format: Option<OutputFormat>,
-    output_dir: Option<&str>,
-    suffix: &str,
+    output: Result<(OutputFormat, String), String>,
     preset: QualityPreset,
     strip_gps: bool,
 ) -> CompressionResult {
     if let Err(e) = crate::core::paths::validate_input_path(path, false) {
         return CompressionResult::err(path, e);
     }
-    let fmt = format.unwrap_or_else(|| detect_format(path));
-    let output = match resolve_output_path(path, &fmt, output_dir, suffix) {
+    let (fmt, output) = match output {
         Ok(o) => o,
         Err(e) => return CompressionResult::err(path, e),
     };
@@ -833,6 +880,64 @@ mod tests {
         assert!(results[0].error.is_none());
         assert!(results[0].compressed_size > 0);
         assert!(results[1].error.is_some());
+    }
+
+    #[test]
+    fn compress_batch_does_not_clobber_existing_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("photo.jpg");
+        let existing = dir.path().join("photo_compressed.jpg");
+        let expected = dir.path().join("photo_compressed_2.jpg");
+        create_test_jpeg(input.to_str().unwrap(), 100, 100, 95.0);
+        fs::write(&existing, b"existing").unwrap();
+
+        let paths = vec![input.to_string_lossy().to_string()];
+        let results = compress_batch(
+            &paths,
+            QualityPreset::Balanced,
+            None,
+            None,
+            "_compressed",
+            false,
+        );
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].error.is_none());
+        assert_eq!(Path::new(&results[0].output_path), expected);
+        assert_eq!(fs::read(&existing).unwrap(), b"existing");
+        assert!(expected.exists());
+    }
+
+    #[test]
+    fn compress_batch_avoids_output_collisions_within_batch() {
+        let dir = tempfile::tempdir().unwrap();
+        let input_a = dir.path().join("a").join("photo.jpg");
+        let input_b = dir.path().join("b").join("photo.jpg");
+        std::fs::create_dir_all(input_a.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(input_b.parent().unwrap()).unwrap();
+        create_test_jpeg(input_a.to_str().unwrap(), 100, 100, 95.0);
+        create_test_jpeg(input_b.to_str().unwrap(), 100, 100, 95.0);
+
+        let paths = vec![
+            input_a.to_string_lossy().to_string(),
+            input_b.to_string_lossy().to_string(),
+        ];
+        let results = compress_batch(
+            &paths,
+            QualityPreset::Balanced,
+            None,
+            Some(dir.path().to_str().unwrap()),
+            "_compressed",
+            false,
+        );
+
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(|r| r.error.is_none()));
+        assert_ne!(results[0].output_path, results[1].output_path);
+        assert!(results[0].output_path.ends_with("photo_compressed.jpg"));
+        assert!(results[1].output_path.ends_with("photo_compressed_2.jpg"));
+        assert!(Path::new(&results[0].output_path).exists());
+        assert!(Path::new(&results[1].output_path).exists());
     }
 
     #[test]
