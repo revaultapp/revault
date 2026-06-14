@@ -7,9 +7,10 @@
     icon?: ComponentType;
   }
 
-  let { segments, selected = $bindable() }: {
+  let { segments, selected = $bindable(), onselect }: {
     segments: readonly Segment[];
     selected: string;
+    onselect?: (id: string) => void;
   } = $props();
 
   // Refs for each button so we can measure widths/offsets
@@ -32,6 +33,11 @@
     pillLeft = btnRect.left - containerRect.left;
     pillWidth = btnRect.width;
     measured = true;
+  }
+
+  function selectSegment(id: string) {
+    selected = id;
+    onselect?.(id);
   }
 
   // Re-measure whenever `selected` changes or on mount
@@ -57,7 +63,7 @@
       class="segment"
       class:segment--active={selected === segment.id}
       bind:this={buttonEls[i]}
-      onclick={() => { selected = segment.id; }}
+      onclick={() => selectSegment(segment.id)}
       type="button"
     >
       {#if segment.icon}

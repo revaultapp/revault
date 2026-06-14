@@ -3,11 +3,11 @@
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
-  import { Trash2, FolderOpen, Search, ChevronDown, ChevronRight, FolderSearch } from "lucide-svelte";
+  import { Trash2, FolderOpen, Search, ChevronDown, ChevronRight, FolderSearch, CircleX } from "lucide-svelte";
   import ProgressRing from "./ProgressRing.svelte";
   import Button from "./Button.svelte";
   import SegmentedControl from "./SegmentedControl.svelte";
-  import { duplicateGroups, isScanning, totalFound, scanError, scanForDuplicates, clearResults, scanProgress, scanMode, setMode } from "$lib/stores/dedupe";
+  import { duplicateGroups, isScanning, totalFound, scanError, scanForDuplicates, cancelScan, clearResults, scanProgress, scanMode, setMode } from "$lib/stores/dedupe";
   import { formatBytes } from "$lib/utils";
   import { activity } from "$lib/stores/activity";
 
@@ -20,12 +20,6 @@
 
   $effect(() => {
     modeSelection = $scanMode;
-  });
-
-  $effect(() => {
-    if (modeSelection !== $scanMode) {
-      setMode(modeSelection as "exact" | "similar");
-    }
   });
 
   let selectedFolders = $state<string[]>([]);
@@ -118,6 +112,14 @@
     }
   }
 
+  function handleModeSelect(mode: string) {
+    setMode(mode as "exact" | "similar");
+  }
+
+  async function stopScan() {
+    await cancelScan();
+  }
+
   function toggleGroup(hash: string) {
     if (expandedGroups.has(hash)) {
       expandedGroups.delete(hash);
@@ -167,7 +169,7 @@
       </div>
       <h2 class="drop-title">Add folders to scan for duplicates</h2>
       <p class="drop-subtitle">Drop folders here or click to browse</p>
-      <SegmentedControl segments={modeSegments} bind:selected={modeSelection} />
+      <SegmentedControl segments={modeSegments} bind:selected={modeSelection} onselect={handleModeSelect} />
       <Button onclick={browseFolders} aria-label="Choose folders to scan">
         <FolderOpen size={16} />
         Choose folders
@@ -183,6 +185,12 @@
         ? `${$scanProgress.current} / ${$scanProgress.total} files`
         : `${selectedFolders.length} folder${selectedFolders.length > 1 ? "s" : ""}`}
     />
+    <div class="scanning-actions">
+      <Button variant="ghost" danger onclick={stopScan} aria-label="Cancel duplicate scan">
+        <CircleX size={14} />
+        Cancel
+      </Button>
+    </div>
   </div>
 {:else if $duplicateGroups.length === 0}
   <div class="empty-view">
@@ -191,7 +199,7 @@
       <p class="no-dupes-title">No duplicates found</p>
       <p class="no-dupes-sub">Try adding more folders or rescanning</p>
       <div class="folders-added">
-        {#each selectedFolders as folder}
+        {#each selectedFolders as folder (folder)}
           <span class="folder-chip">
             <FolderOpen size={12} />
             {folderName(folder)}
@@ -234,8 +242,8 @@
     </div>
 
     <div class="folders-bar">
-      <SegmentedControl segments={modeSegments} bind:selected={modeSelection} />
-      {#each selectedFolders as folder}
+      <SegmentedControl segments={modeSegments} bind:selected={modeSelection} onselect={handleModeSelect} />
+      {#each selectedFolders as folder (folder)}
         <span class="folder-chip">
           <FolderOpen size={12} />
           {folderName(folder)}
@@ -251,7 +259,7 @@
     </div>
 
     <div class="groups-list">
-      {#each visibleGroups as group, i}
+      {#each visibleGroups as group (group.hash)}
         {@const sortedFiles = [...group.files].sort((a, b) => b.size - a.size)}
         {@const wasted = sortedFiles.slice(1).reduce((a, f) => a + f.size, 0)}
         {@const isExpanded = expandedGroups.has(group.hash)}
@@ -277,7 +285,7 @@
 
           {#if isExpanded}
             <div class="group-files">
-              {#each sortedFiles as file, fi}
+              {#each sortedFiles as file, fi (file.path)}
                 {@const isDeleted = deletedPaths.has(file.path)}
                 <div class="dup-file" class:original={fi === 0} class:deleted={isDeleted}>
                   <div class="dup-info">
@@ -352,9 +360,16 @@
 
   .scanning-view {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 18px;
     height: 100%;
+  }
+
+  .scanning-actions {
+    display: flex;
+    justify-content: center;
   }
 
   .results-view {

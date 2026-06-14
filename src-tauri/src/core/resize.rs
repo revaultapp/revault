@@ -3,9 +3,10 @@ use fast_image_resize::{ResizeAlg, ResizeOptions, Resizer};
 use image::DynamicImage;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::io::Cursor;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 
 use crate::core::compression::{
@@ -197,37 +198,74 @@ pub fn resize_batch(
         },
         None => None,
     };
+
+    let outputs = build_output_paths(paths, canonical_output_dir.as_deref(), suffix);
     paths
         .par_iter()
-        .map(|path| {
-            let input = Path::new(path.as_str());
-            let stem = match input.file_stem().and_then(|s| s.to_str()) {
-                Some(s) => s,
-                None => return ResizeResult::err(path, format!("invalid filename: {path}")),
+        .zip(outputs.into_par_iter())
+        .map(|(path, output)| {
+            let output = match output {
+                Ok(output) => output,
+                Err(e) => return ResizeResult::err(path, e),
             };
-            let ext = ext_lowercase(path).unwrap_or_else(|| "jpg".to_string());
-            let parent = match input.parent() {
-                Some(p) => p,
-                None => return ResizeResult::err(path, format!("invalid path: {path}")),
-            };
-
-            let out_base: &Path = canonical_output_dir.as_deref().unwrap_or(parent);
-            let output = out_base.join(format!("{stem}{suffix}.{ext}"));
-
-            match resize_image(
-                path,
-                &output.to_string_lossy(),
-                width,
-                height,
-                &mode,
-                quality,
-                strip_gps,
-            ) {
+            match resize_image(path, &output, width, height, &mode, quality, strip_gps) {
                 Ok(r) => r,
                 Err(e) => ResizeResult::err(path, e.to_string()),
             }
         })
         .collect()
+}
+
+fn build_output_paths(
+    paths: &[String],
+    output_dir: Option<&Path>,
+    suffix: &str,
+) -> Vec<Result<String, String>> {
+    let mut reserved = HashSet::new();
+    paths
+        .iter()
+        .map(|path| build_output_path(path, output_dir, suffix, &mut reserved))
+        .collect()
+}
+
+fn build_output_path(
+    path: &str,
+    output_dir: Option<&Path>,
+    suffix: &str,
+    reserved: &mut HashSet<PathBuf>,
+) -> Result<String, String> {
+    let input = Path::new(path);
+    let stem = input
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| format!("invalid filename: {path}"))?;
+    let ext = ext_lowercase(path).unwrap_or_else(|| "jpg".to_string());
+    let parent = input
+        .parent()
+        .ok_or_else(|| format!("invalid path: {path}"))?;
+    let out_base = output_dir.unwrap_or(parent);
+    first_available_path(&out_base.join(format!("{stem}{suffix}.{ext}")), reserved)
+        .to_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Invalid output path".to_string())
+}
+
+fn first_available_path(base: &Path, reserved: &mut HashSet<PathBuf>) -> PathBuf {
+    if !base.exists() && reserved.insert(base.to_path_buf()) {
+        return base.to_path_buf();
+    }
+
+    let parent = base.parent().unwrap_or_else(|| Path::new("."));
+    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+    let ext = base.extension().and_then(|e| e.to_str()).unwrap_or("jpg");
+    let mut n = 2;
+    loop {
+        let candidate = parent.join(format!("{stem}_{n}.{ext}"));
+        if !candidate.exists() && reserved.insert(candidate.clone()) {
+            return candidate;
+        }
+        n += 1;
+    }
 }
 
 #[cfg(test)]
@@ -296,6 +334,59 @@ mod tests {
         assert!(results[0].error.is_none());
         assert!(results[0].new_width > 0);
         assert!(results[1].error.is_some());
+    }
+
+    #[test]
+    fn resize_batch_does_not_clobber_existing_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("photo.png");
+        let existing = dir.path().join("photo_resized.png");
+        let expected = dir.path().join("photo_resized_2.png");
+        create_test_png(input.to_str().unwrap(), 400, 300);
+        fs::write(&existing, b"existing").unwrap();
+
+        let paths = vec![input.to_string_lossy().to_string()];
+        let results = resize_batch(&paths, 200, 150, ResizeMode::Fit, None, None, false, None);
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].error.is_none());
+        assert_eq!(Path::new(&results[0].output_path), expected);
+        assert_eq!(fs::read(&existing).unwrap(), b"existing");
+        assert!(expected.exists());
+    }
+
+    #[test]
+    fn resize_batch_avoids_output_collisions_within_batch() {
+        let dir = tempfile::tempdir().unwrap();
+        let input_a = dir.path().join("a").join("photo.png");
+        let input_b = dir.path().join("b").join("photo.png");
+        std::fs::create_dir_all(input_a.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(input_b.parent().unwrap()).unwrap();
+        create_test_png(input_a.to_str().unwrap(), 400, 300);
+        create_test_png(input_b.to_str().unwrap(), 400, 300);
+
+        let paths = vec![
+            input_a.to_string_lossy().to_string(),
+            input_b.to_string_lossy().to_string(),
+        ];
+        let results = resize_batch(
+            &paths,
+            200,
+            150,
+            ResizeMode::Fit,
+            None,
+            Some(dir.path().to_str().unwrap()),
+            false,
+            None,
+        );
+
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(|r| r.error.is_none()));
+        assert_ne!(results[0].output_path, results[1].output_path);
+        assert!(results[0].output_path.ends_with("photo_resized.png"));
+        assert!(results[1].output_path.ends_with("photo_resized_2.png"));
+        assert!(Path::new(&results[0].output_path).exists());
+        assert!(Path::new(&results[1].output_path).exists());
     }
 
     #[test]
