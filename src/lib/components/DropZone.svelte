@@ -13,6 +13,7 @@
     filePickerName = "Images",
     filePickerExtensions = [...IMAGE_EXTENSIONS] as string[],
     dropTitle = "Drop images here",
+    onrejectedfiles,
   }: {
     onfiles: (paths: string[]) => void;
     acceptedExtensions?: RegExp;
@@ -20,6 +21,7 @@
     filePickerName?: string;
     filePickerExtensions?: string[];
     dropTitle?: string;
+    onrejectedfiles?: (paths: string[]) => void;
   } = $props();
 
   let isDragging = $state(false);
@@ -35,7 +37,17 @@
         isDragging = true;
       } else if (event.payload.type === "drop") {
         isDragging = false;
-        const paths = event.payload.paths.filter((p) => acceptedExtensions.test(p));
+        const paths: string[] = [];
+        const rejected: string[] = [];
+        for (const path of event.payload.paths) {
+          acceptedExtensions.lastIndex = 0;
+          if (acceptedExtensions.test(path)) {
+            paths.push(path);
+          } else {
+            rejected.push(path);
+          }
+        }
+        if (rejected.length > 0) onrejectedfiles?.(rejected);
         if (paths.length > 0) {
           isInvalid = false;
           clearTimeout(invalidTimer);
@@ -107,7 +119,7 @@
     <p class="drop-title">{dropTitle}</p>
     <p class="drop-sub">or click to browse</p>
     <div class="format-tags">
-      {#each formatTags as tag}
+      {#each formatTags as tag (tag)}
         <span class="tag">{tag}</span>
       {/each}
     </div>
