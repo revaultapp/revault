@@ -23,6 +23,7 @@ export interface FindDuplicatesResult {
 }
 
 export interface ScanProgress {
+  request_id?: number;
   current: number;
   total: number;
   phase: string;
@@ -53,12 +54,12 @@ export async function scanForDuplicates(paths: string[], recursive = true) {
 
   // Listen for progress events from Rust — scoped to this call
   let unlisten: (() => void) | null = await listen<ScanProgress>("dedupe-progress", (event) => {
-    if (requestId !== scanRequestId) return;
+    if (requestId !== scanRequestId || event.payload.request_id !== requestId) return;
     scanProgress.set(event.payload);
   });
 
   try {
-    const result = await invoke<FindDuplicatesResult>("find_duplicates", { paths, recursive, mode: get(scanMode) });
+    const result = await invoke<FindDuplicatesResult>("find_duplicates", { paths, recursive, mode: get(scanMode), requestId });
     if (requestId !== scanRequestId) return;
     const total = result.groups.reduce((acc, g) => acc + g.files.length - 1, 0);
     duplicateGroups.set(result.groups);
@@ -72,6 +73,18 @@ export async function scanForDuplicates(paths: string[], recursive = true) {
       scanProgress.set(null);
     }
     unlisten?.();
+  }
+}
+
+export async function cancelScan() {
+  if (!get(isScanning)) return;
+  scanRequestId++;
+  isScanning.set(false);
+  scanProgress.set(null);
+  try {
+    await invoke("cancel_dedupe_scan");
+  } catch (err) {
+    scanError.set(String(err));
   }
 }
 
