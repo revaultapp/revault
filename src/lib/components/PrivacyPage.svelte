@@ -72,6 +72,13 @@
     toastTimer = setTimeout(() => { showToast = false; }, 3000);
   }
 
+  function showToastMessage(message: string) {
+    toastMessage = message;
+    showToast = true;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { showToast = false; }, 3000);
+  }
+
   async function browseFiles() {
     const selected = await open({
       multiple: true,
@@ -126,6 +133,14 @@
     runWithConcurrency(newFiles, scanFile);
   }
 
+  function handleRejectedFiles(paths: string[]) {
+    showToastMessage(
+      paths.length === 1
+        ? "1 unsupported file skipped"
+        : `${paths.length} unsupported files skipped`
+    );
+  }
+
   interface StripOpts { gps: boolean; device: boolean; datetime: boolean; author: boolean; }
 
   async function stripFile(file: PrivacyFile, opts: StripOpts): Promise<void> {
@@ -167,10 +182,7 @@
     if (currentFiles.length === 0) return;
     const opts: StripOpts = { gps: $stripGps, device: $stripDevice, datetime: $stripDatetime, author: $stripAuthor };
     if (!opts.gps && !opts.device && !opts.datetime && !opts.author) {
-      toastMessage = "Select at least one metadata category to strip";
-      showToast = true;
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => { showToast = false; }, 3000);
+      showToastMessage("Select at least one metadata category to strip");
       return;
     }
     isProcessing.set(true);
@@ -228,6 +240,7 @@
   {targetPct}
   progressLabel="{$summary.stripped + $summary.failed} of {$files.length} files"
   onfiles={handleAddFiles}
+  onrejectedfiles={handleRejectedFiles}
   onbrowse={browseFiles}
   onclear={clearFiles}
   dropZoneAcceptedExtensions={PRIVACY_SUPPORTED_RE}
