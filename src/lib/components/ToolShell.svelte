@@ -20,6 +20,7 @@
     progressLabel: string;
     progressSublabel?: string;
     onfiles: (paths: string[]) => void;
+    onrejectedfiles?: (paths: string[]) => void;
     onbrowse: () => void;
     onclear: () => void;
     dropZoneTitle?: string;
@@ -50,6 +51,7 @@
     progressLabel,
     progressSublabel,
     onfiles,
+    onrejectedfiles,
     onbrowse,
     onclear,
     actionLabel,
@@ -103,6 +105,7 @@
   <div out:fade={{ duration: rm ? 0 : 150 }}>
     <DropZone
       {onfiles}
+      {onrejectedfiles}
       dropTitle={dropZoneTitle}
       formatTags={dropZoneFormatTags}
       acceptedExtensions={dropZoneAcceptedExtensions}

@@ -34,15 +34,18 @@ export const summary = derived(files, ($f) => ({
 export function addFiles(paths: string[]) {
   files.update((curr) => {
     const existing = new Set(curr.map((f) => f.path));
+    const newPaths = paths.filter((p) => {
+      if (existing.has(p)) return false;
+      existing.add(p);
+      return true;
+    });
     return [
       ...curr,
-      ...paths
-        .filter((p) => !existing.has(p))
-        .map((p) => ({
-          path: p,
-          name: p.split(/[\\/]/).pop() ?? p,
-          status: "pending" as const,
-        })),
+      ...newPaths.map((p) => ({
+        path: p,
+        name: p.split(/[\\/]/).pop() ?? p,
+        status: "pending" as const,
+      })),
     ];
   });
 }
