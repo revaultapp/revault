@@ -1,0 +1,18 @@
+# Build artifacts — never read these
+src-tauri/target/
+node_modules/
+.svelte-kit/
+dist/
+
+# Test assets (images/videos can be huge)
+static/test-images/
+static/test-videos/
+
+# Generated
+src/lib/generated/
+
+# Cargo registry
+.cargo/registry/
+
+# Claude logs
+.claude/logs/

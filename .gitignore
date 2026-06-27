@@ -30,6 +30,8 @@ estructura-profesional-proyecto-gestion-optimizacion-imagenes-documentos.md
 pencil-wireframe-prompts.md
 *.pen
 
+# Claude Code logs
+.claude/logs/
 
 /static
 specs_images
