@@ -759,7 +759,8 @@ pub(crate) fn compress_jpeg_data(
 
     // Downsample if largest dimension exceeds 1920px (covers 300 DPI scans)
     let img = {
-        let (w, h) = (img.width(), img.height());
+        let w = img.width();
+        let h = img.height();
         if w > 1920 || h > 1920 {
             let scale = 1920.0 / w.max(h) as f32;
             let nw = (w as f32 * scale) as u32;
@@ -771,12 +772,12 @@ pub(crate) fn compress_jpeg_data(
     };
 
     let rgb = img.to_rgb8();
-    let (w, h) = rgb.dimensions();
 
     // Use mozjpeg on non-Windows, image crate on Windows
     #[cfg(not(target_os = "windows"))]
     {
         use std::panic::catch_unwind;
+        let (w, h) = rgb.dimensions();
         let pixels = rgb.into_raw();
         let encoded = catch_unwind(|| -> Result<Vec<u8>, Box<dyn std::error::Error>> {
             let mut comp = mozjpeg::Compress::new(mozjpeg::ColorSpace::JCS_RGB);
@@ -798,8 +799,9 @@ pub(crate) fn compress_jpeg_data(
 
     #[cfg(target_os = "windows")]
     {
+        use image::codecs::jpeg::JpegEncoder;
         let mut buf = Vec::new();
-        rgb.write_to(&mut Cursor::new(&mut buf), image::ImageFormat::Jpeg)?;
+        JpegEncoder::new_with_quality(&mut buf, quality as u8).encode_image(&rgb)?;
         if buf.len() < data.len() {
             Ok(buf)
         } else {
