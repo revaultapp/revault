@@ -188,8 +188,10 @@ pub fn decode_heic(input_path: &str) -> Result<image::DynamicImage, Box<dyn std:
     platform::decode(input_path)
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub(crate) const HEIC_MAX_DIMENSION: u32 = 8192;
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub(crate) fn check_dimensions(width: u32, height: u32) -> Result<(), Box<dyn std::error::Error>> {
     if width > HEIC_MAX_DIMENSION || height > HEIC_MAX_DIMENSION {
         return Err(format!(
@@ -201,7 +203,7 @@ pub(crate) fn check_dimensions(width: u32, height: u32) -> Result<(), Box<dyn st
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(target_os = "macos", target_os = "windows")))]
 mod tests {
     use super::*;
 
