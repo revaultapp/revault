@@ -106,15 +106,15 @@ https://ffmpeg.org/legal.html
 
 ## Rust Crate Dependencies
 
-All Rust crates compiled into the ReVault binary are MIT or Apache-2.0 licensed,
-both of which are compatible with ReVault's MIT license. A complete machine-readable
+All Rust crates compiled into the ReVault binary use permissive or file-level
+copyleft licenses compatible with ReVault's MIT license. A complete machine-readable
 list is available via:
 
 ```bash
 cd src-tauri && cargo license
 ```
 
-Notable crates with non-MIT licenses (all permissive and compatible):
+Notable crates with non-MIT licenses (all compatible):
 
 | Crate | License | Notes |
 |-------|---------|-------|
@@ -122,6 +122,8 @@ Notable crates with non-MIT licenses (all permissive and compatible):
 | `oxipng` | MIT | PNG optimization |
 | `ravif` | MIT/Apache-2.0 | AVIF encoding |
 | `rayon` | MIT/Apache-2.0 | CPU parallelism |
+| `cssparser`, `selectors`, `dtoa-short`, `option-ext` | MPL-2.0 | Transitive deps of WebKitGTK (Linux only). MPL-2.0 is file-level copyleft — only modifications to these source files must be shared under MPL-2.0. No effect on ReVault's MIT license. |
+| `r-efi` | MIT OR Apache-2.0 OR LGPL-2.1+ | Used under MIT. |
 
 ---
 
