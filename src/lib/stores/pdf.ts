@@ -82,9 +82,10 @@ export async function processPdfs(
       stripMetadata: strip,
       compressStreams: compress,
     });
+    const byPath = new Map(results.map((r) => [r.input_path, r]));
     files.update((curr) =>
       curr.map((f) => {
-        const r = results.find((res) => res.input_path === f.path);
+        const r = byPath.get(f.path);
         if (!r) return f;
         if (r.error) return { ...f, status: "error" as const, error: r.error };
         return {

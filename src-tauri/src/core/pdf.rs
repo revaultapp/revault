@@ -6,9 +6,6 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
-#[allow(dead_code)]
-pub const PDF_EXTENSIONS: &[&str] = &["pdf"];
-
 #[derive(Debug, Clone, Serialize)]
 pub struct PdfResult {
     pub input_path: String,

@@ -33,10 +33,6 @@
     addFiles(newPaths);
   }
 
-  function handleRejectedFiles(_paths: string[]) {
-    // PDF-only — silently ignore non-PDF drops
-  }
-
   async function startProcess() {
     if ($files.length === 0) return;
     await processPdfs($resolvedOutputDir, $stripMetadata, $compressStreams);
@@ -79,7 +75,6 @@
   {targetPct}
   progressLabel="{$summary.done + $summary.failed} of {$files.length} files"
   onfiles={handleAddFiles}
-  onrejectedfiles={handleRejectedFiles}
   onbrowse={browseFiles}
   onclear={clearFiles}
   dropZoneAcceptedExtensions={PDF_SUPPORTED_RE}
