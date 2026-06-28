@@ -1,4 +1,4 @@
-import { writable, derived } from "svelte/store";
+import { writable, derived, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { BaseFile } from "$lib/types";
 import { persisted } from "$lib/utils";
@@ -75,11 +75,7 @@ export async function processPdfs(
   isProcessing.set(true);
   files.update((curr) => curr.map((f) => ({ ...f, status: "processing" as const })));
   try {
-    const paths = (() => {
-      let result: string[] = [];
-      files.subscribe((f) => (result = f.map((x) => x.path)))();
-      return result;
-    })();
+    const paths = get(files).map((f) => f.path);
     const results = await invoke<PdfResult[]>("process_pdfs", {
       paths,
       outputDir: outDir,
