@@ -72,9 +72,12 @@ jobs:
         working-directory: src-tauri
         run: cargo audit
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@cargo-nextest
+
       - name: Rust tests (ubuntu)
         working-directory: src-tauri
-        run: cargo test --workspace
+        run: cargo nextest run --workspace
 
   # Runs cargo test on macOS and Windows in parallel with quality.
   # These catch platform-specific behaviour (native HEIC, WIC, file paths).
@@ -103,6 +106,9 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --workspace -- -D warnings
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@cargo-nextest
+
       - name: Rust tests
         working-directory: src-tauri
-        run: cargo test --workspace
+        run: cargo nextest run --workspace
