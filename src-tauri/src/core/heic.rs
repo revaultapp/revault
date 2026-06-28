@@ -50,6 +50,8 @@ mod platform {
         let bits_per_pixel = cg_image.bits_per_pixel();
         let bytes_per_pixel = bits_per_pixel / 8;
 
+        crate::core::heic::check_dimensions(width, height)?;
+
         if width == 0 || height == 0 {
             return Err("image has zero width or height".into());
         }
@@ -161,6 +163,8 @@ mod platform {
             let (mut width, mut height) = (0u32, 0u32);
             converted.GetSize(&mut width, &mut height)?;
 
+            crate::core::heic::check_dimensions(width, height)?;
+
             let stride = width * 3;
             let buf_size = (stride * height) as usize;
             let mut pixels = vec![0u8; buf_size];
@@ -182,4 +186,46 @@ mod platform {
 
 pub fn decode_heic(input_path: &str) -> Result<image::DynamicImage, Box<dyn std::error::Error>> {
     platform::decode(input_path)
+}
+
+pub(crate) const HEIC_MAX_DIMENSION: u32 = 8192;
+
+pub(crate) fn check_dimensions(width: u32, height: u32) -> Result<(), Box<dyn std::error::Error>> {
+    if width > HEIC_MAX_DIMENSION || height > HEIC_MAX_DIMENSION {
+        return Err(format!(
+            "HEIC dimensions {}x{} exceed maximum {}x{}",
+            width, height, HEIC_MAX_DIMENSION, HEIC_MAX_DIMENSION
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dimension_check_rejects_oversized_width() {
+        let err = check_dimensions(9000, 100).unwrap_err();
+        assert!(
+            err.to_string().contains("exceed maximum"),
+            "expected 'exceed maximum' in: {err}"
+        );
+    }
+
+    #[test]
+    fn dimension_check_rejects_oversized_height() {
+        let err = check_dimensions(100, 100_000).unwrap_err();
+        assert!(
+            err.to_string().contains("exceed maximum"),
+            "expected 'exceed maximum' in: {err}"
+        );
+    }
+
+    #[test]
+    fn dimension_check_accepts_boundary() {
+        assert!(check_dimensions(8192, 8192).is_ok());
+        assert!(check_dimensions(1, 1).is_ok());
+    }
 }
