@@ -43,6 +43,7 @@ ureq = { version = "3", default-features = false, features = ["rustls"] }
 flate2 = "1"
 tar = "0.4"
 zip = { version = "8", default-features = false, features = ["deflate"] }
+lopdf = "0.42"
 
 # mozjpeg: enable SIMD (nasm_simd) on macOS/Linux; skip on Windows where nasm is unavailable
 [target.'cfg(not(target_os = "windows"))'.dependencies]

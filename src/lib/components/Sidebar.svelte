@@ -1,7 +1,7 @@
 <script lang="ts">
   import {
     Compass, Zap, ScanSearch,
-    Shield, Film,
+    Shield, Film, FileText,
     Settings, Database
   } from "lucide-svelte";
   import { Tween, Spring } from 'svelte/motion';
@@ -17,6 +17,7 @@
     { icon: ScanSearch, id: "duplicates", label: "Duplicates" },
     { icon: Shield, id: "privacy", label: "Privacy" },
     { icon: Film, id: "video", label: "Video" },
+    { icon: FileText, id: "pdf", label: "PDF" },
   ];
 
   // Savings counter animation
