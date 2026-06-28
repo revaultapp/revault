@@ -68,6 +68,10 @@ export function clearFiles() {
   isProcessing.set(false);
 }
 
+export async function revealPdfOutput(path: string): Promise<void> {
+  await invoke("reveal_pdf_output", { path });
+}
+
 export async function processPdfs(
   outDir: string | null,
   strip: boolean,

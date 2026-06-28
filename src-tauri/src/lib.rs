@@ -58,6 +58,7 @@ pub fn run() {
             commands::video::check_ffmpeg,
             commands::video::download_ffmpeg,
             commands::pdf::process_pdfs,
+            commands::pdf::reveal_pdf_output,
             commands::video::reveal_video_output,
         ])
         .run(tauri::generate_context!())

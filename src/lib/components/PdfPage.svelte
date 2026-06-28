@@ -3,14 +3,19 @@
   import { CircleCheck, CircleAlert, X, FolderOpen } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
   import ToggleSwitch from "./ToggleSwitch.svelte";
+  import PrivacyToast from "./PrivacyToast.svelte";
   import { browseOutputDir, formatBytes } from "$lib/utils";
   import { activity } from "$lib/stores/activity";
   import {
     files, isProcessing, summary, outputDir, stripMetadata, compressStreams,
     compressImages,
     resolvedOutputDir, addFiles, removeFile, clearFiles, processPdfs,
-    type PdfFile,
+    revealPdfOutput, type PdfFile,
   } from "$lib/stores/pdf";
+
+  let showToast = $state(false);
+  let toastMessage = $state("");
+  let toastTimer: ReturnType<typeof setTimeout>;
 
   const PDF_SUPPORTED_EXTENSIONS = ["pdf"] as const;
   const PDF_SUPPORTED_RE = /\.pdf$/i;
@@ -34,6 +39,13 @@
     addFiles(newPaths);
   }
 
+  function showPrivacyToast(count: number) {
+    toastMessage = count === 1 ? "Metadata removed from 1 file" : `Metadata removed from ${count} files`;
+    showToast = true;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { showToast = false; }, 3000);
+  }
+
   async function startProcess() {
     if ($files.length === 0) return;
     await processPdfs($resolvedOutputDir, $stripMetadata, $compressStreams, $compressImages);
@@ -46,6 +58,7 @@
         return acc;
       }, 0);
       activity.add({ type: "compress", fileCount: doneCount, savedBytes });
+      if ($stripMetadata) showPrivacyToast(doneCount);
     }
   }
 
@@ -102,7 +115,14 @@
 
   {#snippet fileStatus(file)}
     {#if file.status === "done"}
-      <CircleCheck size={18} />
+      <div class="done-actions">
+        {#if file.outputPath}
+          <button class="btn-icon reveal-btn" aria-label="Reveal in file manager" onclick={() => revealPdfOutput(file.outputPath!)}>
+            <FolderOpen size={16} />
+          </button>
+        {/if}
+        <CircleCheck size={18} />
+      </div>
     {:else if file.status === "error"}
       <CircleAlert size={18} />
     {:else}
@@ -129,6 +149,8 @@
   </div>
 </ToolShell>
 
+<PrivacyToast visible={showToast} message={toastMessage} />
+
 <style>
   .pdf-options {
     display: flex;
@@ -153,5 +175,22 @@
     font-size: 11px;
     color: var(--text-muted);
     margin-left: 4px;
+  }
+
+  .done-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .done-actions .reveal-btn {
+    padding: 4px;
+    border-radius: 4px;
+    color: var(--text-muted);
+    transition: color 0.15s;
+  }
+
+  .done-actions .reveal-btn:hover {
+    color: var(--accent);
   }
 </style>
