@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { fly, slide } from "svelte/transition";
+  import { slide } from "svelte/transition";
   import { Film, Shield, ShieldCheck, Download, Zap, Wifi, CircleCheck, CircleAlert, TriangleAlert, FolderOpen, X, ChevronDown } from "lucide-svelte";
+  import PrivacyToast from "./PrivacyToast.svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import ToolShell from "./ToolShell.svelte";
   import SegmentedControl from "./SegmentedControl.svelte";
@@ -729,14 +730,7 @@
     {/if}
   </ToolShell>
 
-  {#if showPrivacyChip}
-    <div class="privacy-chip-wrap" transition:fly={{ y: -4, duration: 200 }}>
-      <div class="privacy-chip" role="status" aria-live="polite">
-        <ShieldCheck size={14} />
-        <span>{privacyChipText[privacyChipMode](privacyChipCount)}</span>
-      </div>
-    </div>
-  {/if}
+  <PrivacyToast visible={showPrivacyChip} message={privacyChipText[privacyChipMode](privacyChipCount)} />
 {/if}
 
 <style>
@@ -1100,29 +1094,6 @@
   }
 
   .privacy-icon.on { background: var(--accent-subtle); color: var(--accent); }
-
-  /* ── Privacy chip ── */
-  .privacy-chip-wrap {
-    position: fixed;
-    bottom: 24px;
-    right: 28px;
-    z-index: 10;
-    pointer-events: none;
-  }
-
-  .privacy-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--accent);
-    background: rgba(16, 216, 122, 0.15);
-    border: 1px solid rgba(16, 216, 122, 0.35);
-    border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-sm);
-  }
 
   /* ── GIF controls ── */
   .num-input {
