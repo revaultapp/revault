@@ -41,6 +41,7 @@ impl PdfResult {
 pub struct PdfOptions {
     pub strip_metadata: bool,
     pub compress_streams: bool,
+    pub compress_images: bool,
 }
 
 pub fn process_pdf(
@@ -65,6 +66,10 @@ pub fn process_pdf(
                 let _ = s.compress();
             }
         });
+    }
+
+    if opts.compress_images {
+        compress_pdf_images(&mut doc);
     }
 
     let mut buffer = Vec::new();
@@ -158,6 +163,58 @@ pub fn process_batch(
         .collect()
 }
 
+fn compress_pdf_images(doc: &mut Document) -> u32 {
+    let page_ids: Vec<lopdf::ObjectId> = doc.get_pages().values().copied().collect();
+    let mut count = 0u32;
+
+    for page_id in page_ids {
+        let candidates: Vec<(lopdf::ObjectId, Vec<String>)> = match doc.get_page_images(page_id) {
+            Ok(images) => images
+                .iter()
+                .filter_map(|img| {
+                    // Skip CMYK — color space conversion is complex and risky
+                    if let Some(ref cs) = img.color_space {
+                        if cs.contains("CMYK") {
+                            return None;
+                        }
+                    }
+                    // Skip images with SMask (alpha channel)
+                    if img.origin_dict.get(b"SMask").is_ok() {
+                        return None;
+                    }
+                    img.filters.as_ref().map(|f| (img.id, f.clone()))
+                })
+                .filter(|(_, filters)| filters.iter().any(|f| f == "DCTDecode"))
+                .collect(),
+            Err(_) => continue,
+        };
+
+        for (obj_id, _) in candidates {
+            let jpeg_bytes = match doc
+                .objects
+                .get(&obj_id)
+                .and_then(|o| o.as_stream().ok())
+                .map(|s| s.content.clone())
+            {
+                Some(b) => b,
+                None => continue,
+            };
+
+            if let Ok(new_bytes) = crate::core::compression::compress_jpeg_data(&jpeg_bytes, 78.0) {
+                if let Some(obj) = doc.objects.get_mut(&obj_id) {
+                    if let Ok(stream) = obj.as_stream_mut() {
+                        let len = new_bytes.len();
+                        stream.content = new_bytes;
+                        stream.dict.set("Length", Object::Integer(len as i64));
+                        count += 1;
+                    }
+                }
+            }
+        }
+    }
+    count
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,6 +261,7 @@ mod tests {
         let opts = PdfOptions {
             strip_metadata: true,
             compress_streams: false,
+            compress_images: false,
         };
         let result = process_pdf(
             input_path.to_str().unwrap(),
@@ -238,6 +296,7 @@ mod tests {
         let opts = PdfOptions {
             strip_metadata: false,
             compress_streams: true,
+            compress_images: false,
         };
         let result = process_pdf(
             input_path.to_str().unwrap(),
@@ -269,12 +328,39 @@ mod tests {
         let opts = PdfOptions {
             strip_metadata: true,
             compress_streams: false,
+            compress_images: false,
         };
         let results = process_batch(&paths, None, opts);
 
         assert_eq!(results.len(), 2);
         assert!(results[0].error.is_none());
         assert!(results[1].error.is_some());
+    }
+
+    #[test]
+    fn compress_images_option_exists() {
+        let opts = PdfOptions {
+            strip_metadata: false,
+            compress_streams: false,
+            compress_images: true,
+        };
+        assert!(opts.compress_images);
+    }
+
+    #[test]
+    fn compress_images_on_pdf_without_images_succeeds() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("in.pdf");
+        let output = dir.path().join("out.pdf");
+        let data = save_doc(&mut minimal_pdf());
+        fs::write(&input, &data).unwrap();
+        let opts = PdfOptions {
+            strip_metadata: false,
+            compress_streams: false,
+            compress_images: true,
+        };
+        let result = process_pdf(input.to_str().unwrap(), output.to_str().unwrap(), opts).unwrap();
+        assert!(result.error.is_none());
     }
 
     #[test]
@@ -302,6 +388,7 @@ mod tests {
         let opts = PdfOptions {
             strip_metadata: true,
             compress_streams: false,
+            compress_images: false,
         };
         let results = process_batch(&paths, Some(dir.path().to_str().unwrap()), opts);
 

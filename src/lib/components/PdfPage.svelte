@@ -7,6 +7,7 @@
   import { activity } from "$lib/stores/activity";
   import {
     files, isProcessing, summary, outputDir, stripMetadata, compressStreams,
+    compressImages,
     resolvedOutputDir, addFiles, removeFile, clearFiles, processPdfs,
     type PdfFile,
   } from "$lib/stores/pdf";
@@ -35,7 +36,7 @@
 
   async function startProcess() {
     if ($files.length === 0) return;
-    await processPdfs($resolvedOutputDir, $stripMetadata, $compressStreams);
+    await processPdfs($resolvedOutputDir, $stripMetadata, $compressStreams, $compressImages);
     const doneCount = $summary.done;
     if (doneCount > 0) {
       const savedBytes = $files.reduce((acc, f) => {
@@ -116,6 +117,7 @@
     <div class="pdf-options">
       <label><ToggleSwitch bind:checked={$stripMetadata} /> Strip metadata</label>
       <label><ToggleSwitch bind:checked={$compressStreams} /> Compress streams</label>
+      <label><ToggleSwitch bind:checked={$compressImages} /> Compress images <span class="toggle-hint">lossy</span></label>
     </div>
   </div>
   <div class="control-group">
@@ -145,5 +147,11 @@
 
   .size-delta {
     font-variant-numeric: tabular-nums;
+  }
+
+  .toggle-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-left: 4px;
   }
 </style>

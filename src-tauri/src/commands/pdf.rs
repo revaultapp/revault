@@ -6,6 +6,7 @@ pub async fn process_pdfs(
     output_dir: Option<String>,
     strip_metadata: bool,
     compress_streams: bool,
+    compress_images: bool,
 ) -> Result<Vec<pdf::PdfResult>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         Ok(pdf::process_batch(
@@ -14,6 +15,7 @@ pub async fn process_pdfs(
             pdf::PdfOptions {
                 strip_metadata,
                 compress_streams,
+                compress_images,
             },
         ))
     })

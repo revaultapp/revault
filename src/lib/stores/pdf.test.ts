@@ -10,6 +10,7 @@ import {
   removeFile,
   clearFiles,
   resolvedOutputDir,
+  compressImages,
 } from "./pdf";
 import { defaultOutputDir } from "./settings";
 
@@ -90,6 +91,17 @@ describe("pdf store", () => {
     it("returns zeros for empty files", () => {
       const s = get(summary);
       expect(s).toEqual({ done: 0, failed: 0, pending: 0 });
+    });
+  });
+
+  describe("compressImages", () => {
+    it("defaults to false", () => {
+      expect(get(compressImages)).toBe(false);
+    });
+
+    it("can be set to true", () => {
+      compressImages.set(true);
+      expect(get(compressImages)).toBe(true);
     });
   });
 

@@ -27,6 +27,7 @@ export const isProcessing = writable(false);
 export const outputDir = persisted<string | null>("revault-pdf-outputDir", null);
 export const stripMetadata = persisted<boolean>("revault-pdf-strip", true);
 export const compressStreams = persisted<boolean>("revault-pdf-compress", true);
+export const compressImages = persisted<boolean>("pdf-compress-images", false);
 
 export const resolvedOutputDir = derived(
   [outputDir, defaultOutputDir],
@@ -71,6 +72,7 @@ export async function processPdfs(
   outDir: string | null,
   strip: boolean,
   compress: boolean,
+  compressImgs: boolean,
 ) {
   isProcessing.set(true);
   files.update((curr) => curr.map((f) => ({ ...f, status: "processing" as const })));
@@ -81,6 +83,7 @@ export async function processPdfs(
       outputDir: outDir,
       stripMetadata: strip,
       compressStreams: compress,
+      compressImages: compressImgs,
     });
     const byPath = new Map(results.map((r) => [r.input_path, r]));
     files.update((curr) =>

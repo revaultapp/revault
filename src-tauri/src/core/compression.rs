@@ -751,6 +751,63 @@ fn compress_single(
     }
 }
 
+pub(crate) fn compress_jpeg_data(
+    data: &[u8],
+    quality: f32,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let img = image::load_from_memory(data)?;
+
+    // Downsample if largest dimension exceeds 1920px (covers 300 DPI scans)
+    let img = {
+        let (w, h) = (img.width(), img.height());
+        if w > 1920 || h > 1920 {
+            let scale = 1920.0 / w.max(h) as f32;
+            let nw = (w as f32 * scale) as u32;
+            let nh = (h as f32 * scale) as u32;
+            img.resize(nw, nh, image::imageops::FilterType::Lanczos3)
+        } else {
+            img
+        }
+    };
+
+    let rgb = img.to_rgb8();
+    let (w, h) = rgb.dimensions();
+
+    // Use mozjpeg on non-Windows, image crate on Windows
+    #[cfg(not(target_os = "windows"))]
+    {
+        use std::panic::catch_unwind;
+        let pixels = rgb.into_raw();
+        let encoded = catch_unwind(|| -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+            let mut comp = mozjpeg::Compress::new(mozjpeg::ColorSpace::JCS_RGB);
+            comp.set_size(w as usize, h as usize);
+            comp.set_quality(quality);
+            comp.set_optimize_coding(true);
+            let mut comp = comp.start_compress(Vec::new())?;
+            comp.write_scanlines(&pixels)?;
+            Ok(comp.finish()?)
+        })
+        .map_err(|_| "mozjpeg panicked")??;
+
+        if encoded.len() < data.len() {
+            Ok(encoded)
+        } else {
+            Err("re-encoded is not smaller".into())
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let mut buf = Vec::new();
+        rgb.write_to(&mut Cursor::new(&mut buf), image::ImageFormat::Jpeg)?;
+        if buf.len() < data.len() {
+            Ok(buf)
+        } else {
+            Err("re-encoded is not smaller".into())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
