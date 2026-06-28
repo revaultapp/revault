@@ -6,6 +6,7 @@
   import PrivacyPage from "$lib/components/PrivacyPage.svelte";
   import AnalyzePage from "$lib/components/AnalyzePage.svelte";
   import VideoPage from "$lib/components/VideoPage.svelte";
+  import PdfPage from "$lib/components/PdfPage.svelte";
 </script>
 
 {#if $activePage === "dashboard"}
@@ -18,6 +19,8 @@
   <PrivacyPage />
 {:else if $activePage === "video"}
   <VideoPage />
+{:else if $activePage === "pdf"}
+  <PdfPage />
 {:else if $activePage === "settings"}
   <SettingsPage />
 {:else}
