@@ -43,11 +43,18 @@
     <div class="slider-header">
       <span class="slider-title">Before / After</span>
       <span class="slider-savings">{savings}% smaller</span>
-      <button class="slider-close" onclick={onclose}>Close</button>
+      <!-- svelte-ignore a11y_autofocus -->
+      <button class="slider-close" onclick={onclose} autofocus>Close</button>
     </div>
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="slider-container" bind:this={container}
-      onpointerdown={onpointerdown} onpointermove={onpointermove} onpointerup={onpointerup} onpointercancel={onpointerup}>
+      role="slider" tabindex="0"
+      aria-valuenow={Math.round(position)} aria-valuemin={0} aria-valuemax={100}
+      aria-label="Before/after comparison"
+      onpointerdown={onpointerdown} onpointermove={onpointermove} onpointerup={onpointerup} onpointercancel={onpointerup}
+      onkeydown={(e) => {
+        if (e.key === 'ArrowLeft') { e.preventDefault(); position = Math.max(0, position - 5); }
+        else if (e.key === 'ArrowRight') { e.preventDefault(); position = Math.min(100, position + 5); }
+      }}>
       <img src={beforeSrc} alt="Original" class="slider-img" draggable="false" />
       <img src={afterSrc} alt="Processed" class="slider-img" draggable="false"
         style="clip-path: inset(0 {100 - position}% 0 0);" />
