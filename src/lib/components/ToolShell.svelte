@@ -102,7 +102,7 @@
 </script>
 
 {#if files.length === 0}
-  <div out:fade={{ duration: rm ? 0 : 150 }}>
+  <div style="height: 100%" out:fade={{ duration: rm ? 0 : 150 }}>
     <DropZone
       {onfiles}
       {onrejectedfiles}

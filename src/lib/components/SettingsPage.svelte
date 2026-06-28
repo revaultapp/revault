@@ -14,6 +14,7 @@
   }
 </script>
 
+<div class="content-wrap">
 <div class="sections">
   <!-- General -->
   <section class="section">
@@ -70,8 +71,15 @@
     </div>
   </section>
 </div>
+</div>
 
 <style>
+  .content-wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
   .sections {
     display: flex;
     flex-direction: column;

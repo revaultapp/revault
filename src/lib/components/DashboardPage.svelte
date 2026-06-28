@@ -320,6 +320,10 @@
     gap: 16px;
   }
 
+  .action-card:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
   .action-card {
     background: var(--bg-card);
     border-radius: var(--radius-md);
