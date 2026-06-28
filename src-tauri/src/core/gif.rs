@@ -222,6 +222,24 @@ pub fn target_triple() -> Result<&'static str, String> {
     }
 }
 
+pub fn expected_sha256(target: &str) -> Option<&'static str> {
+    match target {
+        "aarch64-apple-darwin" => {
+            Some("16c16058302d117df0751f59ef24570d59c518f3a587488b11ccd78df756092e")
+        }
+        "x86_64-apple-darwin" => {
+            Some("c6719e99f59c98ac7e0ef23a6f724352f972d41bd3395a9c6f3b18b92a1e654b")
+        }
+        "x86_64-pc-windows-msvc" => {
+            Some("ed3960edd04028a30521aeacdd59a7f84efe8309e59aba40b8bbaf341d330370")
+        }
+        "x86_64-unknown-linux-gnu" => {
+            Some("730bbb643e3307f0379e4aa9993587b3561c280813f8a053d181b06ce322a5d7")
+        }
+        _ => None,
+    }
+}
+
 pub fn download_url(target: &str) -> String {
     let ext = if target.contains("windows") {
         "zip"
@@ -400,6 +418,24 @@ where
             emit_progress(done, total);
         }
         eprintln!("[gifski] download complete, {} bytes written", done);
+    }
+
+    // SHA-256 archive integrity check — before extraction
+    {
+        use sha2::{Digest, Sha256};
+        let hash = Sha256::digest(&buffer);
+        let hex: String = hash.iter().map(|b| format!("{:02x}", b)).collect();
+        let expected = expected_sha256(target)
+            .ok_or_else(|| format!("No hay hash conocido para la plataforma {}", target))?;
+        if hex != expected {
+            eprintln!(
+                "[gifski] SHA-256 mismatch: expected={} got={}",
+                expected, hex
+            );
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err("La descarga está corrupta o fue modificada".to_string());
+        }
+        eprintln!("[gifski] SHA-256 OK: {}", hex);
     }
 
     let unverified = if target.contains("windows") {
@@ -942,6 +978,23 @@ mod tests {
         if let Some(v) = prev {
             std::env::set_var("REVAULT_GIFSKI_PATH", v);
         }
+    }
+
+    #[test]
+    fn expected_sha256_covers_all_known_targets() {
+        for target in [
+            "aarch64-apple-darwin",
+            "x86_64-apple-darwin",
+            "x86_64-pc-windows-msvc",
+            "x86_64-unknown-linux-gnu",
+        ] {
+            assert!(
+                expected_sha256(target).is_some(),
+                "missing hash for {}",
+                target
+            );
+        }
+        assert!(expected_sha256("unknown-target").is_none());
     }
 
     #[test]
