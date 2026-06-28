@@ -1,0 +1,5 @@
+[alias]
+# Run coverage — open HTML report in browser (from src-tauri/)
+cov = "llvm-cov --html --open --workspace"
+# Coverage summary in terminal
+cov-summary = "llvm-cov --workspace"
