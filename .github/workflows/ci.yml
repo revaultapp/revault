@@ -68,12 +68,12 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --workspace -- -D warnings
 
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@cargo-audit
+
       - name: Cargo audit
         working-directory: src-tauri
-        shell: bash
-        run: |
-          cargo install cargo-audit --locked 2>/dev/null || true
-          cargo audit
+        run: cargo audit
 
       - name: Rust tests
         working-directory: src-tauri
