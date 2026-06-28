@@ -3,6 +3,7 @@ pub mod convert;
 pub mod dedupe;
 pub mod delete;
 pub mod gif;
+pub mod pdf;
 pub mod privacy;
 pub mod resize;
 pub mod scanner;
