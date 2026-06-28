@@ -91,3 +91,4 @@ function createSavingsStore() {
 }
 
 export const savings = createSavingsStore();
+export { createSavingsStore };
