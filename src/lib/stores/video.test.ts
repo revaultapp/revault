@@ -284,4 +284,86 @@ describe("video store", () => {
     expect(summary.totalSaved).toBe(110_000_000);
     expect(summary.savingsPct).toBeCloseTo((110_000_000 / 300_000_000) * 100, 1);
   });
+
+  it("trimSettings persists to localStorage", async () => {
+    const { trimSettings } = await import("./video");
+    expect(get(trimSettings)).toEqual({ startSec: 0, endSec: 5 });
+    trimSettings.set({ startSec: 2, endSec: 8 });
+    expect(localStorage.getItem("trim_settings")).toBe('{"startSec":2,"endSec":8}');
+  });
+
+  it("trimVideoFile happy path sets done state and output path", async () => {
+    mockInvoke.mockResolvedValueOnce({
+      input_path: "/test/video.mp4",
+      output_path: "/test/video_trimmed.mp4",
+    });
+    const { trimState, trimOutputPath, trimResult, trimError, trimSettings, trimVideoFile } =
+      await import("./video");
+
+    trimSettings.set({ startSec: 1, endSec: 4 });
+
+    const file = {
+      path: "/test/video.mp4",
+      name: "video.mp4",
+      status: "idle" as const,
+      originalSize: 0,
+      progress: 0,
+      fps: 0,
+      speed: 0,
+    };
+
+    await trimVideoFile(file);
+
+    expect(get(trimState)).toBe("done");
+    expect(get(trimOutputPath)).toBe("/test/video_trimmed.mp4");
+    expect(get(trimResult)?.output_path).toBe("/test/video_trimmed.mp4");
+    expect(get(trimError)).toBeNull();
+    expect(mockInvoke).toHaveBeenCalledWith("trim_video", {
+      input: "/test/video.mp4",
+      startSec: 1,
+      endSec: 4,
+      outputDir: null,
+    });
+  });
+
+  it("trimVideoFile error path sets error state", async () => {
+    mockInvoke.mockRejectedValueOnce(new Error("end_sec exceeds media duration"));
+    const { trimState, trimOutputPath, trimError, trimVideoFile } = await import("./video");
+
+    const file = {
+      path: "/test/video.mp4",
+      name: "video.mp4",
+      status: "idle" as const,
+      originalSize: 0,
+      progress: 0,
+      fps: 0,
+      speed: 0,
+    };
+
+    await trimVideoFile(file);
+
+    expect(get(trimState)).toBe("error");
+    expect(get(trimOutputPath)).toBeNull();
+    expect(get(trimError)).toContain("end_sec exceeds media duration");
+  });
+
+  it("trimVideoFile cancelled path resets to idle", async () => {
+    mockInvoke.mockRejectedValueOnce(new Error("trim cancelled"));
+    const { trimState, trimError, trimVideoFile } = await import("./video");
+
+    const file = {
+      path: "/test/video.mp4",
+      name: "video.mp4",
+      status: "idle" as const,
+      originalSize: 0,
+      progress: 0,
+      fps: 0,
+      speed: 0,
+    };
+
+    await trimVideoFile(file);
+
+    expect(get(trimState)).toBe("idle");
+    expect(get(trimError)).toBeNull();
+  });
 });

@@ -325,7 +325,7 @@ export async function cancelCompression(): Promise<void> {
 
 // ── GIF export ─────────────────────────────────────────────────────────────────
 
-export type VideoMode = "compress" | "gif";
+export type VideoMode = "compress" | "gif" | "trim";
 
 export type GifSettings = {
   startSec: number;
@@ -494,6 +494,55 @@ export async function cancelGifExport(): Promise<void> {
 
 export async function revealVideoOutput(outputPath: string): Promise<void> {
   await invoke("reveal_video_output", { path: outputPath });
+}
+
+// ── Trim ───────────────────────────────────────────────────────────────────────
+
+export type TrimSettings = { startSec: number; endSec: number };
+
+export interface VideoTrimResult {
+  input_path: string;
+  output_path: string;
+}
+
+export const trimSettings = persisted<TrimSettings>("trim_settings", {
+  startSec: 0,
+  endSec: 5,
+});
+
+export const trimState = writable<"idle" | "trimming" | "done" | "error">("idle");
+export const trimResult = writable<VideoTrimResult | null>(null);
+export const trimOutputPath = writable<string | null>(null);
+export const trimError = writable<string | null>(null);
+
+export async function trimVideoFile(file: VideoFile): Promise<void> {
+  const settings = get(trimSettings);
+
+  trimState.set("trimming");
+  trimError.set(null);
+  trimResult.set(null);
+  trimOutputPath.set(null);
+
+  try {
+    const result = await invoke<VideoTrimResult>("trim_video", {
+      input: file.path,
+      startSec: settings.startSec,
+      endSec: settings.endSec,
+      outputDir: get(videoOutputDir),
+    });
+    trimResult.set(result);
+    trimOutputPath.set(result.output_path);
+    trimState.set("done");
+    activity.add({ type: "video", fileCount: 1, savedBytes: 0 });
+  } catch (e) {
+    const msg = String(e);
+    if (msg.includes("cancelled")) {
+      trimState.set("idle");
+    } else {
+      trimState.set("error");
+      trimError.set(msg);
+    }
+  }
 }
 
 // ── Preview cache key tracking (module-scoped, not reactive) ──────────────────

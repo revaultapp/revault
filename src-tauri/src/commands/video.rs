@@ -64,6 +64,20 @@ pub async fn preview_video_compression(
 }
 
 #[tauri::command]
+pub async fn trim_video(
+    input: String,
+    start_sec: f64,
+    end_sec: Option<f64>,
+    output_dir: Option<String>,
+) -> Result<video::VideoTrimResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        video::trim_video(&input, start_sec, end_sec, output_dir.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub async fn cancel_video_compress() -> Result<(), String> {
     if let Some(flag) = ACTIVE_CANCEL.lock().map_err(|e| e.to_string())?.as_ref() {
         flag.store(true, Ordering::SeqCst);

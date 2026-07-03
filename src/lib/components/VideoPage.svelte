@@ -45,6 +45,12 @@
     exportGif,
     cancelGifExport,
     refreshGifSizeEstimate,
+    trimSettings,
+    trimState,
+    trimResult,
+    trimOutputPath,
+    trimError,
+    trimVideoFile,
     type VideoFile,
     type VideoPreset,
     type PrivacyMode,
@@ -53,6 +59,7 @@
   const modeSegments = [
     { id: "compress", label: "Comprimir" },
     { id: "gif", label: "GIF" },
+    { id: "trim", label: "Trim" },
   ] as const;
 
   const fpSegments = [
@@ -105,10 +112,18 @@
     if ($videoMode === "compress") {
       return `Ajustes · ${preset} · ${privacyLabel}`;
     }
+    if ($videoMode === "trim") {
+      const len = Math.max(0, $trimSettings.endSec - $trimSettings.startSec);
+      return `Ajustes · ${len.toFixed(1)}s clip`;
+    }
     const fps = $gifSettings.fps;
     const width = $gifSettings.width;
     return `Ajustes · ${fps} fps · ${width}px`;
   });
+
+  // ── Trim validity ───────────────────────────────────────────────────────────
+  let trimClipLength = $derived(Math.max(0, $trimSettings.endSec - $trimSettings.startSec));
+  let trimValid = $derived($trimSettings.endSec >= $trimSettings.startSec + 0.1);
 
   // ── Progress & header ───────────────────────────────────────────────────────
   let targetPct = $derived(
@@ -173,6 +188,12 @@
     const file = $videoFiles[0];
     if (!file) return;
     await exportGif(file);
+  }
+
+  async function startTrim() {
+    const file = $videoFiles[0];
+    if (!file || !trimValid) return;
+    await trimVideoFile(file);
   }
 
   async function startCompression() {
@@ -403,10 +424,15 @@
     onclear={clearVideoFiles}
     actionLabel={$videoMode === "gif"
       ? (!$gifskiAvailable ? "" : $gifState === "generating" ? "Cancelar" : "Exportar GIF")
-      : ($isCompressing ? "Cancel" : $videoSummary.pending === 0 && $videoFiles.length > 0 ? "Compress More" : "Compress")}
+      : $videoMode === "trim"
+        ? (trimValid ? "Trim clip" : "")
+        : ($isCompressing ? "Cancel" : $videoSummary.pending === 0 && $videoFiles.length > 0 ? "Compress More" : "Compress")}
     onaction={$videoMode === "gif"
       ? ($gifState === "generating" ? cancelGifExport : startGifExport)
-      : ($isCompressing ? cancelCompression : $videoSummary.pending === 0 && $videoFiles.length > 0 ? compressMore : startCompression)}
+      : $videoMode === "trim"
+        ? startTrim
+        : ($isCompressing ? cancelCompression : $videoSummary.pending === 0 && $videoFiles.length > 0 ? compressMore : startCompression)}
+    actionLoading={$videoMode === "trim" && $trimState === "trimming"}
     {headerText}
     dropZoneTitle="Drop videos here"
     dropZoneFormatTags={["MP4", "MOV", "AVI", "MKV", "WebM", "M4V"]}
@@ -564,6 +590,36 @@
               <p class="privacy-hint">{privacyTooltips[$videoPrivacyMode]}</p>
             </div>
 
+          {:else if $videoMode === "trim"}
+            <!-- Trim mode controls -->
+            <div class="control-group gif-range-group">
+              <span class="label">Clip range</span>
+              <div class="range-inputs">
+                <input
+                  type="number"
+                  class="num-input"
+                  min="0"
+                  step="0.5"
+                  aria-label="Start second"
+                  value={$trimSettings.startSec}
+                  oninput={(e) => trimSettings.update(s => ({ ...s, startSec: Math.max(0, parseFloat((e.target as HTMLInputElement).value) || 0) }))}
+                />
+                <span class="range-sep">–</span>
+                <input
+                  type="number"
+                  class="num-input"
+                  min="0"
+                  step="0.5"
+                  aria-label="End second"
+                  value={$trimSettings.endSec}
+                  oninput={(e) => trimSettings.update(s => ({ ...s, endSec: Math.max(0, parseFloat((e.target as HTMLInputElement).value) || 0) }))}
+                />
+              </div>
+              <p class="trim-length-hint" class:invalid={!trimValid}>
+                {trimValid ? `Clip length: ${trimClipLength.toFixed(1)}s` : "End must be after start"}
+              </p>
+            </div>
+
           {:else}
             <!-- GIF mode controls -->
             {#if $gifskiAvailable === false}
@@ -674,7 +730,7 @@
           {/if}
 
           <!-- Carpeta output — visible in both modes -->
-          {#if $videoMode === "compress" || $gifskiAvailable}
+          {#if $videoMode === "compress" || $videoMode === "trim" || $gifskiAvailable}
             <div class="control-group">
               <span class="label">Carpeta</span>
               <button class="btn-ghost output-btn" onclick={browseOutputDir}>
@@ -726,6 +782,28 @@
       <div class="gif-error-card" role="alert">
         <CircleAlert size={14} />
         <span>{$gifError}</span>
+      </div>
+    {/if}
+
+    <!-- Trim done state -->
+    {#if $videoMode === "trim" && $trimState === "done" && $trimOutputPath}
+      <div class="gif-done">
+        <CircleCheck size={28} color="var(--accent)" />
+        <span class="gif-done-name">{$trimOutputPath.split(/[\\/]/).pop()}</span>
+        <div class="gif-done-actions">
+          <button class="btn-primary-sm" onclick={() => revealVideoOutput($trimOutputPath!)}>
+            <FolderOpen size={14} />
+            Show in folder
+          </button>
+          <button class="btn-ghost" onclick={() => { trimState.set("idle"); trimOutputPath.set(null); trimResult.set(null); }}>
+            Trim another clip
+          </button>
+        </div>
+      </div>
+    {:else if $videoMode === "trim" && $trimState === "error" && $trimError}
+      <div class="gif-error-card" role="alert">
+        <CircleAlert size={14} />
+        <span>{$trimError}</span>
       </div>
     {/if}
   </ToolShell>
@@ -1115,6 +1193,15 @@
 
   .range-sep { color: var(--text-muted); font-size: 13px; }
   .sub-hint { color: var(--text-muted); font-weight: 400; margin-left: 6px; }
+
+  .trim-length-hint {
+    margin: 6px 0 0;
+    font-size: 12px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .trim-length-hint.invalid { color: var(--danger); }
 
   .quality-slider { flex: 1; accent-color: var(--accent); }
 

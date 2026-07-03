@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Duplicates**: Exact duplicate detection (SHA256) and Similar mode for perceptual duplicates (pHash DoubleGradient)
 - **Privacy**: EXIF/GPS/camera metadata stripping for JPEG, PNG, HEIC images with selective privacy controls
 - **Video Compression**: FFmpeg backend with CRF presets (Smallest/Balanced/HighQuality), MOV→MP4 remux, privacy modes (Off/Smart/GPS-only/Full), size prediction
+- **Video Trim**: Cut a video to a start/end range with fast, lossless stream-copy (ffmpeg -c copy); non-clobbering output, range validated against real media duration
 - **GIF Export**: Create animated GIFs from video via gifski sidecar with streaming pipeline and cancellation
 - **PDF Tools**: PDF metadata stripping and stream compression with embedded image re-encoding
 - **Dashboard**: Storage analysis, compression savings tracker, quick actions, recent activity
