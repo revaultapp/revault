@@ -169,7 +169,7 @@
       </div>
       <h2 class="drop-title">Add folders to scan for duplicates</h2>
       <p class="drop-subtitle">Drop folders here or click to browse</p>
-      <SegmentedControl segments={modeSegments} bind:selected={modeSelection} onselect={handleModeSelect} />
+      <SegmentedControl segments={modeSegments} bind:selected={modeSelection} onselect={handleModeSelect} label="Duplicate match mode" />
       <Button onclick={browseFolders} aria-label="Choose folders to scan">
         <FolderOpen size={16} />
         Choose folders
@@ -242,7 +242,7 @@
     </div>
 
     <div class="folders-bar">
-      <SegmentedControl segments={modeSegments} bind:selected={modeSelection} onselect={handleModeSelect} />
+      <SegmentedControl segments={modeSegments} bind:selected={modeSelection} onselect={handleModeSelect} label="Duplicate match mode" />
       {#each selectedFolders as folder (folder)}
         <span class="folder-chip">
           <FolderOpen size={12} />

@@ -4,7 +4,7 @@
     Shield, Film, FileText,
     Settings, Database
   } from "lucide-svelte";
-  import { Tween, Spring } from 'svelte/motion';
+  import { Tween, Spring, prefersReducedMotion } from 'svelte/motion';
   import { tick } from 'svelte';
   import { activePage } from "$lib/stores/nav";
   import { savings } from "$lib/stores/savings";
@@ -27,7 +27,7 @@
   });
 
   $effect(() => {
-    displayedBytes.set($savings.totalSavedBytes);
+    displayedBytes.set($savings.totalSavedBytes, { duration: prefersReducedMotion.current ? 0 : 800 });
   });
 
   let savingsJustUpdated = $state(false);
@@ -58,7 +58,7 @@
       if (!sidebarInnerEl || !activeRef) return;
       const containerRect = sidebarInnerEl.getBoundingClientRect();
       const itemRect = activeRef.getBoundingClientRect();
-      indicatorY.set(itemRect.top - containerRect.top + (itemRect.height / 2) - 14);
+      indicatorY.set(itemRect.top - containerRect.top + (itemRect.height / 2) - 14, { instant: prefersReducedMotion.current });
       indicatorVisible = true;
     });
   });
@@ -70,20 +70,22 @@
       <span
         class="sliding-indicator"
         style="transform: translateY({indicatorY.current}px)"
+        aria-hidden="true"
       ></span>
     {/if}
 
     <div class="logo-row">
-      <img class="logo-icon" src="/logo2.png" alt="Revault" />
+      <img class="logo-icon" src="/logo2.png" alt="" />
       <span class="logo-text">Revault</span>
     </div>
 
-    <nav class="nav">
+    <nav class="nav" aria-label="Primary">
       {#each navItems as item (item.id)}
         <button
           type="button"
           class="nav-item"
           class:active={$activePage === item.id}
+          aria-current={$activePage === item.id ? 'page' : undefined}
           onclick={() => activePage.set(item.id)}
           bind:this={navRefs[item.id]}
         >
@@ -102,16 +104,19 @@
 
     <div class="divider"></div>
 
-    <button
-      type="button"
-      class="nav-item settings"
-      class:active={$activePage === 'settings'}
-      onclick={() => activePage.set('settings')}
-      bind:this={navRefs['settings']}
-    >
-      <Settings size={18} strokeWidth={1.8} />
-      <span>Settings</span>
-    </button>
+    <nav aria-label="Settings">
+      <button
+        type="button"
+        class="nav-item settings"
+        class:active={$activePage === 'settings'}
+        aria-current={$activePage === 'settings' ? 'page' : undefined}
+        onclick={() => activePage.set('settings')}
+        bind:this={navRefs['settings']}
+      >
+        <Settings size={18} strokeWidth={1.8} />
+        <span>Settings</span>
+      </button>
+    </nav>
 
   </div>
 </aside>

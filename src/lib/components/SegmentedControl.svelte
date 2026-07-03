@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ComponentType } from 'svelte';
+  import { nextSegmentIndex } from './segmentedNav';
 
   interface Segment {
     id: string;
@@ -7,15 +8,18 @@
     icon?: ComponentType;
   }
 
-  let { segments, selected = $bindable(), onselect }: {
+  let { segments, selected = $bindable(), onselect, label }: {
     segments: readonly Segment[];
     selected: string;
     onselect?: (id: string) => void;
+    label: string;
   } = $props();
 
   // Refs for each button so we can measure widths/offsets
   let buttonEls: HTMLButtonElement[] = $state([]);
   let containerEl: HTMLDivElement | undefined = $state();
+
+  let selectedIndex = $derived(segments.findIndex(s => s.id === selected));
 
   // Pill position + size, driven by the active button's geometry
   let pillLeft = $state(0);
@@ -40,6 +44,15 @@
     onselect?.(id);
   }
 
+  function handleKeydown(e: KeyboardEvent) {
+    const current = selectedIndex === -1 ? 0 : selectedIndex;
+    const target = nextSegmentIndex(current, e.key, segments.length);
+    if (target === null) return;
+    e.preventDefault();
+    buttonEls[target]?.focus();
+    selectSegment(segments[target].id);
+  }
+
   // Re-measure whenever `selected` changes or on mount
   $effect(() => {
     // Touch `selected` to subscribe to changes
@@ -50,21 +63,26 @@
 
 </script>
 
-<div class="segmented-control" bind:this={containerEl}>
+<div class="segmented-control" bind:this={containerEl} role="radiogroup" aria-label={label} tabindex="-1" onkeydown={handleKeydown}>
   <!-- Sliding pill indicator -->
   <div
     class="pill"
     class:pill--visible={measured}
     style="transform: translateX({pillLeft}px); width: {pillWidth}px;"
+    aria-hidden="true"
   ></div>
 
   {#each segments as segment, i (segment.id)}
+    {@const isSelected = selected === segment.id}
     <button
       class="segment"
-      class:segment--active={selected === segment.id}
+      class:segment--active={isSelected}
       bind:this={buttonEls[i]}
       onclick={() => selectSegment(segment.id)}
       type="button"
+      role="radio"
+      aria-checked={isSelected}
+      tabindex={i === (selectedIndex === -1 ? 0 : selectedIndex) ? 0 : -1}
     >
       {#if segment.icon}
         {@const Icon = segment.icon}
@@ -119,7 +137,7 @@
     border-radius: 9px;
     font-size: 13px;
     font-weight: 500;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     background: none;
     border: none;
     cursor: pointer;

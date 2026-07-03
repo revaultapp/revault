@@ -389,7 +389,7 @@
 {:else}
   <!-- Mode toggle: centered, above DropZone / file list -->
   <div class="mode-bar">
-    <SegmentedControl segments={modeSegments} bind:selected={$videoMode} />
+    <SegmentedControl segments={modeSegments} bind:selected={$videoMode} label="Video mode" />
   </div>
 
   <ToolShell
@@ -559,7 +559,7 @@
                   </div>
                   <span class="label">Privacidad</span>
                 </div>
-                <SegmentedControl segments={privacySegments} bind:selected={$videoPrivacyMode} />
+                <SegmentedControl segments={privacySegments} bind:selected={$videoPrivacyMode} label="Privacy mode" />
               </div>
               <p class="privacy-hint">{privacyTooltips[$videoPrivacyMode]}</p>
             </div>
