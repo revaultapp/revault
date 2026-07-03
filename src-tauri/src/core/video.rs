@@ -1,6 +1,7 @@
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::FfmpegEvent;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -701,13 +702,129 @@ pub fn ffmpeg_is_available() -> bool {
         .unwrap_or(false)
 }
 
-pub fn download_ffmpeg(progress_cb: impl Fn(u64, u64) + Send + 'static) -> Result<PathBuf, String> {
+// Windows: GyanD/codexffmpeg is a per-version tagged GitHub release (not BtbN's
+// dated "autobuild-*" tags, which get pruned once superseded — pinning one of
+// those 404s as soon as it ages out). Presumed non-pruned based on Gyan's
+// multi-year history of keeping past version tags around.
+// Linux: johnvansickle.com's old-releases/ directory is an append-only archive
+// of exact version+arch static builds that is never pruned (unlike the
+// floating "release"/"latest" pointer at the top level, which is overwritten
+// on every new build). ffmpeg 6.0.1 is the newest build available there.
+// GPL static builds — required because VideoPreset::codec() uses libx264/libx265.
+// SHA-256 computed locally against the downloaded bytes, not the source's own
+// checksums.sha256 file.
+fn ffmpeg_archive_source(target: &str) -> Option<(&'static str, &'static str)> {
+    match target {
+        "x86_64-pc-windows-msvc" => Some((
+            "https://github.com/GyanD/codexffmpeg/releases/download/8.1.2/ffmpeg-8.1.2-essentials_build.zip",
+            "db580001caa24ac104c8cb856cd113a87b0a443f7bdf47d8c12b1d740584a2ec",
+        )),
+        "x86_64-unknown-linux-gnu" => Some((
+            "https://johnvansickle.com/ffmpeg/old-releases/ffmpeg-6.0.1-amd64-static.tar.xz",
+            "28268bf402f1083833ea269331587f60a242848880073be8016501d864bd07a5",
+        )),
+        _ => None,
+    }
+}
+
+// evermeet.cx publishes per-version snapshot URLs (unlike the floating
+// getrelease/zip "latest" pointer) but only builds for Intel Macs — no
+// aarch64-apple-darwin build exists here or anywhere else we could verify.
+fn ffmpeg_evermeet_source(binary: &str) -> Option<(&'static str, &'static str)> {
+    match binary {
+        "ffmpeg" => Some((
+            "https://evermeet.cx/ffmpeg/ffmpeg-8.1.2.zip",
+            "e91df72a1ee7c26606f90dd2dd4dcccc6a75140ff9ea6fdd50faae828b82ba69",
+        )),
+        "ffprobe" => Some((
+            "https://evermeet.cx/ffmpeg/ffprobe-8.1.2.zip",
+            "399b93f0b9862f69767afa343e90c2f48d7e7958cadbb6deb76a012d0e3b7ce3",
+        )),
+        _ => None,
+    }
+}
+
+fn verify_sha256(bytes: &[u8], expected: &str, archive_path: &Path) -> Result<(), String> {
+    let hash = Sha256::digest(bytes);
+    let hex: String = hash.iter().map(|b| format!("{:02x}", b)).collect();
+    if hex != expected {
+        let _ = std::fs::remove_file(archive_path);
+        return Err(format!(
+            "FFmpeg download failed integrity check (expected {}, got {}) — file removed",
+            expected, hex
+        ));
+    }
+    Ok(())
+}
+
+fn extract_single_binary_zip(bytes: &[u8], binary_name: &str, dest: &Path) -> Result<(), String> {
+    let reader = std::io::Cursor::new(bytes);
+    let mut archive =
+        zip::ZipArchive::new(reader).map_err(|e| format!("FFmpeg archive is corrupted: {}", e))?;
+    let mut file = archive
+        .by_name(binary_name)
+        .map_err(|_| format!("FFmpeg archive missing expected binary '{}'", binary_name))?;
+    let out_path = dest.join(binary_name);
+    let mut out = std::fs::File::create(&out_path)
+        .map_err(|e| format!("Failed to write {}: {}", binary_name, e))?;
+    std::io::copy(&mut file, &mut out)
+        .map_err(|e| format!("Failed to write {}: {}", binary_name, e))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&out_path, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("Failed to mark {} executable: {}", binary_name, e))?;
+    }
+    Ok(())
+}
+
+// macOS Intel only — evermeet ships ffmpeg/ffprobe as two separate single-binary
+// zips, so this can't reuse unpack_ffmpeg_without_extras (which expects one
+// combined archive). Progress resets to 0 for the second download; acceptable
+// for a one-time setup step.
+fn download_ffmpeg_macos(
+    dest: &Path,
+    progress_cb: impl Fn(u64, u64) + Send + 'static,
+) -> Result<PathBuf, String> {
     use ffmpeg_sidecar::download::{
-        download_ffmpeg_package_with_progress, ffmpeg_download_url, unpack_ffmpeg_without_extras,
-        FfmpegDownloadProgressEvent,
+        download_ffmpeg_package_with_progress, FfmpegDownloadProgressEvent,
     };
 
-    if ffmpeg_is_available() {
+    for name in ["ffmpeg", "ffprobe"] {
+        let (url, expected_hash) = ffmpeg_evermeet_source(name)
+            .ok_or_else(|| format!("No pinned FFmpeg build for '{}'", name))?;
+        let archive_path = download_ffmpeg_package_with_progress(url, dest, |event| {
+            if let FfmpegDownloadProgressEvent::Downloading {
+                total_bytes,
+                downloaded_bytes,
+            } = event
+            {
+                progress_cb(downloaded_bytes, total_bytes);
+            }
+        })
+        .map_err(|e| format!("FFmpeg download failed: {}", e))?;
+
+        let bytes = std::fs::read(&archive_path)
+            .map_err(|e| format!("Failed to read downloaded archive: {}", e))?;
+        verify_sha256(&bytes, expected_hash, &archive_path)?;
+        extract_single_binary_zip(&bytes, name, dest)?;
+        let _ = std::fs::remove_file(&archive_path);
+    }
+
+    let path = get_ffmpeg_path();
+    if !path.exists() {
+        return Err("FFmpeg binary not found after download".into());
+    }
+    Ok(path)
+}
+
+pub fn download_ffmpeg(progress_cb: impl Fn(u64, u64) + Send + 'static) -> Result<PathBuf, String> {
+    use ffmpeg_sidecar::download::{
+        download_ffmpeg_package_with_progress, unpack_ffmpeg, FfmpegDownloadProgressEvent,
+    };
+
+    if ffmpeg_is_available() && ffprobe_path().exists() {
         return Ok(get_ffmpeg_path());
     }
 
@@ -717,7 +834,22 @@ pub fn download_ffmpeg(progress_cb: impl Fn(u64, u64) + Send + 'static) -> Resul
 
     std::fs::create_dir_all(&dest).map_err(|e| format!("Failed to create ffmpeg dir: {}", e))?;
 
-    let url = ffmpeg_download_url().map_err(|e| format!("Unsupported platform: {}", e))?;
+    let target = crate::core::gif::target_triple()?;
+
+    if target == "aarch64-apple-darwin" {
+        return Err(
+            "No verified FFmpeg build is pinned for Apple Silicon yet. Install FFmpeg \
+             manually (e.g. `brew install ffmpeg`) and ReVault will detect it automatically."
+                .to_string(),
+        );
+    }
+
+    if target == "x86_64-apple-darwin" {
+        return download_ffmpeg_macos(&dest, progress_cb);
+    }
+
+    let (url, expected_hash) = ffmpeg_archive_source(target)
+        .ok_or_else(|| format!("No pinned FFmpeg build for platform {}", target))?;
 
     let archive_path = download_ffmpeg_package_with_progress(url, &dest, move |event| {
         if let FfmpegDownloadProgressEvent::Downloading {
@@ -730,8 +862,11 @@ pub fn download_ffmpeg(progress_cb: impl Fn(u64, u64) + Send + 'static) -> Resul
     })
     .map_err(|e| format!("FFmpeg download failed: {}", e))?;
 
-    unpack_ffmpeg_without_extras(&archive_path, &dest)
-        .map_err(|e| format!("FFmpeg unpack failed: {}", e))?;
+    let bytes = std::fs::read(&archive_path)
+        .map_err(|e| format!("Failed to read downloaded archive: {}", e))?;
+    verify_sha256(&bytes, expected_hash, &archive_path)?;
+
+    unpack_ffmpeg(&archive_path, &dest).map_err(|e| format!("FFmpeg unpack failed: {}", e))?;
 
     let path = get_ffmpeg_path();
     if !path.exists() {
@@ -1149,5 +1284,97 @@ mod tests {
         assert_eq!(stats.height, 480);
         assert_eq!(stats.video_bitrate_bps, None);
         assert_eq!(stats.creation_time, None);
+    }
+
+    #[test]
+    fn verify_sha256_rejects_tampered_archive() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fake-ffmpeg.zip");
+        std::fs::write(&path, b"not the real archive bytes").unwrap();
+
+        let err = verify_sha256(b"not the real archive bytes", &"0".repeat(64), &path).unwrap_err();
+
+        assert!(err.contains("integrity check"), "got: {}", err);
+        assert!(
+            !path.exists(),
+            "tampered archive should be deleted after a hash mismatch"
+        );
+    }
+
+    #[test]
+    fn verify_sha256_accepts_matching_hash() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("real-ffmpeg.zip");
+        let bytes = b"the real archive bytes";
+        std::fs::write(&path, bytes).unwrap();
+        let hex: String = Sha256::digest(bytes)
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect();
+
+        assert!(verify_sha256(bytes, &hex, &path).is_ok());
+        assert!(path.exists(), "verified archive must not be deleted");
+    }
+
+    #[test]
+    fn ffmpeg_archive_source_covers_pinned_targets_only() {
+        assert!(ffmpeg_archive_source("x86_64-pc-windows-msvc").is_some());
+        assert!(ffmpeg_archive_source("x86_64-unknown-linux-gnu").is_some());
+        // macOS is handled by ffmpeg_evermeet_source / the aarch64 guard, not this table.
+        assert!(ffmpeg_archive_source("x86_64-apple-darwin").is_none());
+        assert!(ffmpeg_archive_source("aarch64-apple-darwin").is_none());
+        assert!(ffmpeg_archive_source("unknown-target").is_none());
+    }
+
+    #[test]
+    fn ffmpeg_evermeet_source_covers_known_binaries_only() {
+        assert!(ffmpeg_evermeet_source("ffmpeg").is_some());
+        assert!(ffmpeg_evermeet_source("ffprobe").is_some());
+        assert!(ffmpeg_evermeet_source("ffplay").is_none());
+    }
+
+    #[test]
+    fn extract_single_binary_zip_writes_executable_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let zip_path = dir.path().join("archive.zip");
+        {
+            let file = std::fs::File::create(&zip_path).unwrap();
+            let mut writer = zip::ZipWriter::new(file);
+            writer
+                .start_file("ffmpeg", zip::write::SimpleFileOptions::default())
+                .unwrap();
+            std::io::Write::write_all(&mut writer, b"fake binary contents").unwrap();
+            writer.finish().unwrap();
+        }
+        let bytes = std::fs::read(&zip_path).unwrap();
+
+        extract_single_binary_zip(&bytes, "ffmpeg", dir.path()).unwrap();
+
+        let out_path = dir.path().join("ffmpeg");
+        assert_eq!(std::fs::read(&out_path).unwrap(), b"fake binary contents");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&out_path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o755);
+        }
+    }
+
+    #[test]
+    fn extract_single_binary_zip_errors_on_missing_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let zip_path = dir.path().join("archive.zip");
+        {
+            let file = std::fs::File::create(&zip_path).unwrap();
+            let mut writer = zip::ZipWriter::new(file);
+            writer
+                .start_file("other-file", zip::write::SimpleFileOptions::default())
+                .unwrap();
+            writer.finish().unwrap();
+        }
+        let bytes = std::fs::read(&zip_path).unwrap();
+
+        let err = extract_single_binary_zip(&bytes, "ffmpeg", dir.path()).unwrap_err();
+        assert!(err.contains("missing expected binary"), "got: {}", err);
     }
 }
