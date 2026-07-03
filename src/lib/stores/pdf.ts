@@ -72,6 +72,136 @@ export async function revealPdfOutput(path: string): Promise<void> {
   await invoke("reveal_pdf_output", { path });
 }
 
+// --- Merge: N ordered PDFs -> 1 output ---
+
+export interface MergeFile {
+  path: string;
+  name: string;
+}
+
+export interface MergeResultInfo {
+  outputPath: string;
+  outputSize: number;
+  pageCount: number;
+}
+
+export const mergeFiles = writable<MergeFile[]>([]);
+export const isMerging = writable(false);
+export const mergeResult = writable<MergeResultInfo | null>(null);
+export const mergeError = writable<string | null>(null);
+
+export function addMergeFiles(paths: string[]) {
+  mergeFiles.update((curr) => {
+    const existing = new Set(curr.map((f) => f.path));
+    const newPaths = paths.filter((p) => {
+      if (existing.has(p)) return false;
+      existing.add(p);
+      return true;
+    });
+    return [
+      ...curr,
+      ...newPaths.map((p) => ({ path: p, name: p.split(/[\\/]/).pop() ?? p })),
+    ];
+  });
+}
+
+export function removeMergeFile(path: string) {
+  mergeFiles.update((curr) => curr.filter((f) => f.path !== path));
+}
+
+export function moveMergeFile(path: string, direction: -1 | 1) {
+  mergeFiles.update((curr) => {
+    const idx = curr.findIndex((f) => f.path === path);
+    const target = idx + direction;
+    if (idx === -1 || target < 0 || target >= curr.length) return curr;
+    const next = [...curr];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    return next;
+  });
+}
+
+export function clearMerge() {
+  mergeFiles.set([]);
+  mergeResult.set(null);
+  mergeError.set(null);
+  isMerging.set(false);
+}
+
+export async function mergePdfs(outDir: string | null) {
+  const paths = get(mergeFiles).map((f) => f.path);
+  if (paths.length < 2) return;
+  isMerging.set(true);
+  mergeError.set(null);
+  try {
+    const result = await invoke<{ output_path: string; output_size: number; page_count: number }>(
+      "merge_pdfs",
+      { paths, outputDir: outDir },
+    );
+    mergeResult.set({
+      outputPath: result.output_path,
+      outputSize: result.output_size,
+      pageCount: result.page_count,
+    });
+  } catch (e) {
+    mergeError.set(String(e));
+  } finally {
+    isMerging.set(false);
+  }
+}
+
+// --- Split: 1 PDF -> range extract or one file per page ---
+
+export type SplitKind = "range" | "each";
+
+export interface SplitFile {
+  path: string;
+  name: string;
+}
+
+export const splitFile = writable<SplitFile | null>(null);
+export const isSplitting = writable(false);
+export const splitResults = writable<string[]>([]);
+export const splitError = writable<string | null>(null);
+
+export function setSplitFile(path: string) {
+  splitFile.set({ path, name: path.split(/[\\/]/).pop() ?? path });
+  splitResults.set([]);
+  splitError.set(null);
+}
+
+export function clearSplit() {
+  splitFile.set(null);
+  splitResults.set([]);
+  splitError.set(null);
+  isSplitting.set(false);
+}
+
+export async function splitPdf(
+  mode: SplitKind,
+  start: number | undefined,
+  end: number | undefined,
+  outDir: string | null,
+) {
+  const input = get(splitFile);
+  if (!input) return;
+  isSplitting.set(true);
+  splitError.set(null);
+  try {
+    const paths = await invoke<string[]>("split_pdf", {
+      input: input.path,
+      mode,
+      start,
+      end,
+      outputDir: outDir,
+    });
+    splitResults.set(paths);
+  } catch (e) {
+    splitError.set(String(e));
+  } finally {
+    isSplitting.set(false);
+  }
+}
+
 export async function processPdfs(
   outDir: string | null,
   strip: boolean,

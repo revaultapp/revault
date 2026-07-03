@@ -1,8 +1,8 @@
 use crate::core::image_io::{checked_size, write_preserving_timestamps};
-use lopdf::{Document, Object, SaveOptions};
+use lopdf::{dictionary, Dictionary, Document, Object, SaveOptions};
 use rayon::prelude::*;
 use serde::Serialize;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
@@ -163,6 +163,219 @@ pub fn process_batch(
         .collect()
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct MergeResult {
+    pub output_path: String,
+    pub output_size: u64,
+    pub page_count: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum SplitMode {
+    Range { start: u32, end: u32 },
+    EachPage,
+}
+
+fn resolve_output_dir(output_dir: Option<&str>, fallback: &Path) -> Result<PathBuf, String> {
+    match output_dir {
+        Some(d) => {
+            let canon = std::fs::canonicalize(d)
+                .map_err(|e| format!("Invalid output dir '{}': {}", d, e))?;
+            if !canon.is_dir() {
+                return Err(format!("Output path is not a directory: {}", d));
+            }
+            Ok(canon)
+        }
+        None => Ok(fallback.to_path_buf()),
+    }
+}
+
+// Page objects can inherit MediaBox from an ancestor Pages node instead of
+// declaring their own. Merging flattens the Pages tree (every page gets a
+// single fresh Parent), so an inherited box must be baked onto the page
+// itself first or it silently reverts to the reader's default page size.
+fn inherited_media_box(doc: &Document, page_dict: &Dictionary) -> Option<Object> {
+    let mut parent_ref = page_dict
+        .get(b"Parent")
+        .ok()
+        .and_then(|o| o.as_reference().ok());
+    while let Some(id) = parent_ref {
+        let parent_dict = doc.objects.get(&id).and_then(|o| o.as_dict().ok())?;
+        if let Ok(mb) = parent_dict.get(b"MediaBox") {
+            return Some(mb.clone());
+        }
+        parent_ref = parent_dict
+            .get(b"Parent")
+            .ok()
+            .and_then(|o| o.as_reference().ok());
+    }
+    None
+}
+
+pub fn merge_pdfs(
+    paths: &[String],
+    output_dir: Option<&str>,
+) -> Result<MergeResult, Box<dyn Error>> {
+    if paths.is_empty() {
+        return Err("no input paths provided".into());
+    }
+    for p in paths {
+        crate::core::paths::validate_input_path(p, false)?;
+        checked_size(p)?;
+    }
+
+    let mut version = "1.4".to_string();
+    let mut next_id = 1u32;
+    let mut merged_objects: BTreeMap<lopdf::ObjectId, Object> = BTreeMap::new();
+    let mut merged_pages: Vec<(lopdf::ObjectId, Object)> = Vec::new();
+
+    for path in paths {
+        let mut doc = Document::load(path)?;
+        if doc.version > version {
+            version = doc.version.clone();
+        }
+        doc.renumber_objects_with(next_id);
+        next_id = doc.max_id + 1;
+
+        for page_id in doc.get_pages().into_values() {
+            let Some(page_obj) = doc.objects.get(&page_id) else {
+                continue;
+            };
+            let mut page_obj = page_obj.clone();
+            let needs_media_box = matches!(page_obj.as_dict(), Ok(dict) if !dict.has(b"MediaBox"));
+            if needs_media_box {
+                let mb = page_obj
+                    .as_dict()
+                    .ok()
+                    .and_then(|dict| inherited_media_box(&doc, dict));
+                if let Some(mb) = mb {
+                    if let Ok(dict) = page_obj.as_dict_mut() {
+                        dict.set("MediaBox", mb);
+                    }
+                }
+            }
+            merged_pages.push((page_id, page_obj));
+        }
+
+        for (id, obj) in doc.objects {
+            if !matches!(obj.type_name(), Ok(b"Page") | Ok(b"Pages") | Ok(b"Catalog")) {
+                merged_objects.insert(id, obj);
+            }
+        }
+    }
+
+    let mut document = Document::with_version(version);
+    document.max_id = next_id - 1;
+    document.objects = merged_objects;
+
+    let pages_id = document.new_object_id();
+    let kids: Vec<Object> = merged_pages
+        .iter()
+        .map(|(id, _)| Object::Reference(*id))
+        .collect();
+    let page_count = kids.len();
+
+    for (page_id, obj) in merged_pages {
+        if let Ok(dict) = obj.as_dict() {
+            let mut dict = dict.clone();
+            dict.set("Parent", pages_id);
+            document.objects.insert(page_id, Object::Dictionary(dict));
+        }
+    }
+
+    document.objects.insert(
+        pages_id,
+        Object::Dictionary(dictionary! {
+            "Type" => "Pages",
+            "Kids" => kids,
+            "Count" => page_count as i64,
+        }),
+    );
+
+    let catalog_id = document.add_object(dictionary! {
+        "Type" => "Catalog",
+        "Pages" => pages_id,
+    });
+    document.trailer.set("Root", catalog_id);
+
+    let first_input = Path::new(&paths[0]);
+    let first_stem = first_input
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("file");
+    let fallback_dir = first_input.parent().unwrap_or(Path::new("."));
+    let dir = resolve_output_dir(output_dir, fallback_dir)?;
+    let mut reserved = HashSet::new();
+    let output = first_available_path(&dir.join(format!("{first_stem}_merged.pdf")), &mut reserved);
+
+    let mut buffer = Vec::new();
+    document.save_to(&mut buffer)?;
+    std::fs::write(&output, &buffer)?;
+    let output_size = buffer.len() as u64;
+
+    Ok(MergeResult {
+        output_path: output.to_string_lossy().into_owned(),
+        output_size,
+        page_count,
+    })
+}
+
+pub fn split_pdf(
+    input: &str,
+    mode: SplitMode,
+    output_dir: Option<&str>,
+) -> Result<Vec<String>, Box<dyn Error>> {
+    crate::core::paths::validate_input_path(input, false)?;
+    checked_size(input)?;
+    let doc = Document::load(input)?;
+    let page_count = doc.get_pages().len() as u32;
+
+    let p = Path::new(input);
+    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+    let fallback_dir = p.parent().unwrap_or(Path::new("."));
+    let dir = resolve_output_dir(output_dir, fallback_dir)?;
+    let mut reserved = HashSet::new();
+
+    match mode {
+        SplitMode::Range { start, end } => {
+            if start < 1 || end < start || end > page_count {
+                return Err(format!(
+                    "page range {start}-{end} out of bounds (document has {page_count} pages)"
+                )
+                .into());
+            }
+            let output = first_available_path(
+                &dir.join(format!("{stem}_pages_{start}-{end}.pdf")),
+                &mut reserved,
+            );
+            let mut sub = doc.clone();
+            let to_delete: Vec<u32> = (1..=page_count)
+                .filter(|n| *n < start || *n > end)
+                .collect();
+            sub.delete_pages(&to_delete);
+            let mut buffer = Vec::new();
+            sub.save_to(&mut buffer)?;
+            std::fs::write(&output, &buffer)?;
+            Ok(vec![output.to_string_lossy().into_owned()])
+        }
+        SplitMode::EachPage => {
+            let mut outputs = Vec::with_capacity(page_count as usize);
+            for n in 1..=page_count {
+                let output =
+                    first_available_path(&dir.join(format!("{stem}_page_{n}.pdf")), &mut reserved);
+                let mut sub = Document::load(input)?;
+                let to_delete: Vec<u32> = (1..=page_count).filter(|p| *p != n).collect();
+                sub.delete_pages(&to_delete);
+                let mut buffer = Vec::new();
+                sub.save_to(&mut buffer)?;
+                std::fs::write(&output, &buffer)?;
+                outputs.push(output.to_string_lossy().into_owned());
+            }
+            Ok(outputs)
+        }
+    }
+}
+
 fn compress_pdf_images(doc: &mut Document) -> u32 {
     let page_ids: Vec<lopdf::ObjectId> = doc.get_pages().values().copied().collect();
     let mut count = 0u32;
@@ -228,6 +441,33 @@ mod tests {
             "Kids" => lopdf::Object::Array(vec![]),
             "Count" => 0,
         });
+        let catalog_id = doc.add_object(dictionary! {
+            "Type" => "Catalog",
+            "Pages" => pages_id,
+        });
+        doc.trailer.set("Root", catalog_id);
+        doc
+    }
+
+    fn multi_page_pdf(page_count: u32) -> Document {
+        let mut doc = Document::with_version("1.4");
+        let pages_id = doc.new_object_id();
+        let mut kids = Vec::new();
+        for _ in 0..page_count {
+            let page_id = doc.add_object(dictionary! {
+                "Type" => "Page",
+                "Parent" => pages_id,
+            });
+            kids.push(Object::Reference(page_id));
+        }
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages",
+                "Kids" => kids,
+                "Count" => page_count as i64,
+            }),
+        );
         let catalog_id = doc.add_object(dictionary! {
             "Type" => "Catalog",
             "Pages" => pages_id,
@@ -510,5 +750,134 @@ mod tests {
         );
         // Output paths must differ
         assert_ne!(results[0].output_path, results[1].output_path);
+    }
+
+    #[test]
+    fn merge_combines_page_counts() {
+        let dir = tempfile::tempdir().unwrap();
+        let path_a = dir.path().join("a.pdf");
+        let path_b = dir.path().join("b.pdf");
+        fs::write(&path_a, save_doc(&mut multi_page_pdf(2))).unwrap();
+        fs::write(&path_b, save_doc(&mut multi_page_pdf(3))).unwrap();
+
+        let paths = vec![
+            path_a.to_str().unwrap().to_string(),
+            path_b.to_str().unwrap().to_string(),
+        ];
+        let result = merge_pdfs(&paths, None).unwrap();
+
+        assert_eq!(result.page_count, 5);
+        let out_doc = Document::load(&result.output_path).unwrap();
+        assert_eq!(out_doc.get_pages().len(), 5);
+    }
+
+    #[test]
+    fn merge_single_input_is_degenerate_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let path_a = dir.path().join("a.pdf");
+        fs::write(&path_a, save_doc(&mut multi_page_pdf(3))).unwrap();
+
+        let paths = vec![path_a.to_str().unwrap().to_string()];
+        let result = merge_pdfs(&paths, None).unwrap();
+
+        assert_eq!(result.page_count, 3);
+    }
+
+    #[test]
+    fn merge_empty_paths_returns_error() {
+        assert!(merge_pdfs(&[], None).is_err());
+    }
+
+    #[test]
+    fn merge_no_clobber_when_output_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let path_a = dir.path().join("a.pdf");
+        let path_b = dir.path().join("b.pdf");
+        fs::write(&path_a, save_doc(&mut multi_page_pdf(1))).unwrap();
+        fs::write(&path_b, save_doc(&mut multi_page_pdf(1))).unwrap();
+        // Pre-occupy the name merge_pdfs would naturally pick.
+        fs::write(dir.path().join("a_merged.pdf"), b"existing").unwrap();
+
+        let paths = vec![
+            path_a.to_str().unwrap().to_string(),
+            path_b.to_str().unwrap().to_string(),
+        ];
+        let result = merge_pdfs(&paths, None).unwrap();
+
+        assert_ne!(
+            result.output_path,
+            dir.path().join("a_merged.pdf").to_str().unwrap()
+        );
+    }
+
+    #[test]
+    fn split_range_returns_page_subset() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("doc.pdf");
+        fs::write(&input, save_doc(&mut multi_page_pdf(5))).unwrap();
+
+        let outputs = split_pdf(
+            input.to_str().unwrap(),
+            SplitMode::Range { start: 2, end: 4 },
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(outputs.len(), 1);
+        let out_doc = Document::load(&outputs[0]).unwrap();
+        assert_eq!(out_doc.get_pages().len(), 3);
+    }
+
+    #[test]
+    fn split_range_out_of_bounds_returns_clear_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("doc.pdf");
+        fs::write(&input, save_doc(&mut multi_page_pdf(5))).unwrap();
+
+        let err = split_pdf(
+            input.to_str().unwrap(),
+            SplitMode::Range { start: 3, end: 9 },
+            None,
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("out of bounds"));
+        assert!(err.to_string().contains("5 pages"));
+    }
+
+    #[test]
+    fn split_each_page_produces_n_outputs() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("doc.pdf");
+        fs::write(&input, save_doc(&mut multi_page_pdf(4))).unwrap();
+
+        let outputs = split_pdf(input.to_str().unwrap(), SplitMode::EachPage, None).unwrap();
+
+        assert_eq!(outputs.len(), 4);
+        for output in &outputs {
+            let out_doc = Document::load(output).unwrap();
+            assert_eq!(out_doc.get_pages().len(), 1);
+        }
+    }
+
+    #[test]
+    fn split_no_clobber_when_output_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("doc.pdf");
+        fs::write(&input, save_doc(&mut multi_page_pdf(4))).unwrap();
+        // Pre-occupy the name split_pdf would naturally pick for pages 1-2.
+        fs::write(dir.path().join("doc_pages_1-2.pdf"), b"existing").unwrap();
+
+        let outputs = split_pdf(
+            input.to_str().unwrap(),
+            SplitMode::Range { start: 1, end: 2 },
+            None,
+        )
+        .unwrap();
+
+        assert_ne!(
+            outputs[0],
+            dir.path().join("doc_pages_1-2.pdf").to_str().unwrap()
+        );
     }
 }
