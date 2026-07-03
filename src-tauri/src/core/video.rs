@@ -110,6 +110,12 @@ pub struct VideoCompressionResult {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct VideoTrimResult {
+    pub input_path: String,
+    pub output_path: String,
+}
+
 fn app_support_ffmpeg_path() -> Option<PathBuf> {
     let data_dir = dirs::data_dir()?;
     let ffmpeg_dir = data_dir.join("com.revault.desktop");
@@ -361,6 +367,7 @@ pub fn build_scale_filter(max_height: Option<u32>) -> Option<String> {
 pub fn resolve_video_output_path(
     input_path: &str,
     output_dir: Option<&str>,
+    suffix: &str,
 ) -> Result<String, String> {
     let path = Path::new(input_path);
     let stem = path
@@ -368,6 +375,7 @@ pub fn resolve_video_output_path(
         .and_then(|s| s.to_str())
         .ok_or("Invalid filename")?;
     // MOV inputs are remuxed to MP4 — same H.264/H.265 stream, broader compatibility.
+    // Applies to trim too: -c copy just repackages the existing stream.
     let input_ext = path
         .extension()
         .and_then(|e| e.to_str())
@@ -388,7 +396,7 @@ pub fn resolve_video_output_path(
         }
         None => path.parent().ok_or("No parent directory")?.to_path_buf(),
     };
-    let output = first_available_path(&dir.join(format!("{}_compressed.{}", stem, ext)));
+    let output = first_available_path(&dir.join(format!("{}{}.{}", stem, suffix, ext)));
     output
         .to_str()
         .map(|s| s.to_string())
@@ -467,7 +475,7 @@ pub fn compress_video(
     progress_cb: impl Fn(VideoProgress) + Send,
 ) -> Result<VideoCompressionResult, String> {
     crate::core::paths::validate_input_path(input_path, false)?;
-    let output_path = resolve_video_output_path(input_path, output_dir)?;
+    let output_path = resolve_video_output_path(input_path, output_dir, "_compressed")?;
     let output_file = PathBuf::from(&output_path);
     let temp_output = temporary_output_path(&output_file)?;
     let temp_output_str = temp_output
@@ -653,6 +661,125 @@ pub fn compress_video(
         original_size,
         compressed_size,
         error: None,
+    })
+}
+
+/// Resolves and validates a trim range against the real media duration.
+/// Returns the resolved end time (`duration_sec` when `end_sec` is `None`).
+/// `duration_sec <= 0.0` means ffprobe couldn't determine a duration — range
+/// checks against it are skipped (mirrors how `compress_video` treats an
+/// unknown duration for progress reporting).
+fn resolve_trim_range(
+    start_sec: f64,
+    end_sec: Option<f64>,
+    duration_sec: f64,
+) -> Result<f64, String> {
+    if start_sec < 0.0 {
+        return Err("Start time must be non-negative".to_string());
+    }
+    let end = end_sec.unwrap_or(duration_sec);
+    if end <= start_sec {
+        return Err(format!(
+            "End time ({:.2}s) must be after start time ({:.2}s)",
+            end, start_sec
+        ));
+    }
+    if duration_sec > 0.0 {
+        if start_sec >= duration_sec {
+            return Err(format!(
+                "Start time ({:.2}s) is beyond the video's duration ({:.2}s)",
+                start_sec, duration_sec
+            ));
+        }
+        if end > duration_sec {
+            return Err(format!(
+                "End time ({:.2}s) exceeds the video's duration ({:.2}s)",
+                end, duration_sec
+            ));
+        }
+    }
+    Ok(end)
+}
+
+/// Formats `(start_sec, end_sec)` into the `-ss`/`-t` argument strings.
+/// `-t` is a *duration* (end - start), not `-to` — as an input option `-to`
+/// is interpreted relative to the input's own timeline, not to `-ss`, which
+/// would silently produce the wrong cut. `-t` after `-ss` is unambiguous.
+fn trim_time_args(start_sec: f64, end_sec: f64) -> (String, String) {
+    (
+        format!("{:.3}", start_sec),
+        format!("{:.3}", end_sec - start_sec),
+    )
+}
+
+pub fn trim_video(
+    input_path: &str,
+    start_sec: f64,
+    end_sec: Option<f64>,
+    output_dir: Option<&str>,
+) -> Result<VideoTrimResult, String> {
+    crate::core::paths::validate_input_path(input_path, false)?;
+
+    let stats = probe_video_stats(input_path)
+        .map_err(|e| format!("Cannot read video metadata for '{}': {}", input_path, e))?;
+    let end = resolve_trim_range(start_sec, end_sec, stats.duration_sec)?;
+
+    let output_path = resolve_video_output_path(input_path, output_dir, "_trimmed")?;
+    let output_file = PathBuf::from(&output_path);
+    let temp_output = temporary_output_path(&output_file)?;
+    let temp_output_str = temp_output
+        .to_str()
+        .ok_or_else(|| "Temporary output path contains invalid UTF-8".to_string())?
+        .to_string();
+
+    let (ss, duration) = trim_time_args(start_sec, end);
+    let ffmpeg_bin = get_ffmpeg_path();
+    let mut cmd = FfmpegCommand::new_with_path(ffmpeg_bin);
+    // Fast/lossless trim: `-c copy` repackages the existing stream without
+    // re-encoding, so the cut lands on the nearest keyframe at or before
+    // `start_sec` rather than the exact requested frame. A frame-accurate
+    // cut would require re-encoding (drop `-c copy`, add e.g. `-c:v libx264
+    // -crf 20 -c:a aac`) — deliberately not implemented here; this is the
+    // fast/lossless path only, matching what's needed today.
+    cmd.arg("-ss")
+        .arg(ss)
+        .input(input_path)
+        .overwrite()
+        .arg("-t")
+        .arg(duration)
+        .arg("-c")
+        .arg("copy")
+        // Normalizes the output's first timestamp to zero. Without this, a
+        // copy-trim that lands mid-GOP can leave a non-zero starting PTS,
+        // which some players render as a black flash / AV desync at the
+        // start of playback.
+        .arg("-avoid_negative_ts")
+        .arg("make_zero")
+        .output(&temp_output_str);
+
+    let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+    let mut ffmpeg_errors: Vec<String> = Vec::new();
+    for event in child.iter().map_err(|e| e.to_string())? {
+        if let FfmpegEvent::Log(level, msg) = event {
+            use ffmpeg_sidecar::event::LogLevel;
+            if matches!(level, LogLevel::Fatal | LogLevel::Error) {
+                ffmpeg_errors.push(msg);
+            }
+        }
+    }
+    if !ffmpeg_errors.is_empty() {
+        let _ = std::fs::remove_file(&temp_output);
+        return Err(ffmpeg_errors.join("; "));
+    }
+    if !temp_output.exists() {
+        return Err("FFmpeg produced no output — trim likely failed".to_string());
+    }
+
+    install_temp_output(&temp_output, &output_file)?;
+
+    Ok(VideoTrimResult {
+        input_path: input_path.to_string(),
+        output_path,
     })
 }
 
@@ -905,7 +1032,7 @@ mod tests {
     fn test_resolve_video_output_path() {
         // Use Path::join for cross-platform comparison — Windows produces
         // backslash separators, Unix produces forward slashes.
-        let result = resolve_video_output_path("/tmp/video.mp4", None).unwrap();
+        let result = resolve_video_output_path("/tmp/video.mp4", None, "_compressed").unwrap();
         let expected = Path::new("/tmp")
             .join("video_compressed.mp4")
             .to_string_lossy()
@@ -913,7 +1040,7 @@ mod tests {
         assert_eq!(result, expected);
 
         // MOV inputs are remuxed to MP4 for broader compatibility.
-        let result = resolve_video_output_path("/home/user/clip.mov", None).unwrap();
+        let result = resolve_video_output_path("/home/user/clip.mov", None, "_compressed").unwrap();
         let expected = Path::new("/home/user")
             .join("clip_compressed.mp4")
             .to_string_lossy()
@@ -921,7 +1048,7 @@ mod tests {
         assert_eq!(result, expected);
 
         // Case-insensitive: .MOV also maps to .mp4.
-        let result = resolve_video_output_path("/home/user/clip.MOV", None).unwrap();
+        let result = resolve_video_output_path("/home/user/clip.MOV", None, "_compressed").unwrap();
         let expected = Path::new("/home/user")
             .join("clip_compressed.mp4")
             .to_string_lossy()
@@ -938,7 +1065,8 @@ mod tests {
         let canon_dir = std::fs::canonicalize(dir.path()).unwrap();
         let dir_str = dir.path().to_str().unwrap();
 
-        let result = resolve_video_output_path("/tmp/video.mp4", Some(dir_str)).unwrap();
+        let result =
+            resolve_video_output_path("/tmp/video.mp4", Some(dir_str), "_compressed").unwrap();
         let expected = canon_dir
             .join("video_compressed.mp4")
             .to_string_lossy()
@@ -946,7 +1074,8 @@ mod tests {
         assert_eq!(result, expected);
 
         // MOV → MP4 remux applies even when output_dir is set.
-        let result = resolve_video_output_path("/tmp/clip.mov", Some(dir_str)).unwrap();
+        let result =
+            resolve_video_output_path("/tmp/clip.mov", Some(dir_str), "_compressed").unwrap();
         let expected = canon_dir
             .join("clip_compressed.mp4")
             .to_string_lossy()
@@ -960,8 +1089,12 @@ mod tests {
         let existing = dir.path().join("clip_compressed.mp4");
         std::fs::write(&existing, b"existing").unwrap();
 
-        let result =
-            resolve_video_output_path("/tmp/clip.mp4", Some(dir.path().to_str().unwrap())).unwrap();
+        let result = resolve_video_output_path(
+            "/tmp/clip.mp4",
+            Some(dir.path().to_str().unwrap()),
+            "_compressed",
+        )
+        .unwrap();
         let expected = std::fs::canonicalize(dir.path())
             .unwrap()
             .join("clip_compressed_2.mp4")
@@ -1000,7 +1133,8 @@ mod tests {
 
     #[test]
     fn test_resolve_video_output_path_missing_dir() {
-        let result = resolve_video_output_path("/tmp/video.mp4", Some("/nonexistent/dir"));
+        let result =
+            resolve_video_output_path("/tmp/video.mp4", Some("/nonexistent/dir"), "_compressed");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Invalid output dir"));
     }
@@ -1012,12 +1146,97 @@ mod tests {
         // that we no longer hand the raw "../.." string back to ffmpeg.
         let dir = tempfile::tempdir().unwrap();
         let traversal = dir.path().join("..").join("..").join("etc");
-        let result = resolve_video_output_path("/tmp/video.mp4", traversal.to_str());
+        let result = resolve_video_output_path("/tmp/video.mp4", traversal.to_str(), "_compressed");
         // Either canonicalize fails (path doesn't exist) or it resolves to
         // something — either way the input string is normalized away.
         if let Ok(out) = result {
             assert!(!out.contains(".."), "output path leaks traversal: {}", out);
         }
+    }
+
+    #[test]
+    fn test_resolve_trim_output_path_uses_trimmed_suffix() {
+        let result = resolve_video_output_path("/tmp/clip.mp4", None, "_trimmed").unwrap();
+        let expected = Path::new("/tmp")
+            .join("clip_trimmed.mp4")
+            .to_string_lossy()
+            .to_string();
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_resolve_trim_output_path_does_not_clobber_existing_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let existing = dir.path().join("clip_trimmed.mp4");
+        std::fs::write(&existing, b"existing").unwrap();
+
+        let result = resolve_video_output_path(
+            "/tmp/clip.mp4",
+            Some(dir.path().to_str().unwrap()),
+            "_trimmed",
+        )
+        .unwrap();
+        let expected = std::fs::canonicalize(dir.path())
+            .unwrap()
+            .join("clip_trimmed_2.mp4")
+            .to_string_lossy()
+            .to_string();
+        assert_eq!(result, expected);
+        assert_eq!(std::fs::read(&existing).unwrap(), b"existing");
+    }
+
+    #[test]
+    fn test_trim_time_args_formats_ss_and_duration() {
+        let (ss, duration) = trim_time_args(5.0, 12.5);
+        assert_eq!(ss, "5.000");
+        assert_eq!(duration, "7.500");
+    }
+
+    #[test]
+    fn test_resolve_trim_range_defaults_end_to_duration() {
+        let end = resolve_trim_range(2.0, None, 30.0).unwrap();
+        assert_eq!(end, 30.0);
+    }
+
+    #[test]
+    fn test_resolve_trim_range_explicit_end_within_duration() {
+        let end = resolve_trim_range(2.0, Some(10.0), 30.0).unwrap();
+        assert_eq!(end, 10.0);
+    }
+
+    #[test]
+    fn test_resolve_trim_range_rejects_negative_start() {
+        let err = resolve_trim_range(-1.0, Some(10.0), 30.0).unwrap_err();
+        assert!(err.contains("non-negative"));
+    }
+
+    #[test]
+    fn test_resolve_trim_range_rejects_start_at_or_after_end() {
+        let err = resolve_trim_range(10.0, Some(10.0), 30.0).unwrap_err();
+        assert!(err.contains("must be after"));
+
+        let err = resolve_trim_range(15.0, Some(10.0), 30.0).unwrap_err();
+        assert!(err.contains("must be after"));
+    }
+
+    #[test]
+    fn test_resolve_trim_range_rejects_start_beyond_duration() {
+        let err = resolve_trim_range(40.0, Some(45.0), 30.0).unwrap_err();
+        assert!(err.contains("beyond the video's duration"));
+    }
+
+    #[test]
+    fn test_resolve_trim_range_rejects_end_beyond_duration() {
+        let err = resolve_trim_range(2.0, Some(45.0), 30.0).unwrap_err();
+        assert!(err.contains("exceeds the video's duration"));
+    }
+
+    #[test]
+    fn test_resolve_trim_range_skips_duration_checks_when_duration_unknown() {
+        // duration_sec == 0.0 means ffprobe couldn't determine it — only the
+        // start < end invariant should still be enforced.
+        let end = resolve_trim_range(5.0, Some(20.0), 0.0).unwrap();
+        assert_eq!(end, 20.0);
     }
 
     #[test]
