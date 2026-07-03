@@ -10,6 +10,20 @@ pub const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
 pub const IMAGE_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "png", "webp", "heic", "heif", "tiff", "tif", "bmp", "gif", "avif", "jxl",
 ];
+
+/// Caps applied before decoding any user-supplied image buffer, to prevent
+/// decompression-bomb OOM (a crafted header declaring huge dimensions).
+pub const MAX_IMAGE_DIMENSION: u32 = 8192;
+pub const MAX_IMAGE_ALLOC: u64 = 256 * 1024 * 1024;
+
+pub fn decode_limits() -> image::Limits {
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(MAX_IMAGE_DIMENSION);
+    limits.max_image_height = Some(MAX_IMAGE_DIMENSION);
+    limits.max_alloc = Some(MAX_IMAGE_ALLOC);
+    limits
+}
+
 /// Threshold for using memory-mapped I/O instead of reading into RAM.
 /// 10MB+ files benefit from mmap as OS handles caching better.
 const MMAP_THRESHOLD: u64 = 10 * 1024 * 1024;
@@ -82,11 +96,7 @@ pub fn open_image(path: &str) -> Result<image::DynamicImage, Box<dyn std::error:
         _ => {
             let file = fs::File::open(path)?;
             let mut reader = ImageReader::new(BufReader::new(file)).with_guessed_format()?;
-            let mut limits = image::Limits::default();
-            limits.max_image_width = Some(8192);
-            limits.max_image_height = Some(8192);
-            limits.max_alloc = Some(256 * 1024 * 1024);
-            reader.limits(limits);
+            reader.limits(decode_limits());
             Ok(reader.decode()?)
         }
     }

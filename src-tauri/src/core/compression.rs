@@ -8,7 +8,7 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 use crate::core::image_io::{
-    checked_size, decode_rgb, ext_lowercase, open_image, read_file_mmap_or_default,
+    checked_size, decode_limits, decode_rgb, ext_lowercase, open_image, read_file_mmap_or_default,
     write_preserving_timestamps,
 };
 
@@ -755,7 +755,9 @@ pub(crate) fn compress_jpeg_data(
     data: &[u8],
     quality: f32,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let img = image::load_from_memory(data)?;
+    let mut reader = image::ImageReader::new(Cursor::new(data)).with_guessed_format()?;
+    reader.limits(decode_limits());
+    let img = reader.decode()?;
 
     // Downsample if largest dimension exceeds 1920px (covers 300 DPI scans)
     let img = {
@@ -847,6 +849,21 @@ mod tests {
             }
         }
         img.save(path).unwrap();
+    }
+
+    #[test]
+    fn compress_jpeg_data_rejects_oversized_dimensions() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("huge.jpg");
+        create_test_jpeg(path.to_str().unwrap(), 9000, 4, 90.0);
+        let data = fs::read(&path).unwrap();
+
+        let err = compress_jpeg_data(&data, 78.0).unwrap_err();
+        assert!(
+            err.to_string().to_lowercase().contains("limit")
+                || err.to_string().to_lowercase().contains("dimension"),
+            "expected a limits error, got: {err}"
+        );
     }
 
     #[test]

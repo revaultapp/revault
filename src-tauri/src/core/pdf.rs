@@ -242,6 +242,70 @@ mod tests {
         buf
     }
 
+    fn jpeg_bytes(width: usize, height: usize, quality: f32) -> Vec<u8> {
+        let mut pixels = vec![0u8; width * height * 3];
+        for y in 0..height {
+            for x in 0..width {
+                let i = (y * width + x) * 3;
+                pixels[i] = (x % 256) as u8;
+                pixels[i + 1] = (y % 256) as u8;
+                pixels[i + 2] = ((x + y) % 256) as u8;
+            }
+        }
+        let mut cinfo = mozjpeg::Compress::new(mozjpeg::ColorSpace::JCS_RGB);
+        cinfo.set_size(width, height);
+        cinfo.set_quality(quality);
+        let mut cinfo = cinfo.start_compress(Vec::new()).unwrap();
+        cinfo.write_scanlines(&pixels).unwrap();
+        cinfo.finish().unwrap()
+    }
+
+    /// Builds a one-page PDF with a single DCTDecode (JPEG) image XObject,
+    /// referenced from the page's Resources — the shape `get_page_images` expects.
+    fn pdf_with_jpeg_image(jpeg: &[u8], width: i64, height: i64) -> Document {
+        let mut doc = Document::with_version("1.4");
+
+        let image_stream = Stream::new(
+            dictionary! {
+                "Type" => "XObject",
+                "Subtype" => "Image",
+                "Width" => width,
+                "Height" => height,
+                "ColorSpace" => "DeviceRGB",
+                "BitsPerComponent" => 8,
+                "Filter" => "DCTDecode",
+            },
+            jpeg.to_vec(),
+        );
+        let image_id = doc.add_object(image_stream);
+
+        let resources_id = doc.add_object(dictionary! {
+            "XObject" => dictionary! { "Im0" => image_id },
+        });
+
+        let page_id = doc.add_object(dictionary! {
+            "Type" => "Page",
+            "Resources" => resources_id,
+        });
+
+        let pages_id = doc.add_object(dictionary! {
+            "Type" => "Pages",
+            "Kids" => Object::Array(vec![Object::Reference(page_id)]),
+            "Count" => 1,
+        });
+        doc.get_dictionary_mut(page_id)
+            .unwrap()
+            .set("Parent", pages_id);
+
+        let catalog_id = doc.add_object(dictionary! {
+            "Type" => "Catalog",
+            "Pages" => pages_id,
+        });
+        doc.trailer.set("Root", catalog_id);
+
+        doc
+    }
+
     #[test]
     fn strip_metadata_removes_info_dict() {
         let dir = tempfile::tempdir().unwrap();
@@ -361,6 +425,46 @@ mod tests {
         };
         let result = process_pdf(input.to_str().unwrap(), output.to_str().unwrap(), opts).unwrap();
         assert!(result.error.is_none());
+    }
+
+    #[test]
+    fn compress_images_reencodes_embedded_jpeg() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("in.pdf");
+        let output = dir.path().join("out.pdf");
+
+        let original_jpeg = jpeg_bytes(200, 200, 100.0);
+        let mut doc = pdf_with_jpeg_image(&original_jpeg, 200, 200);
+        let data = save_doc(&mut doc);
+        fs::write(&input, &data).unwrap();
+
+        let opts = PdfOptions {
+            strip_metadata: false,
+            compress_streams: false,
+            compress_images: true,
+        };
+        let result = process_pdf(input.to_str().unwrap(), output.to_str().unwrap(), opts).unwrap();
+        assert!(result.error.is_none());
+
+        let out_doc = Document::load(output.to_str().unwrap()).unwrap();
+        let page_id = *out_doc.get_pages().values().next().unwrap();
+        let images = out_doc.get_page_images(page_id).unwrap();
+        assert_eq!(images.len(), 1);
+        assert!(
+            images[0].content.len() < original_jpeg.len(),
+            "expected re-encoded image ({}) to be smaller than original ({})",
+            images[0].content.len(),
+            original_jpeg.len()
+        );
+
+        let stream = out_doc
+            .objects
+            .get(&images[0].id)
+            .unwrap()
+            .as_stream()
+            .unwrap();
+        let declared_len = stream.dict.get(b"Length").unwrap().as_i64().unwrap();
+        assert_eq!(declared_len as usize, stream.content.len());
     }
 
     #[test]
