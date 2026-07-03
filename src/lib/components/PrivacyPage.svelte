@@ -304,10 +304,10 @@
   <div class="control-group">
     <span class="label">Strip</span>
     <div class="strip-options">
-      <label><ToggleSwitch bind:checked={$stripGps} /> GPS</label>
-      <label><ToggleSwitch bind:checked={$stripDevice} /> Device</label>
-      <label><ToggleSwitch bind:checked={$stripDatetime} /> Date &amp; Time</label>
-      <label><ToggleSwitch bind:checked={$stripAuthor} /> Author</label>
+      <label><ToggleSwitch bind:checked={$stripGps} label="Strip GPS" /> GPS</label>
+      <label><ToggleSwitch bind:checked={$stripDevice} label="Strip device metadata" /> Device</label>
+      <label><ToggleSwitch bind:checked={$stripDatetime} label="Strip date and time" /> Date &amp; Time</label>
+      <label><ToggleSwitch bind:checked={$stripAuthor} label="Strip author" /> Author</label>
     </div>
   </div>
   <div class="control-group">

@@ -290,7 +290,7 @@
         <div class="toggle-label">
           <span class="label">Strip GPS <HelperTooltip tip="Removes GPS coordinates and other location metadata from converted images to protect your privacy." /></span>
         </div>
-        <ToggleSwitch bind:checked={$stripGps} />
+        <ToggleSwitch bind:checked={$stripGps} label="Strip GPS" />
       </div>
     </div>
   </div>
