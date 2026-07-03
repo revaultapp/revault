@@ -16,10 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Video Compression**: FFmpeg backend with CRF presets (Smallest/Balanced/HighQuality), MOV→MP4 remux, privacy modes (Off/Smart/GPS-only/Full), size prediction
 - **Video Trim**: Cut a video to a start/end range with fast, lossless stream-copy (ffmpeg -c copy); non-clobbering output, range validated against real media duration
 - **GIF Export**: Create animated GIFs from video via gifski sidecar with streaming pipeline and cancellation
-- **PDF Tools**: PDF metadata stripping and stream compression with embedded image re-encoding
+- **PDF Tools**: PDF metadata stripping, stream compression with embedded image re-encoding, and merge/split (combine multiple PDFs, extract page ranges)
 - **Dashboard**: Storage analysis, compression savings tracker, quick actions, recent activity
 - **UI/UX**: Locked-dark chrome, cross-platform window controls, Svelte 5 runes reactivity, animated progress indicators, before/after slider with keyboard navigation
+- **Accessibility**: ARIA roles and full keyboard navigation for segmented controls, sidebar, and toggles; global `prefers-reduced-motion` support
 - **Security**: Input path validation across all command entry points, memory limits on HEIC/JXL decode, gifski archive SHA-256 verification, dependency auditing
+- **Packaging**: macOS ad-hoc code signing for Apple Silicon Gatekeeper compatibility
 
 ### Changed
 - Removed Organize/Rename feature (out of scope)

@@ -4,7 +4,7 @@ Ultra-lightweight desktop app for image compression, conversion, analysis, and o
 
 **Open source. Offline-first. Cross-platform.**
 
-> **Status:** Shipped and actively maintained. 157 Rust unit tests + 88 frontend tests.
+> **Status:** Shipped and actively maintained. 175 Rust unit tests + 112 frontend tests.
 
 ## Features
 

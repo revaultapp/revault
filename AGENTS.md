@@ -54,11 +54,11 @@ Rust core modules:
 - `heic`: native HEIC decode helpers.
 - `image_io`: format detection, thumbnails, dimensions.
 - `paths`: shared input path and output suffix validation.
-- `pdf`: PDF metadata stripping and stream compression.
+- `pdf`: PDF metadata stripping, stream compression, and merge/split.
 - `privacy`: EXIF/GPS/metadata reading and stripping.
 - `resize`: image resize engine.
 - `scanner`: folder image scanning.
-- `video`: FFmpeg sidecar video compression, privacy modes, preview/size estimation.
+- `video`: FFmpeg sidecar video compression, trim, privacy modes, preview/size estimation.
 
 Tauri command modules mirror the app features: `compress`, `convert`, `dedupe`, `delete`, `gif`, `pdf`, `privacy`, `resize`, `scanner`, `thumbnail`, `video`.
 
@@ -88,9 +88,9 @@ Current sidebar pages:
 - Convert/resize: implemented, with default output folder fallback and anti-upscale UX for resize.
 - Duplicate analysis: exact SHA mode plus Similar pHash mode for near duplicates.
 - Privacy: image metadata scan/strip UI, selective GPS/device/date/author stripping.
-- Video: FFmpeg sidecar, presets, cancellation, size prediction, privacy modes `off | smart | gps_only | full`.
+- Video: FFmpeg sidecar, presets, cancellation, size prediction, privacy modes `off | smart | gps_only | full`, trim to start/end range (lossless stream-copy).
 - GIF export: implemented via gifski sidecar from the Video flow.
-- PDF Tools: metadata stripping and stream compression with embedded image re-encoding.
+- PDF Tools: metadata stripping, stream compression with embedded image re-encoding, and merge/split (combine PDFs, extract page ranges).
 - Dashboard: implemented with savings, storage analysis, quick actions, and recent activity.
 - Removed/deferred scope: organize/rename, collage, watermark, cloud, OCR.
 
@@ -109,9 +109,9 @@ Source of truth is `src/app.css`.
 
 Current test suite (verified 2026-07-01):
 
-- Rust: 157 unit tests via `cd src-tauri && cargo test`.
-- Frontend: 88 Vitest tests via `pnpm test`.
-- Total: 245 passing tests.
+- Rust: 175 unit tests via `cd src-tauri && cargo test`.
+- Frontend: 112 Vitest tests via `pnpm test`.
+- Total: 287 passing tests.
 
 Always verify counts after changing tests by running the commands above; this section should be updated when tests are added or removed.
 
