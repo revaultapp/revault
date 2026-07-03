@@ -15,7 +15,7 @@
 
 <div class="tools-page">
   <div class="tools-header">
-    <SegmentedControl segments={tools} bind:selected={$activeTool} />
+    <SegmentedControl segments={tools} bind:selected={$activeTool} label="Tool" />
   </div>
 
   <div class="tools-content">

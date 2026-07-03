@@ -226,7 +226,7 @@
         <span class="label">Strip GPS</span>
         <span class="control-hint">Remove location data from photos</span>
       </div>
-      <ToggleSwitch bind:checked={$stripGps} />
+      <ToggleSwitch bind:checked={$stripGps} label="Strip GPS" />
     </div>
   </div>
 </ToolShell>

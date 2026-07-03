@@ -165,7 +165,7 @@
 
 <div class="pdf-page">
   <div class="mode-header">
-    <SegmentedControl segments={modes} bind:selected={mode} />
+    <SegmentedControl segments={modes} bind:selected={mode} label="PDF tool mode" />
   </div>
 
   <div class="mode-content">
@@ -222,9 +222,9 @@
         <div class="control-group">
           <span class="label">Options</span>
           <div class="pdf-options">
-            <label><ToggleSwitch bind:checked={$stripMetadata} /> Strip metadata</label>
-            <label><ToggleSwitch bind:checked={$compressStreams} /> Compress streams</label>
-            <label><ToggleSwitch bind:checked={$compressImages} /> Compress images <span class="toggle-hint">lossy</span></label>
+            <label><ToggleSwitch bind:checked={$stripMetadata} label="Strip metadata" /> Strip metadata</label>
+            <label><ToggleSwitch bind:checked={$compressStreams} label="Compress streams" /> Compress streams</label>
+            <label><ToggleSwitch bind:checked={$compressImages} label="Compress images" /> Compress images <span class="toggle-hint">lossy</span></label>
           </div>
         </div>
         <div class="control-group">
@@ -385,7 +385,7 @@
           <div class="controls">
             <div class="control-group">
               <span class="label">Mode</span>
-              <SegmentedControl segments={splitModes} bind:selected={splitModeChoice} />
+              <SegmentedControl segments={splitModes} bind:selected={splitModeChoice} label="Split mode" />
             </div>
 
             {#if splitModeChoice === "range"}
