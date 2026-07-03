@@ -48,18 +48,19 @@ cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings
 
 Rust core modules:
 
-- `compression`: JPEG/PNG/WebP/AVIF/JXL-related image optimization and output path resolution.
+- `compression`: JPEG/PNG/WebP/AVIF image optimization and output path resolution (JXL is decode-only, used for thumbnails — no JXL encoding).
 - `dedupe`: SHA256 exact duplicate detection and pHash similar mode.
 - `gif`: GIF export via gifski sidecar.
 - `heic`: native HEIC decode helpers.
 - `image_io`: format detection, thumbnails, dimensions.
 - `paths`: shared input path and output suffix validation.
+- `pdf`: PDF metadata stripping and stream compression.
 - `privacy`: EXIF/GPS/metadata reading and stripping.
 - `resize`: image resize engine.
 - `scanner`: folder image scanning.
 - `video`: FFmpeg sidecar video compression, privacy modes, preview/size estimation.
 
-Tauri command modules mirror the app features: `compress`, `convert`, `dedupe`, `delete`, `gif`, `privacy`, `resize`, `scanner`, `thumbnail`, `video`.
+Tauri command modules mirror the app features: `compress`, `convert`, `dedupe`, `delete`, `gif`, `pdf`, `privacy`, `resize`, `scanner`, `thumbnail`, `video`.
 
 ## Frontend Structure
 
@@ -78,6 +79,7 @@ Current sidebar pages:
 - Duplicates
 - Privacy
 - Video
+- PDF
 - Settings
 
 ## Feature Status
@@ -88,8 +90,9 @@ Current sidebar pages:
 - Privacy: image metadata scan/strip UI, selective GPS/device/date/author stripping.
 - Video: FFmpeg sidecar, presets, cancellation, size prediction, privacy modes `off | smart | gps_only | full`.
 - GIF export: implemented via gifski sidecar from the Video flow.
+- PDF Tools: metadata stripping and stream compression with embedded image re-encoding.
 - Dashboard: implemented with savings, storage analysis, quick actions, and recent activity.
-- Removed/deferred scope: organize/rename, collage, watermark, cloud, documents/OCR.
+- Removed/deferred scope: organize/rename, collage, watermark, cloud, OCR.
 
 ## Design Tokens
 
@@ -104,12 +107,13 @@ Source of truth is `src/app.css`.
 
 ## Testing Baseline
 
-Current worktree baseline after the safety fixes in this session:
+Current test suite (verified 2026-07-01):
 
-- Rust: 133 unit tests expected via `cd src-tauri && cargo test`.
-- Frontend: 42 Vitest tests expected via `pnpm test`.
+- Rust: 157 unit tests via `cd src-tauri && cargo test`.
+- Frontend: 88 Vitest tests via `pnpm test`.
+- Total: 245 passing tests.
 
-Always verify counts after changing tests; this section should be updated when tests are added or removed.
+Always verify counts after changing tests by running the commands above; this section should be updated when tests are added or removed.
 
 ## Git Notes
 
@@ -121,5 +125,5 @@ Always verify counts after changing tests; this section should be updated when t
 ## Useful Docs
 
 - `README.md`: public overview.
-- `NEXT_STEPS.md`: current working backlog.
-- `TECHNICAL_RESEARCH_2026_04.md`, `COMPRESSION_RESEARCH_2026_05.md`, `COMMUNITY_RESEARCH.md`, `DOCUMENT_RESEARCH.md`, `GROWTH_RESEARCH_2026_05.md`: research snapshots; treat as historical unless refreshed.
+- `CONTRIBUTING.md`: contribution guidelines.
+- `NEXT_STEPS.md`: current working backlog (if present).

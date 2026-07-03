@@ -91,15 +91,16 @@ https://kornel.ski/contact
 
 | Field       | Value |
 |-------------|-------|
-| Version     | Auto-detected at runtime (latest stable) |
+| Version     | Pinned static build (see `core/video.rs`) |
 | Upstream    | https://ffmpeg.org |
-| License     | **LGPL-2.1+** (standard build; some features GPL) |
+| License     | **GPL-2.0+** (libx264/libx265 enabled) |
 | Integration | Sidecar binary — invoked via `ffmpeg-sidecar` crate, never linked |
 
-ReVault uses a standard LGPL build of FFmpeg (no GPL components enabled).
-FFmpeg is downloaded on first use via the `ffmpeg-sidecar` crate's auto-download
-mechanism. LGPL-2.1 does not require distributing a license copy alongside each
-binary download, but FFmpeg's full license text is available at:
+ReVault ships a GPL build of FFmpeg — libx264/libx265 are required for the
+video compression presets (`VideoPreset::codec()`), and neither has an LGPL
+build option. FFmpeg is downloaded on first use via a pinned, SHA-256-verified
+URL (never linked into the ReVault binary itself, so GPL does not propagate to
+ReVault's own MIT license), but FFmpeg's full license text is available at:
 https://ffmpeg.org/legal.html
 
 ---
@@ -144,7 +145,7 @@ Crates used for extraction:
 |-------|---------|---------|------|
 | `flate2` | 1.x | MIT OR Apache-2.0 | gzip decompression (`.tar.gz`) |
 | `tar` | 0.4 | MIT OR Apache-2.0 | `.tar` entry iteration (Unix/macOS) |
-| `zip` | 4.x | MIT | `.zip` entry iteration (Windows) |
+| `zip` | 8.x | MIT | `.zip` entry iteration (Windows) |
 | `ureq` | 3.x | MIT OR Apache-2.0 | HTTPS download with rustls (no OpenSSL dep) |
 
 All four crates were already present as transitive dependencies in `Cargo.lock` before

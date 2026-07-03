@@ -4,16 +4,31 @@ Ultra-lightweight desktop app for image compression, conversion, analysis, and o
 
 **Open source. Offline-first. Cross-platform.**
 
-> **Status:** Early development. Not yet ready for general use.
+> **Status:** Shipped and actively maintained. 157 Rust unit tests + 88 frontend tests.
 
-## Features (planned)
+## Features
 
-- **Compress** — JPEG, PNG, WebP with quality control and exact-size targeting
-- **Convert** — HEIC/PNG/JPEG/WebP format conversion with batch processing
-- **Analyze** — Scan folders to find duplicates, blurry photos, and wasted space
-- **Privacy** — Strip GPS, camera info, and other metadata from images
-- **Organize** — Batch rename, sort by date, custom pipelines
-- **Cloud** — Optimize images in Google Photos, Drive, OneDrive, Dropbox
+- **Compress** — JPEG (mozjpeg), PNG (oxipng), WebP, AVIF with quality control and exact-size targeting
+- **Convert** — HEIC (native decode), PNG, JPEG, WebP format conversion with batch processing
+- **Resize** — Batch image resize with anti-upscaling safeguards
+- **Duplicates** — Find exact duplicates (SHA256) or perceptually similar images (pHash) in folders
+- **Privacy** — Strip EXIF, GPS, camera info, and metadata from images
+- **Video** — Compress video with CRF presets, privacy modes, MOV→MP4 remux
+- **GIF Export** — Create animated GIFs from video clips via gifski
+- **PDF Tools** — Strip metadata and compress streams in PDF documents
+
+## Installing
+
+Download the latest release for your platform below. Since these builds are not yet signed, you may see security warnings on first launch — these are safe to bypass:
+
+- **macOS:** Right-click (or Control-click) the app → **Open** → click **Open** to confirm. This is a one-time step. If you see "app is damaged", run:
+  ```bash
+  xattr -dr com.apple.quarantine /Applications/ReVault.app
+  ```
+
+- **Windows:** When SmartScreen appears, click **More info** → **Run anyway**.
+
+Signed and notarized builds are planned for a future release.
 
 ## Tech Stack
 
