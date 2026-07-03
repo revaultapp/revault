@@ -8,7 +8,75 @@ permissions:
   contents: write
 
 jobs:
+  # Quality gate: all deterministic checks run once on ubuntu before any build.
+  # Mirrors ci.yml's quality job for consistency.
+  quality:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install system dependencies (Ubuntu)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev nasm
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install frontend dependencies
+        run: pnpm install
+
+      - name: Build frontend
+        run: pnpm build
+
+      - name: Svelte / TypeScript type check
+        run: pnpm check
+
+      - name: Frontend tests
+        run: pnpm test
+
+      - name: Rust format check
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
+      - name: Rust clippy
+        working-directory: src-tauri
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@cargo-audit
+
+      - name: Cargo audit
+        working-directory: src-tauri
+        run: cargo audit
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@cargo-nextest
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo nextest run --workspace
+
   release:
+    needs: quality
     strategy:
       fail-fast: false
       matrix:
@@ -56,17 +124,12 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      - name: Rust format check
-        working-directory: src-tauri
-        run: cargo fmt --all -- --check
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@cargo-nextest
 
-      - name: Rust clippy
+      - name: Rust tests (platform validation)
         working-directory: src-tauri
-        run: cargo clippy --workspace -- -D warnings
-
-      - name: Rust tests
-        working-directory: src-tauri
-        run: cargo test --workspace
+        run: cargo nextest run --workspace
 
       - uses: tauri-apps/tauri-action@v1
         env:
@@ -74,7 +137,12 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Revault v__VERSION__'
-          releaseBody: 'See the assets to download and install.'
+          releaseBody: |
+            ## Getting Started
+
+            Download the installer for your platform below. These builds are unsigned — see the [Installing](https://github.com/revaultapp/revault#installing) section in the README for first-launch instructions on macOS and Windows.
+
+            Signed builds are planned for a future release.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
