@@ -63,7 +63,9 @@ pub fn process_pdf(
     if opts.compress_streams {
         doc.traverse_objects(|obj| {
             if let Object::Stream(s) = obj {
-                let _ = s.compress();
+                if let Err(e) = s.compress() {
+                    eprintln!("PDF stream compression failed, leaving stream uncompressed: {e}");
+                }
             }
         });
     }

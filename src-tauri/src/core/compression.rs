@@ -206,6 +206,15 @@ fn read_jpeg_bytes(path: &str) -> Result<Vec<u8>, std::io::Error> {
     read_file_mmap_or_default(path)
 }
 
+/// Extract a human-readable message from a caught panic payload.
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .map(|s| s.to_string())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "unknown panic".to_string())
+}
+
 /// Decode input to RGB pixels, preferring mozjpeg for JPEG quality preservation.
 fn decode_input_rgb(
     input_path: &str,
@@ -223,7 +232,7 @@ fn decode_input_rgb(
         if !input.starts_with(&[0xFF, 0xD8, 0xFF]) {
             return None;
         }
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let dinfo = mozjpeg::Decompress::with_markers(mozjpeg::ALL_MARKERS).from_mem(&input)?;
             let mut rgb = dinfo.rgb()?;
             let w = rgb.width();
@@ -231,9 +240,22 @@ fn decode_input_rgb(
             let p: Vec<u8> = rgb.read_scanlines()?;
             rgb.finish()?;
             Ok::<_, Box<dyn std::error::Error + Send + Sync>>((w, h, p))
-        }))
-        .ok()
-        .and_then(|r| r.ok())
+        })) {
+            Ok(Ok(decoded)) => Some(decoded),
+            Ok(Err(e)) => {
+                eprintln!(
+                    "mozjpeg decode failed for {input_path}, falling back to image crate: {e}"
+                );
+                None
+            }
+            Err(panic) => {
+                eprintln!(
+                    "mozjpeg decode panicked for {input_path}, falling back to image crate: {}",
+                    panic_message(&panic)
+                );
+                None
+            }
+        }
     });
 
     jpeg_result.map_or_else(|| decode_rgb(input_path), Ok)
@@ -271,7 +293,7 @@ fn encode_jpeg_bytes_inner(
         cinfo.write_scanlines(pixels)?;
         Ok::<_, Box<dyn std::error::Error>>(cinfo.finish()?)
     }))
-    .map_err(|_| "mozjpeg encoder panicked")?
+    .map_err(|payload| format!("mozjpeg encoder panicked: {}", panic_message(&payload)))?
 }
 
 pub(crate) fn encode_webp_bytes(
@@ -279,7 +301,11 @@ pub(crate) fn encode_webp_bytes(
     quality: f32,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let encoder = webp::Encoder::from_image(img)?;
-    let mut config = webp::WebPConfig::new().map_err(|_| "failed to create WebP config")?;
+    // webp::WebPConfig::new() returns Result<Self, ()> — libwebp's WebPInitConfig gives no
+    // detail beyond pass/fail (it fails on header/lib ABI version mismatch). {:?} is `()`,
+    // but we still surface the site instead of silently swallowing it via map_err(|_| ...).
+    let mut config = webp::WebPConfig::new()
+        .map_err(|e| format!("failed to create WebP config (libwebp ABI mismatch?): {e:?}"))?;
     config.quality = quality;
     config.method = 6;
     config.thread_level = 1;
@@ -790,7 +816,7 @@ pub(crate) fn compress_jpeg_data(
             comp.write_scanlines(&pixels)?;
             Ok(comp.finish()?)
         })
-        .map_err(|_| "mozjpeg panicked")??;
+        .map_err(|payload| format!("mozjpeg panicked: {}", panic_message(&payload)))??;
 
         if encoded.len() < data.len() {
             Ok(encoded)

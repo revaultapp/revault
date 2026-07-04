@@ -248,7 +248,15 @@ where
 
         let perceptual_hash = if matches!(mode, ScanMode::Similar) {
             check_cancelled(cancel)?;
-            compute_perceptual_hash(path).ok()
+            match compute_perceptual_hash(path) {
+                Ok(hash) => Some(hash),
+                Err(e) => {
+                    eprintln!(
+                        "perceptual hash failed for {path}, excluding from Similar matching: {e}"
+                    );
+                    None
+                }
+            }
         } else {
             None
         };
@@ -534,6 +542,36 @@ mod tests {
         // Valid images should still be grouped
         assert!(result.groups.iter().any(|g| g.files.len() == 2));
         // Corrupt file not in any group (pHash failed silently)
+        for group in &result.groups {
+            for file in &group.files {
+                assert!(!file.path.contains("corrupt.png"));
+            }
+        }
+    }
+
+    #[test]
+    fn find_duplicates_similar_mode_skips_corrupt_perceptual_hash_gracefully() {
+        use image::RgbaImage;
+        let dir = tempfile::tempdir().unwrap();
+        let valid1 = dir.path().join("valid1.png");
+        let valid2 = dir.path().join("valid2.png");
+        let corrupt = dir.path().join("corrupt.png");
+
+        let img: RgbaImage =
+            image::ImageBuffer::from_fn(16, 16, |_x, _y| image::Rgba([200, 200, 200, 255]));
+        img.save(&valid1).unwrap();
+        img.save(&valid2).unwrap();
+        std::fs::write(&corrupt, b"not a real png").unwrap();
+
+        // In Similar mode, compute_perceptual_hash(path) fails for the corrupt file.
+        // It must not abort the scan — the file stays SHA256-hashed with perceptual_hash=None.
+        let result = find_duplicates(
+            &[dir.path().to_str().unwrap().to_string()],
+            true,
+            ScanMode::Similar,
+        )
+        .unwrap();
+        assert!(result.groups.iter().any(|g| g.files.len() == 2));
         for group in &result.groups {
             for file in &group.files {
                 assert!(!file.path.contains("corrupt.png"));
