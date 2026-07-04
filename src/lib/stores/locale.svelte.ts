@@ -13,10 +13,14 @@ function detectLocale(): Locale {
   return "en";
 }
 
-export let locale = $state<Locale>(detectLocale());
+let currentLocale = $state<Locale>(detectLocale());
+
+export function getLocale(): Locale {
+  return currentLocale;
+}
 
 export function setLocale(next: Locale): void {
-  locale = next;
+  currentLocale = next;
   if (typeof localStorage !== "undefined") {
     localStorage.setItem(STORAGE_KEY, next);
   }
@@ -33,7 +37,7 @@ function resolve(dict: unknown, key: string): string | undefined {
 }
 
 export function t(key: string, params?: Record<string, string | number>): string {
-  const raw = resolve(dictionaries[locale], key) ?? resolve(dictionaries.en, key) ?? key;
+  const raw = resolve(dictionaries[currentLocale], key) ?? resolve(dictionaries.en, key) ?? key;
   if (!params) return raw;
   return raw.replace(/\{(\w+)\}/g, (match, name) => (name in params ? String(params[name]) : match));
 }

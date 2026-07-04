@@ -3,7 +3,7 @@
   import { theme } from "$lib/stores/theme";
   import { defaultOutputDir } from "$lib/stores/settings";
   import { browseOutputDir } from "$lib/utils";
-  import { locale, setLocale, t } from "$lib/stores/locale.svelte";
+  import { getLocale, setLocale, t } from "$lib/stores/locale.svelte";
   import SegmentedControl from "./SegmentedControl.svelte";
 
   async function pickOutputDir() {
@@ -57,7 +57,7 @@
       </div>
       <SegmentedControl
         segments={languageSegments}
-        selected={locale}
+        selected={getLocale()}
         onselect={selectLanguage}
         label={t("settings.language")}
       />
