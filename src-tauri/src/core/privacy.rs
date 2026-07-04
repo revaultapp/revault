@@ -272,25 +272,6 @@ fn supported_strip_extension(input: &str) -> Result<(), Box<dyn Error>> {
     }
 }
 
-fn first_available_path(base: &Path, reserved: &mut HashSet<PathBuf>) -> PathBuf {
-    let parent = base.parent().unwrap_or_else(|| Path::new("."));
-    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
-    let ext = base.extension().and_then(|e| e.to_str()).unwrap_or("jpg");
-
-    for n in 1..10_000 {
-        let candidate = if n == 1 {
-            base.to_path_buf()
-        } else {
-            parent.join(format!("{stem}_{n}.{ext}"))
-        };
-        if !candidate.exists() && reserved.insert(candidate.clone()) {
-            return candidate;
-        }
-    }
-
-    base.to_path_buf()
-}
-
 fn build_output_path(
     input: &str,
     output_dir: Option<&str>,
@@ -300,17 +281,13 @@ fn build_output_path(
     let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("jpg");
     let dir = match output_dir {
-        Some(d) => {
-            let canon = std::fs::canonicalize(d)
-                .map_err(|e| format!("Invalid output dir '{}': {}", d, e))?;
-            if !canon.is_dir() {
-                return Err(format!("Output path is not a directory: {}", d));
-            }
-            canon
-        }
+        Some(d) => crate::core::paths::validate_output_dir(d)?,
         None => p.parent().unwrap_or(Path::new(".")).to_path_buf(),
     };
-    let output = first_available_path(&dir.join(format!("{stem}_stripped.{ext}")), reserved);
+    let output = crate::core::paths::first_available_path(
+        &dir.join(format!("{stem}_stripped.{ext}")),
+        reserved,
+    );
     output
         .to_str()
         .map(|s| s.to_string())

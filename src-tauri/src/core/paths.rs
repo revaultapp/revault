@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 pub fn validate_input_path(input: &str, allow_dirs: bool) -> Result<PathBuf, String> {
@@ -79,6 +80,43 @@ pub fn install_temp_output(temp_path: &Path, final_path: &Path, label: &str) -> 
             let _ = std::fs::remove_file(temp_path);
             Err(format!("Failed to move {} into place: {}", label, e))
         }
+    }
+}
+
+/// Canonicalizes `dir` and verifies it exists and is a directory. Shared by
+/// every feature that accepts an optional output folder from the frontend
+/// (compression, resize, privacy, video, PDF tools) so they all fail the
+/// same way on a missing path or a path that isn't a directory.
+pub fn validate_output_dir(dir: &str) -> Result<PathBuf, String> {
+    let canon =
+        std::fs::canonicalize(dir).map_err(|e| format!("Invalid output dir '{}': {}", dir, e))?;
+    if !canon.is_dir() {
+        return Err(format!("Output path is not a directory: {}", dir));
+    }
+    Ok(canon)
+}
+
+/// Returns `base` if it's free, otherwise the first `{stem}_{n}.{ext}`
+/// sibling that doesn't already exist on disk or in `reserved`. `reserved`
+/// lets a batch resolve every output path up front without two inputs
+/// landing on the same not-yet-written candidate.
+pub fn first_available_path(base: &Path, reserved: &mut HashSet<PathBuf>) -> PathBuf {
+    if !base.exists() && reserved.insert(base.to_path_buf()) {
+        return base.to_path_buf();
+    }
+    let parent = base.parent().unwrap_or_else(|| Path::new("."));
+    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+    let ext = base.extension().and_then(|e| e.to_str());
+    let mut n = 2;
+    loop {
+        let candidate = match ext {
+            Some(ext) => parent.join(format!("{stem}_{n}.{ext}")),
+            None => parent.join(format!("{stem}_{n}")),
+        };
+        if !candidate.exists() && reserved.insert(candidate.clone()) {
+            return candidate;
+        }
+        n += 1;
     }
 }
 
@@ -171,6 +209,60 @@ mod tests {
 
         assert_eq!(std::fs::read(&final_path).unwrap(), b"new");
         assert!(!temp.exists());
+    }
+
+    #[test]
+    fn validate_output_dir_happy() {
+        let dir = tempfile::tempdir().unwrap();
+        let canon = validate_output_dir(dir.path().to_str().unwrap()).unwrap();
+        assert_eq!(canon, fs::canonicalize(dir.path()).unwrap());
+    }
+
+    #[test]
+    fn validate_output_dir_missing() {
+        let err = validate_output_dir("/nonexistent/revault-test-xyz").unwrap_err();
+        assert!(err.contains("Invalid output dir"), "got: {}", err);
+    }
+
+    #[test]
+    fn validate_output_dir_rejects_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("x.txt");
+        fs::write(&file, b"hi").unwrap();
+        let err = validate_output_dir(file.to_str().unwrap()).unwrap_err();
+        assert_eq!(
+            err,
+            format!("Output path is not a directory: {}", file.to_str().unwrap())
+        );
+    }
+
+    #[test]
+    fn first_available_path_returns_base_when_free() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("out.jpg");
+        let mut reserved = HashSet::new();
+        assert_eq!(first_available_path(&base, &mut reserved), base);
+    }
+
+    #[test]
+    fn first_available_path_increments_on_collision() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("out.jpg");
+        fs::write(&base, b"old").unwrap();
+        let mut reserved = HashSet::new();
+        let result = first_available_path(&base, &mut reserved);
+        assert_eq!(result, dir.path().join("out_2.jpg"));
+    }
+
+    #[test]
+    fn first_available_path_respects_reserved_set_across_calls() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("out.jpg");
+        let mut reserved = HashSet::new();
+        let first = first_available_path(&base, &mut reserved);
+        let second = first_available_path(&base, &mut reserved);
+        assert_ne!(first, second);
+        assert_eq!(second, dir.path().join("out_2.jpg"));
     }
 
     #[test]

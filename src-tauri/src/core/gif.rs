@@ -7,7 +7,9 @@ use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use crate::core::paths::{install_temp_output, temporary_output_path, validate_input_path};
+use crate::core::paths::{
+    first_available_path, install_temp_output, temporary_output_path, validate_input_path,
+};
 use crate::core::video::{get_ffmpeg_path, parse_time_to_secs, probe_video_stats};
 
 pub const GIFSKI_VERSION: &str = "1.34.0";
@@ -77,37 +79,15 @@ fn resolve_gif_output_path(input_path: &str, output_dir: Option<&str>) -> Result
         .and_then(|s| s.to_str())
         .ok_or("Invalid filename")?;
     let dir = match output_dir {
-        Some(d) => {
-            let p = std::fs::canonicalize(d)
-                .map_err(|e| format!("Output directory does not exist: {} ({})", d, e))?;
-            if !p.is_dir() {
-                return Err(format!("Output path is not a directory: {}", d));
-            }
-            p
-        }
+        Some(d) => crate::core::paths::validate_output_dir(d)?,
         None => path.parent().ok_or("No parent directory")?.to_path_buf(),
     };
-    let output = first_available_path(&dir.join(format!("{}_gif.gif", stem)));
+    let mut reserved = std::collections::HashSet::new();
+    let output = first_available_path(&dir.join(format!("{}_gif.gif", stem)), &mut reserved);
     output
         .to_str()
         .map(|s| s.to_string())
         .ok_or("Invalid path".to_string())
-}
-
-fn first_available_path(base: &Path) -> PathBuf {
-    if !base.exists() {
-        return base.to_path_buf();
-    }
-
-    let parent = base.parent().unwrap_or_else(|| Path::new("."));
-    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("clip");
-    for n in 2..10_000 {
-        let candidate = parent.join(format!("{stem}_{n}.gif"));
-        if !candidate.exists() {
-            return candidate;
-        }
-    }
-    base.to_path_buf()
 }
 
 fn validate_gif_output_path(output_path: &str) -> Result<PathBuf, String> {
@@ -136,7 +116,8 @@ fn validate_gif_output_path(output_path: &str) -> Result<PathBuf, String> {
         ));
     }
 
-    Ok(first_available_path(&parent.join(filename)))
+    let mut reserved = std::collections::HashSet::new();
+    Ok(first_available_path(&parent.join(filename), &mut reserved))
 }
 
 /// Heuristic only — for UI preview before encoding. Assumes ~50KB/frame at
@@ -717,7 +698,7 @@ mod tests {
     #[test]
     fn resolve_gif_output_path_rejects_missing_dir() {
         let err = resolve_gif_output_path("/tmp/clip.mp4", Some("/nonexistent/xyz")).unwrap_err();
-        assert!(err.contains("does not exist"));
+        assert!(err.contains("Invalid output dir"), "got: {}", err);
     }
 
     #[test]
