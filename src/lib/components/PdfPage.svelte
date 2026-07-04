@@ -25,6 +25,7 @@
     splitFile, isSplitting, splitResults, splitError,
     setSplitFile, clearSplit, splitPdf, type SplitKind,
   } from "$lib/stores/pdf";
+  import { t } from "$lib/stores/locale.svelte";
 
   let showToast = $state(false);
   let toastMessage = $state("");
@@ -33,11 +34,11 @@
   const PDF_SUPPORTED_EXTENSIONS = ["pdf"] as const;
   const PDF_SUPPORTED_RE = /\.pdf$/i;
 
-  const modes = [
-    { id: "optimize", label: "Optimize", icon: Minimize2 },
-    { id: "merge", label: "Merge", icon: Combine },
-    { id: "split", label: "Split", icon: Scissors },
-  ] as const;
+  let modes = $derived([
+    { id: "optimize", label: t("pdf.modeOptimize"), icon: Minimize2 },
+    { id: "merge", label: t("pdf.modeMerge"), icon: Combine },
+    { id: "split", label: t("pdf.modeSplit"), icon: Scissors },
+  ] as const);
 
   let mode = $state<"optimize" | "merge" | "split">("optimize");
 
@@ -65,7 +66,7 @@
   }
 
   function showPrivacyToast(count: number) {
-    toastMessage = count === 1 ? "Metadata removed from 1 file" : `Metadata removed from ${count} files`;
+    toastMessage = count === 1 ? t("pdf.metadataRemovedOne", { count }) : t("pdf.metadataRemovedOther", { count });
     showToast = true;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { showToast = false; }, 3000);
@@ -93,8 +94,11 @@
 
   let headerText = $derived(
     $summary.done > 0 || $summary.failed > 0
-      ? `${$summary.done} of ${$files.length} processed${$summary.failed > 0 ? ` · ${$summary.failed} failed` : ""}`
-      : `${$files.length} PDF${$files.length > 1 ? "s" : ""} selected`
+      ? t("pdf.headerDone", { done: $summary.done, total: $files.length }) +
+        ($summary.failed > 0 ? t("common.failedSuffix", { count: $summary.failed }) : "")
+      : $files.length === 1
+        ? t("pdf.pdfsSelectedOne", { count: $files.length })
+        : t("pdf.pdfsSelectedOther", { count: $files.length })
   );
 
   function sizeDelta(file: PdfFile): string {
@@ -102,9 +106,9 @@
     const out = file.outputSize;
     if (!orig || !out) return "";
     const pct = Math.round(((orig - out) / orig) * 100);
-    if (pct > 0) return `${formatBytes(orig)} → ${formatBytes(out)} (${pct}% smaller)`;
-    if (pct < 0) return `${formatBytes(orig)} → ${formatBytes(out)} (${Math.abs(pct)}% larger)`;
-    return `${formatBytes(orig)} → ${formatBytes(out)} (no change)`;
+    if (pct > 0) return t("pdf.sizeDeltaSmaller", { orig: formatBytes(orig), out: formatBytes(out), pct });
+    if (pct < 0) return t("pdf.sizeDeltaLarger", { orig: formatBytes(orig), out: formatBytes(out), pct: Math.abs(pct) });
+    return t("pdf.sizeDeltaNoChange", { orig: formatBytes(orig), out: formatBytes(out) });
   }
 
   // --- Merge ---
@@ -133,10 +137,10 @@
 
   // --- Split ---
 
-  const splitModes = [
-    { id: "range", label: "Page range" },
-    { id: "each", label: "Individual pages" },
-  ] as const;
+  let splitModes = $derived([
+    { id: "range", label: t("pdf.splitModeRange") },
+    { id: "each", label: t("pdf.splitModeEach") },
+  ] as const);
 
   let splitModeChoice = $state<SplitKind>("range");
   let rangeStart = $state(1);
@@ -165,7 +169,7 @@
 
 <div class="pdf-page">
   <div class="mode-header">
-    <SegmentedControl segments={modes} bind:selected={mode} label="PDF tool mode" />
+    <SegmentedControl segments={modes} bind:selected={mode} label={t("pdf.modeAriaLabel")} />
   </div>
 
   <div class="mode-content">
@@ -179,24 +183,24 @@
         onbrowse={browseFiles}
         onclear={clearFiles}
         dropZoneAcceptedExtensions={PDF_SUPPORTED_RE}
-        dropZoneFilePickerName="PDF files"
+        dropZoneFilePickerName={t("pdf.filePickerName")}
         dropZoneFilePickerExtensions={[...PDF_SUPPORTED_EXTENSIONS]}
-        dropZoneTitle="Drop PDFs here"
+        dropZoneTitle={t("pdf.dropZoneTitleOptimize")}
         dropZoneFormatTags={["PDF"]}
         placeholderIcon="image"
-        actionLabel="Process PDFs"
+        actionLabel={t("pdf.processAction")}
         onaction={startProcess}
         {headerText}
       >
         {#snippet fileDetail(file)}
           {#if file.status === "processing"}
-            Processing...
+            {t("pdf.processingLabel")}
           {:else if file.status === "error"}
             {file.error}
           {:else if file.status === "done"}
             <span class="size-delta">{sizeDelta(file)}</span>
           {:else}
-            Ready
+            {t("pdf.readyLabel")}
           {/if}
         {/snippet}
 
@@ -204,7 +208,7 @@
           {#if file.status === "done"}
             <div class="done-actions">
               {#if file.outputPath}
-                <button class="btn-icon reveal-btn" aria-label="Reveal in file manager" onclick={() => revealPdfOutput(file.outputPath!)}>
+                <button class="btn-icon reveal-btn" aria-label={t("pdf.revealAction")} onclick={() => revealPdfOutput(file.outputPath!)}>
                   <FolderOpen size={16} />
                 </button>
               {/if}
@@ -220,18 +224,18 @@
         {/snippet}
 
         <div class="control-group">
-          <span class="label">Options</span>
+          <span class="label">{t("pdf.optionsLabel")}</span>
           <div class="pdf-options">
-            <label><ToggleSwitch bind:checked={$stripMetadata} label="Strip metadata" /> Strip metadata</label>
-            <label><ToggleSwitch bind:checked={$compressStreams} label="Compress streams" /> Compress streams</label>
-            <label><ToggleSwitch bind:checked={$compressImages} label="Compress images" /> Compress images <span class="toggle-hint">lossy</span></label>
+            <label><ToggleSwitch bind:checked={$stripMetadata} label={t("pdf.stripMetadataLabel")} /> {t("pdf.stripMetadataLabel")}</label>
+            <label><ToggleSwitch bind:checked={$compressStreams} label={t("pdf.compressStreamsLabel")} /> {t("pdf.compressStreamsLabel")}</label>
+            <label><ToggleSwitch bind:checked={$compressImages} label={t("pdf.compressImagesLabel")} /> {t("pdf.compressImagesLabel")} <span class="toggle-hint">{t("pdf.lossyHint")}</span></label>
           </div>
         </div>
         <div class="control-group">
-          <span class="label">Output</span>
+          <span class="label">{t("common.outputLabel")}</span>
           <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
             <FolderOpen size={14} />
-            {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
+            {$outputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
           </button>
         </div>
       </ToolShell>
@@ -240,10 +244,10 @@
         <div class="mode-empty">
           <DropZone
             onfiles={handleMergeAdd}
-            dropTitle="Drop PDFs to merge"
+            dropTitle={t("pdf.dropTitleMerge")}
             formatTags={["PDF"]}
             acceptedExtensions={PDF_SUPPORTED_RE}
-            filePickerName="PDF files"
+            filePickerName={t("pdf.filePickerName")}
             filePickerExtensions={[...PDF_SUPPORTED_EXTENSIONS]}
           />
         </div>
@@ -253,14 +257,14 @@
             <CircleCheck size={28} color="var(--accent)" />
             <span class="result-name">{$mergeResult.outputPath.split(/[\\/]/).pop()}</span>
             <span class="result-meta">
-              {formatBytes($mergeResult.outputSize)} · {$mergeResult.pageCount} page{$mergeResult.pageCount === 1 ? "" : "s"}
+              {formatBytes($mergeResult.outputSize)} · {$mergeResult.pageCount === 1 ? t("pdf.pageCountOne", { count: $mergeResult.pageCount }) : t("pdf.pageCountOther", { count: $mergeResult.pageCount })}
             </span>
             <div class="result-actions">
               <button class="btn-primary-sm" onclick={() => revealPdfOutput($mergeResult!.outputPath)}>
                 <FolderOpen size={14} />
-                Reveal in file manager
+                {t("pdf.revealAction")}
               </button>
-              <button class="btn-ghost" onclick={clearMerge}>Merge more files</button>
+              <button class="btn-ghost" onclick={clearMerge}>{t("pdf.mergeMoreAction")}</button>
             </div>
           </div>
         </div>
@@ -268,16 +272,16 @@
         <div class="tool-view">
           <div class="header">
             <div class="header-left">
-              <h2>{$mergeFiles.length} PDF{$mergeFiles.length === 1 ? "" : "s"} to merge</h2>
+              <h2>{$mergeFiles.length === 1 ? t("pdf.pdfsToMergeOne", { count: $mergeFiles.length }) : t("pdf.pdfsToMergeOther", { count: $mergeFiles.length })}</h2>
               <span class="sub">
-                {$mergeFiles.length === 1 ? "Add at least one more PDF to enable merging" : "Reorder below — merge follows this order"}
+                {$mergeFiles.length === 1 ? t("pdf.addMoreToMergeHint") : t("pdf.reorderMergeHint")}
               </span>
             </div>
             <div class="header-actions">
-              <button class="btn-ghost" onclick={browseMergeFiles}>Add more</button>
+              <button class="btn-ghost" onclick={browseMergeFiles}>{t("pdf.addMoreAction")}</button>
               <button class="btn-ghost danger" onclick={clearMerge}>
                 <Trash2 size={14} />
-                Clear
+                {t("pdf.clearAction")}
               </button>
             </div>
           </div>
@@ -299,13 +303,13 @@
                 <FileText size={16} class="merge-file-icon" />
                 <span class="merge-name">{file.name}</span>
                 <div class="merge-actions">
-                  <button class="btn-icon" disabled={i === 0} onclick={() => moveMergeFile(file.path, -1)} aria-label="Move {file.name} up">
+                  <button class="btn-icon" disabled={i === 0} onclick={() => moveMergeFile(file.path, -1)} aria-label={t("pdf.moveUpAriaLabel", { name: file.name })}>
                     <ArrowUp size={14} />
                   </button>
-                  <button class="btn-icon" disabled={i === $mergeFiles.length - 1} onclick={() => moveMergeFile(file.path, 1)} aria-label="Move {file.name} down">
+                  <button class="btn-icon" disabled={i === $mergeFiles.length - 1} onclick={() => moveMergeFile(file.path, 1)} aria-label={t("pdf.moveDownAriaLabel", { name: file.name })}>
                     <ArrowDown size={14} />
                   </button>
-                  <button class="btn-icon" onclick={() => removeMergeFile(file.path)} aria-label="Remove {file.name}">
+                  <button class="btn-icon" onclick={() => removeMergeFile(file.path)} aria-label={t("pdf.removeFileAriaLabel", { name: file.name })}>
                     <X size={14} />
                   </button>
                 </div>
@@ -315,14 +319,14 @@
 
           <div class="controls">
             <div class="control-group">
-              <span class="label">Output</span>
+              <span class="label">{t("common.outputLabel")}</span>
               <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
                 <FolderOpen size={14} />
-                {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
+                {$outputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
               </button>
             </div>
             <Button class="action-btn" loading={$isMerging} disabled={$mergeFiles.length < 2} onclick={startMerge}>
-              Merge PDFs
+              {t("pdf.mergeAction")}
             </Button>
           </div>
         </div>
@@ -332,10 +336,10 @@
         <div class="mode-empty">
           <DropZone
             onfiles={handleSplitAdd}
-            dropTitle="Drop a PDF to split"
+            dropTitle={t("pdf.dropTitleSplit")}
             formatTags={["PDF"]}
             acceptedExtensions={PDF_SUPPORTED_RE}
-            filePickerName="PDF files"
+            filePickerName={t("pdf.filePickerName")}
             filePickerExtensions={[...PDF_SUPPORTED_EXTENSIONS]}
           />
         </div>
@@ -343,20 +347,20 @@
         <div class="result-view">
           <div class="result-card">
             <CircleCheck size={28} color="var(--accent)" />
-            <span class="result-name">{$splitResults.length} file{$splitResults.length === 1 ? "" : "s"} created</span>
+            <span class="result-name">{$splitResults.length === 1 ? t("pdf.filesCreatedOne", { count: $splitResults.length }) : t("pdf.filesCreatedOther", { count: $splitResults.length })}</span>
             <div class="split-output-list">
               {#each $splitResults as path (path)}
                 <div class="split-output-row">
                   <FileText size={14} />
                   <span class="split-output-name">{path.split(/[\\/]/).pop()}</span>
-                  <button class="btn-icon reveal-btn" aria-label="Reveal {path.split(/[\\/]/).pop()} in file manager" onclick={() => revealPdfOutput(path)}>
+                  <button class="btn-icon reveal-btn" aria-label={t("pdf.revealNamedAriaLabel", { name: path.split(/[\\/]/).pop() ?? "" })} onclick={() => revealPdfOutput(path)}>
                     <FolderOpen size={14} />
                   </button>
                 </div>
               {/each}
             </div>
             <div class="result-actions">
-              <button class="btn-ghost" onclick={clearSplit}>Split another PDF</button>
+              <button class="btn-ghost" onclick={clearSplit}>{t("pdf.splitAnotherAction")}</button>
             </div>
           </div>
         </div>
@@ -365,12 +369,12 @@
           <div class="header">
             <div class="header-left">
               <h2>{$splitFile.name}</h2>
-              <span class="sub">Choose how to split this PDF</span>
+              <span class="sub">{t("pdf.chooseSplitHint")}</span>
             </div>
             <div class="header-actions">
               <button class="btn-ghost danger" onclick={clearSplit}>
                 <Trash2 size={14} />
-                Clear
+                {t("pdf.clearAction")}
               </button>
             </div>
           </div>
@@ -384,34 +388,34 @@
 
           <div class="controls">
             <div class="control-group">
-              <span class="label">Mode</span>
-              <SegmentedControl segments={splitModes} bind:selected={splitModeChoice} label="Split mode" />
+              <span class="label">{t("pdf.modeLabel")}</span>
+              <SegmentedControl segments={splitModes} bind:selected={splitModeChoice} label={t("pdf.splitModeAriaLabel")} />
             </div>
 
             {#if splitModeChoice === "range"}
               <div class="control-group">
-                <span class="label">From page</span>
-                <input type="number" min="1" step="1" class="page-input" bind:value={rangeStart} aria-label="Start page" />
+                <span class="label">{t("pdf.fromPageLabel")}</span>
+                <input type="number" min="1" step="1" class="page-input" bind:value={rangeStart} aria-label={t("pdf.startPageAriaLabel")} />
               </div>
               <div class="control-group">
-                <span class="label">To page</span>
-                <input type="number" min="1" step="1" class="page-input" bind:value={rangeEnd} aria-label="End page" />
+                <span class="label">{t("pdf.toPageLabel")}</span>
+                <input type="number" min="1" step="1" class="page-input" bind:value={rangeEnd} aria-label={t("pdf.endPageAriaLabel")} />
               </div>
               {#if !canSplit}
-                <span class="hint">End page must be ≥ start page</span>
+                <span class="hint">{t("pdf.endPageError")}</span>
               {/if}
             {/if}
 
             <div class="control-group">
-              <span class="label">Output</span>
+              <span class="label">{t("common.outputLabel")}</span>
               <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
                 <FolderOpen size={14} />
-                {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
+                {$outputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
               </button>
             </div>
 
             <Button class="action-btn" loading={$isSplitting} disabled={!canSplit} onclick={startSplit}>
-              Split PDF
+              {t("pdf.splitAction")}
             </Button>
           </div>
         </div>

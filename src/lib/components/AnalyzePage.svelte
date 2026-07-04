@@ -10,11 +10,12 @@
   import { duplicateGroups, isScanning, totalFound, scanError, scanForDuplicates, cancelScan, clearResults, scanProgress, scanMode, setMode } from "$lib/stores/dedupe";
   import { formatBytes } from "$lib/utils";
   import { activity } from "$lib/stores/activity";
+  import { t } from "$lib/stores/locale.svelte";
 
-  const modeSegments = [
-    { id: "exact", label: "Exact" },
-    { id: "similar", label: "Similar" },
-  ] as const;
+  let modeSegments = $derived([
+    { id: "exact", label: t("analyze.modeExact") },
+    { id: "similar", label: t("analyze.modeSimilar") },
+  ] as const);
 
   let modeSelection = $state<string>($scanMode);
 
@@ -131,9 +132,7 @@
 
   async function deleteDuplicate(filePath: string) {
     if ($scanMode === "similar") {
-      const ok = window.confirm(
-        "This is a visually similar file, not a byte-identical duplicate. Move it to trash?"
-      );
+      const ok = window.confirm(t("analyze.similarFileConfirm"));
       if (!ok) return;
     }
     try {
@@ -142,7 +141,7 @@
       if (result.success) {
         deletedPaths = new Set([...deletedPaths, filePath]);
       } else {
-        scanError.set(result.error ?? "Failed to delete file");
+        scanError.set(result.error ?? t("analyze.failedToDeleteFile"));
       }
     } catch (e) {
       scanError.set(String(e));
@@ -167,12 +166,12 @@
       <div class="drop-icon">
         <FolderSearch size={48} strokeWidth={1.5} />
       </div>
-      <h2 class="drop-title">Add folders to scan for duplicates</h2>
-      <p class="drop-subtitle">Drop folders here or click to browse</p>
-      <SegmentedControl segments={modeSegments} bind:selected={modeSelection} onselect={handleModeSelect} label="Duplicate match mode" />
-      <Button onclick={browseFolders} aria-label="Choose folders to scan">
+      <h2 class="drop-title">{t("analyze.dropTitle")}</h2>
+      <p class="drop-subtitle">{t("analyze.dropSubtitle")}</p>
+      <SegmentedControl segments={modeSegments} bind:selected={modeSelection} onselect={handleModeSelect} label={t("analyze.matchModeAriaLabel")} />
+      <Button onclick={browseFolders} aria-label={t("analyze.chooseFoldersAriaLabel")}>
         <FolderOpen size={16} />
-        Choose folders
+        {t("analyze.chooseFolders")}
       </Button>
     </div>
   </div>
@@ -180,15 +179,17 @@
   <div class="scanning-view">
     <ProgressRing
       targetPct={ringPct}
-      label={$scanProgress?.phase === "grouping" ? "Grouping duplicates..." : "Scanning files..."}
+      label={$scanProgress?.phase === "grouping" ? t("analyze.groupingLabel") : t("analyze.scanningFilesLabel")}
       sublabel={$scanProgress
-        ? `${$scanProgress.current} / ${$scanProgress.total} files`
-        : `${selectedFolders.length} folder${selectedFolders.length > 1 ? "s" : ""}`}
+        ? t("analyze.scanProgressSublabel", { current: $scanProgress.current, total: $scanProgress.total })
+        : (selectedFolders.length === 1
+          ? t("analyze.folderCountOne", { count: selectedFolders.length })
+          : t("analyze.folderCountOther", { count: selectedFolders.length }))}
     />
     <div class="scanning-actions">
-      <Button variant="ghost" danger onclick={stopScan} aria-label="Cancel duplicate scan">
+      <Button variant="ghost" danger onclick={stopScan} aria-label={t("analyze.cancelScanAriaLabel")}>
         <CircleX size={14} />
-        Cancel
+        {t("analyze.cancel")}
       </Button>
     </div>
   </div>
@@ -196,20 +197,20 @@
   <div class="empty-view">
     <div class="no-dupes">
       <Search size={40} strokeWidth={1.5} />
-      <p class="no-dupes-title">No duplicates found</p>
-      <p class="no-dupes-sub">Try adding more folders or rescanning</p>
+      <p class="no-dupes-title">{t("analyze.noDuplicatesTitle")}</p>
+      <p class="no-dupes-sub">{t("analyze.noDuplicatesSub")}</p>
       <div class="folders-added">
         {#each selectedFolders as folder (folder)}
           <span class="folder-chip">
             <FolderOpen size={12} />
             {folderName(folder)}
-            <button class="chip-remove" onclick={() => removeFolder(folder)} aria-label="Remove folder {folderName(folder)}">×</button>
+            <button class="chip-remove" onclick={() => removeFolder(folder)} aria-label={t("analyze.removeFolderAriaLabel", { name: folderName(folder) })}>×</button>
           </span>
         {/each}
       </div>
       <Button onclick={startScan}>
         <Search size={14} />
-        Rescan
+        {t("analyze.rescan")}
       </Button>
     </div>
   </div>
@@ -224,36 +225,46 @@
     <div class="header">
       <div class="header-left">
         <div class="title-row">
-          <h2>{visibleGroups.length} {$scanMode === "similar" ? "similar" : "duplicate"} group{visibleGroups.length > 1 ? "s" : ""} found</h2>
-          <span class="mode-tag">{$scanMode === "similar" ? "Similar" : "Exact"} mode</span>
+          <h2>
+            {#if $scanMode === "similar"}
+              {visibleGroups.length === 1
+                ? t("analyze.groupsFoundSimilarOne", { count: visibleGroups.length })
+                : t("analyze.groupsFoundSimilarOther", { count: visibleGroups.length })}
+            {:else}
+              {visibleGroups.length === 1
+                ? t("analyze.groupsFoundDuplicateOne", { count: visibleGroups.length })
+                : t("analyze.groupsFoundDuplicateOther", { count: visibleGroups.length })}
+            {/if}
+          </h2>
+          <span class="mode-tag">{$scanMode === "similar" ? t("analyze.modeTagSimilar") : t("analyze.modeTagExact")}</span>
         </div>
-        <span class="sub">{visibleFileCount} files · {formatBytes(totalWastedSpace)} wasted</span>
+        <span class="sub">{t("analyze.filesWastedSummary", { count: visibleFileCount, size: formatBytes(totalWastedSpace) })}</span>
       </div>
       <div class="header-actions">
-        <Button variant="ghost" onclick={browseFolders} aria-label="Add more folders">
+        <Button variant="ghost" onclick={browseFolders} aria-label={t("analyze.addMoreFoldersAriaLabel")}>
           <FolderOpen size={14} />
-          Add folders
+          {t("analyze.addFolders")}
         </Button>
-        <Button variant="ghost" onclick={clearAll} aria-label="Clear all results">
+        <Button variant="ghost" onclick={clearAll} aria-label={t("analyze.clearAllAriaLabel")}>
           <Trash2 size={14} />
-          Clear
+          {t("analyze.clear")}
         </Button>
       </div>
     </div>
 
     <div class="folders-bar">
-      <SegmentedControl segments={modeSegments} bind:selected={modeSelection} onselect={handleModeSelect} label="Duplicate match mode" />
+      <SegmentedControl segments={modeSegments} bind:selected={modeSelection} onselect={handleModeSelect} label={t("analyze.matchModeAriaLabel")} />
       {#each selectedFolders as folder (folder)}
         <span class="folder-chip">
           <FolderOpen size={12} />
           {folderName(folder)}
-          <button class="chip-remove" onclick={() => removeFolder(folder)} aria-label="Remove folder {folderName(folder)}">×</button>
+          <button class="chip-remove" onclick={() => removeFolder(folder)} aria-label={t("analyze.removeFolderAriaLabel", { name: folderName(folder) })}>×</button>
         </span>
       {/each}
       {#if selectedFolders.length > 0}
         <Button onclick={startScan} disabled={$isScanning}>
           <Search size={14} />
-          Scan
+          {t("analyze.scan")}
         </Button>
       {/if}
     </div>
@@ -272,14 +283,14 @@
                 <ChevronRight size={16} />
               {/if}
               {#if $scanMode === "similar"}
-                <span class="similarity-badge">~{Math.round((1 - group.max_distance / 256) * 100)}% match</span>
+                <span class="similarity-badge">{t("analyze.similarityMatch", { pct: Math.round((1 - group.max_distance / 256) * 100) })}</span>
               {:else}
-                <span class="group-hash" title="Byte-identical SHA duplicate">{group.hash.slice(0, 12)}</span>
+                <span class="group-hash" title={t("analyze.byteIdenticalTitle")}>{group.hash.slice(0, 12)}</span>
               {/if}
-              <span class="group-count">{group.files.length} files</span>
+              <span class="group-count">{t("analyze.filesCountLabel", { count: group.files.length })}</span>
             </div>
             <div class="group-meta">
-              <span class="wasted-badge">{formatBytes(wasted)} {$scanMode === "similar" ? "redundant" : "duplicate"}</span>
+              <span class="wasted-badge">{$scanMode === "similar" ? t("analyze.wastedRedundant", { size: formatBytes(wasted) }) : t("analyze.wastedDuplicate", { size: formatBytes(wasted) })}</span>
             </div>
           </button>
 
@@ -296,16 +307,16 @@
                     <span class="dup-size">{formatBytes(file.size)}</span>
                     {#if fi === 0}
                       {#if $scanMode === "similar"}
-                        <span class="largest-tag">Largest</span>
+                        <span class="largest-tag">{t("analyze.largestTag")}</span>
                       {:else}
-                        <span class="original-tag">Original</span>
+                        <span class="original-tag">{t("analyze.originalTag")}</span>
                       {/if}
                     {:else if !isDeleted}
-                      <button class="btn-icon delete-btn" onclick={() => deleteDuplicate(file.path)} title="Move to trash" aria-label="Move duplicate to trash">
+                      <button class="btn-icon delete-btn" onclick={() => deleteDuplicate(file.path)} title={t("analyze.moveToTrashTitle")} aria-label={t("analyze.moveToTrashAriaLabel")}>
                         <Trash2 size={14} />
                       </button>
                     {:else}
-                      <span class="deleted-tag">Marked deleted</span>
+                      <span class="deleted-tag">{t("analyze.markedDeletedTag")}</span>
                     {/if}
                   </div>
                 </div>

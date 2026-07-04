@@ -3,6 +3,7 @@
   import { theme } from "$lib/stores/theme";
   import { defaultOutputDir } from "$lib/stores/settings";
   import { browseOutputDir } from "$lib/utils";
+  import { t } from "$lib/stores/locale.svelte";
 
   async function pickOutputDir() {
     const dir = await browseOutputDir();
@@ -19,38 +20,38 @@
   <!-- General -->
   <section class="section">
     <div class="section-header">
-      <h2>General</h2>
-      <p>Basic app preferences</p>
+      <h2>{t("settings.generalTitle")}</h2>
+      <p>{t("settings.generalDesc")}</p>
     </div>
     <hr />
     <div class="row">
       <div class="label">
-        <span class="name">Theme</span>
-        <span class="desc">Switch between light and dark mode</span>
+        <span class="name">{t("settings.themeLabel")}</span>
+        <span class="desc">{t("settings.themeDesc")}</span>
       </div>
       <div class="segmented">
         <button class="seg" class:active={$theme === 'light'} onclick={() => theme.set('light')}>
           <Sun size={14} strokeWidth={2} />
-          <span>Light</span>
+          <span>{t("settings.themeLight")}</span>
         </button>
         <button class="seg" class:active={$theme === 'dark'} onclick={() => theme.set('dark')}>
           <Moon size={14} strokeWidth={2} />
-          <span>Dark</span>
+          <span>{t("settings.themeDark")}</span>
         </button>
       </div>
     </div>
     <div class="row">
       <div class="label">
-        <span class="name">Default output folder</span>
-        <span class="desc">Used when no per-tool folder is set</span>
+        <span class="name">{t("settings.defaultOutputFolderLabel")}</span>
+        <span class="desc">{t("settings.defaultOutputFolderDesc")}</span>
       </div>
       <div class="output-controls">
         <button class="btn-ghost" onclick={pickOutputDir}>
           <FolderOpen size={14} strokeWidth={2} />
-          <span class="output-name">{$defaultOutputDir?.split(/[\\/]/).pop() ?? "Same as input"}</span>
+          <span class="output-name">{$defaultOutputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}</span>
         </button>
         {#if $defaultOutputDir}
-          <button class="btn-ghost btn-icon" onclick={resetOutputDir} title="Reset to same as input">
+          <button class="btn-ghost btn-icon" onclick={resetOutputDir} title={t("settings.resetOutputTitle")}>
             <RotateCcw size={14} strokeWidth={2} />
           </button>
         {/if}
@@ -61,12 +62,12 @@
   <!-- About -->
   <section class="section">
     <div class="section-header">
-      <h2>About</h2>
-      <p>App info and links</p>
+      <h2>{t("settings.aboutTitle")}</h2>
+      <p>{t("settings.aboutDesc")}</p>
     </div>
     <hr />
     <div class="row small">
-      <span class="name">Version</span>
+      <span class="name">{t("settings.versionLabel")}</span>
       <span class="version-val">0.1.0</span>
     </div>
   </section>

@@ -13,6 +13,7 @@
     addFiles, removeFile, clearFiles,
     type PrivacyFile,
   } from "$lib/stores/privacy";
+  import { t } from "$lib/stores/locale.svelte";
 
   const PRIVACY_SUPPORTED_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "heic", "heif"] as const;
   const PRIVACY_SUPPORTED_RE = /\.(jpe?g|png|webp|heic|heif)$/i;
@@ -46,8 +47,11 @@
 
   let headerText = $derived(
     $summary.stripped > 0 || $summary.failed > 0
-      ? `${$summary.stripped} of ${$files.length} stripped${$summary.failed > 0 ? ` · ${$summary.failed} failed` : ""}`
-      : `${$files.length} image${$files.length > 1 ? "s" : ""} selected`
+      ? t("privacy.headerDone", { done: $summary.stripped, total: $files.length }) +
+        ($summary.failed > 0 ? t("common.failedSuffix", { count: $summary.failed }) : "")
+      : $files.length === 1
+        ? t("common.imagesSelectedOne", { count: $files.length })
+        : t("common.imagesSelectedOther", { count: $files.length })
   );
 
   let gpsCount = $derived($files.filter(f => f.gps).length);
@@ -65,8 +69,8 @@
   function showPrivacyToast(strippedCount: number, hadGps: number) {
     if (strippedCount === 0) return;
     toastMessage = hadGps > 0
-      ? (hadGps === 1 ? 'GPS removed from 1 file' : `GPS removed from ${hadGps} files`)
-      : (strippedCount === 1 ? 'Metadata removed from 1 file' : `Metadata removed from ${strippedCount} files`);
+      ? (hadGps === 1 ? t("privacy.gpsRemovedOne", { count: hadGps }) : t("privacy.gpsRemovedOther", { count: hadGps }))
+      : (strippedCount === 1 ? t("privacy.metadataRemovedOne", { count: strippedCount }) : t("privacy.metadataRemovedOther", { count: strippedCount }));
     showToast = true;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { showToast = false; }, 3000);
@@ -136,8 +140,8 @@
   function handleRejectedFiles(paths: string[]) {
     showToastMessage(
       paths.length === 1
-        ? "1 unsupported file skipped"
-        : `${paths.length} unsupported files skipped`
+        ? t("privacy.unsupportedFileSkippedOne", { count: paths.length })
+        : t("privacy.unsupportedFileSkippedOther", { count: paths.length })
     );
   }
 
@@ -160,7 +164,7 @@
       files.update((all) =>
         all.map((f) => {
           if (f.path !== file.path) return f;
-          if (!result || result.error) return { ...f, status: "error" as const, error: result?.error ?? "No result" };
+          if (!result || result.error) return { ...f, status: "error" as const, error: result?.error ?? t("privacy.noResultError") };
           return {
             ...f,
             status: "done" as const,
@@ -182,7 +186,7 @@
     if (currentFiles.length === 0) return;
     const opts: StripOpts = { gps: $stripGps, device: $stripDevice, datetime: $stripDatetime, author: $stripAuthor };
     if (!opts.gps && !opts.device && !opts.datetime && !opts.author) {
-      showToastMessage("Select at least one metadata category to strip");
+      showToastMessage(t("privacy.selectAtLeastOneCategory"));
       return;
     }
     isProcessing.set(true);
@@ -238,40 +242,40 @@
   files={$files}
   isProcessing={$isProcessing}
   {targetPct}
-  progressLabel="{$summary.stripped + $summary.failed} of {$files.length} files"
+  progressLabel={t("common.progressLabel", { done: $summary.stripped + $summary.failed, total: $files.length })}
   onfiles={handleAddFiles}
   onrejectedfiles={handleRejectedFiles}
   onbrowse={browseFiles}
   onclear={clearFiles}
   dropZoneAcceptedExtensions={PRIVACY_SUPPORTED_RE}
-  dropZoneFilePickerName="Privacy-supported images"
+  dropZoneFilePickerName={t("privacy.filePickerName")}
   dropZoneFilePickerExtensions={[...PRIVACY_SUPPORTED_EXTENSIONS]}
-  actionLabel="Strip Metadata"
+  actionLabel={t("privacy.actionLabel")}
   onaction={startStrip}
   {headerText}
 >
   {#snippet fileDetail(file)}
     {#if file.status === "scanning"}
-      Scanning...
+      {t("privacy.scanning")}
     {:else if file.status === "error"}
       {file.error}
     {:else if file.status === "done"}
       {#if file.hasMetadata}
-        <span class="meta-removed">{[file.gps && "GPS", file.device, file.datetime, file.author && "Author", file.technical && "Technical"].filter(Boolean).join(" · ")}</span>
+        <span class="meta-removed">{[file.gps && t("privacy.gpsWord"), file.device, file.datetime, file.author && t("privacy.authorWord"), file.technical && t("privacy.technicalWord")].filter(Boolean).join(" · ")}</span>
       {/if}
       {#if file.outputPath}<span class="meta-tag">{file.outputPath.split(/[\\/]/).pop()}</span>{/if}
     {:else if file.status === "scanned" || file.status === "stripping"}
       {#if file.hasMetadata}
-        {#if file.gps}<span class="meta-tag">GPS</span>{/if}
+        {#if file.gps}<span class="meta-tag">{t("privacy.gpsWord")}</span>{/if}
         {#if file.device}<span class="meta-tag">{file.device}</span>{/if}
         {#if file.datetime}<span class="meta-tag">{file.datetime}</span>{/if}
         {#if file.author}<span class="meta-tag">{file.author}</span>{/if}
-        {#if file.technical}<span class="meta-tag">Technical</span>{/if}
+        {#if file.technical}<span class="meta-tag">{t("privacy.technicalWord")}</span>{/if}
       {:else}
-        No metadata found
+        {t("privacy.noMetadataFound")}
       {/if}
     {:else}
-      Ready
+      {t("privacy.ready")}
     {/if}
   {/snippet}
 
@@ -288,33 +292,33 @@
   {/snippet}
 
   <div class="control-group">
-    <span class="label">{allStripped ? "Removed" : "Found"}</span>
+    <span class="label">{allStripped ? t("privacy.removedLabel") : t("privacy.foundLabel")}</span>
     <div class="pills">
       {#if totalFound === 0}
-        <span class="pill">No metadata</span>
+        <span class="pill">{t("privacy.noMetadataPill")}</span>
       {:else}
-        {#if gpsCount > 0}<span class="pill" class:active={allStripped}>GPS · {gpsCount}</span>{/if}
-        {#if deviceCount > 0}<span class="pill" class:active={allStripped}>Device · {deviceCount}</span>{/if}
-        {#if datetimeCount > 0}<span class="pill" class:active={allStripped}>Date · {datetimeCount}</span>{/if}
-        {#if authorCount > 0}<span class="pill" class:active={allStripped}>Author · {authorCount}</span>{/if}
-        {#if techCount > 0}<span class="pill" class:active={allStripped}>Technical · {techCount}</span>{/if}
+        {#if gpsCount > 0}<span class="pill" class:active={allStripped}>{t("privacy.pillGps", { count: gpsCount })}</span>{/if}
+        {#if deviceCount > 0}<span class="pill" class:active={allStripped}>{t("privacy.pillDevice", { count: deviceCount })}</span>{/if}
+        {#if datetimeCount > 0}<span class="pill" class:active={allStripped}>{t("privacy.pillDate", { count: datetimeCount })}</span>{/if}
+        {#if authorCount > 0}<span class="pill" class:active={allStripped}>{t("privacy.pillAuthor", { count: authorCount })}</span>{/if}
+        {#if techCount > 0}<span class="pill" class:active={allStripped}>{t("privacy.pillTechnical", { count: techCount })}</span>{/if}
       {/if}
     </div>
   </div>
   <div class="control-group">
-    <span class="label">Strip</span>
+    <span class="label">{t("privacy.stripLabel")}</span>
     <div class="strip-options">
-      <label><ToggleSwitch bind:checked={$stripGps} label="Strip GPS" /> GPS</label>
-      <label><ToggleSwitch bind:checked={$stripDevice} label="Strip device metadata" /> Device</label>
-      <label><ToggleSwitch bind:checked={$stripDatetime} label="Strip date and time" /> Date &amp; Time</label>
-      <label><ToggleSwitch bind:checked={$stripAuthor} label="Strip author" /> Author</label>
+      <label><ToggleSwitch bind:checked={$stripGps} label={t("privacy.stripGpsToggleLabel")} /> {t("privacy.gpsWord")}</label>
+      <label><ToggleSwitch bind:checked={$stripDevice} label={t("privacy.stripDeviceToggleLabel")} /> {t("privacy.deviceWord")}</label>
+      <label><ToggleSwitch bind:checked={$stripDatetime} label={t("privacy.stripDatetimeToggleLabel")} /> {t("privacy.dateTimeWord")}</label>
+      <label><ToggleSwitch bind:checked={$stripAuthor} label={t("privacy.stripAuthorToggleLabel")} /> {t("privacy.authorWord")}</label>
     </div>
   </div>
   <div class="control-group">
-    <span class="label">Output</span>
+    <span class="label">{t("common.outputLabel")}</span>
     <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
       <FolderOpen size={14} />
-      {$outputDir?.split(/[\\/]/).pop() ?? "Same as input"}
+      {$outputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
     </button>
   </div>
 
