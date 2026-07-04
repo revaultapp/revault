@@ -187,7 +187,7 @@
     align-items: center;
     gap: 12px;
     height: 40px;
-    padding: 0 14px 0 8px;
+    padding: 0 95px 0 8px;
     border-radius: var(--radius-sm);
     color: var(--chrome-text-muted);
     font-size: 14px;
