@@ -93,25 +93,6 @@ pub fn process_pdf(
     Ok(PdfResult::ok(input, output, original_size, output_size))
 }
 
-fn first_available_path(base: &Path, reserved: &mut HashSet<PathBuf>) -> PathBuf {
-    let parent = base.parent().unwrap_or_else(|| Path::new("."));
-    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
-    let ext = base.extension().and_then(|e| e.to_str()).unwrap_or("pdf");
-
-    for n in 1..10_000 {
-        let candidate = if n == 1 {
-            base.to_path_buf()
-        } else {
-            parent.join(format!("{stem}_{n}.{ext}"))
-        };
-        if !candidate.exists() && reserved.insert(candidate.clone()) {
-            return candidate;
-        }
-    }
-
-    base.to_path_buf()
-}
-
 fn build_output_path(
     input: &str,
     output_dir: Option<&str>,
@@ -120,18 +101,11 @@ fn build_output_path(
     let p = Path::new(input);
     let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("pdf");
-    let dir = match output_dir {
-        Some(d) => {
-            let canon = std::fs::canonicalize(d)
-                .map_err(|e| format!("Invalid output dir '{}': {}", d, e))?;
-            if !canon.is_dir() {
-                return Err(format!("Output path is not a directory: {}", d));
-            }
-            canon
-        }
-        None => p.parent().unwrap_or(Path::new(".")).to_path_buf(),
-    };
-    let output = first_available_path(&dir.join(format!("{stem}_private.{ext}")), reserved);
+    let dir = resolve_output_dir(output_dir, p.parent().unwrap_or(Path::new(".")))?;
+    let output = crate::core::paths::first_available_path(
+        &dir.join(format!("{stem}_private.{ext}")),
+        reserved,
+    );
     output
         .to_str()
         .map(|s| s.to_string())
@@ -180,14 +154,7 @@ pub enum SplitMode {
 
 fn resolve_output_dir(output_dir: Option<&str>, fallback: &Path) -> Result<PathBuf, String> {
     match output_dir {
-        Some(d) => {
-            let canon = std::fs::canonicalize(d)
-                .map_err(|e| format!("Invalid output dir '{}': {}", d, e))?;
-            if !canon.is_dir() {
-                return Err(format!("Output path is not a directory: {}", d));
-            }
-            Ok(canon)
-        }
+        Some(d) => crate::core::paths::validate_output_dir(d),
         None => Ok(fallback.to_path_buf()),
     }
 }
@@ -308,7 +275,10 @@ pub fn merge_pdfs(
     let fallback_dir = first_input.parent().unwrap_or(Path::new("."));
     let dir = resolve_output_dir(output_dir, fallback_dir)?;
     let mut reserved = HashSet::new();
-    let output = first_available_path(&dir.join(format!("{first_stem}_merged.pdf")), &mut reserved);
+    let output = crate::core::paths::first_available_path(
+        &dir.join(format!("{first_stem}_merged.pdf")),
+        &mut reserved,
+    );
 
     let mut buffer = Vec::new();
     document.save_to(&mut buffer)?;
@@ -346,7 +316,7 @@ pub fn split_pdf(
                 )
                 .into());
             }
-            let output = first_available_path(
+            let output = crate::core::paths::first_available_path(
                 &dir.join(format!("{stem}_pages_{start}-{end}.pdf")),
                 &mut reserved,
             );
@@ -363,8 +333,10 @@ pub fn split_pdf(
         SplitMode::EachPage => {
             let mut outputs = Vec::with_capacity(page_count as usize);
             for n in 1..=page_count {
-                let output =
-                    first_available_path(&dir.join(format!("{stem}_page_{n}.pdf")), &mut reserved);
+                let output = crate::core::paths::first_available_path(
+                    &dir.join(format!("{stem}_page_{n}.pdf")),
+                    &mut reserved,
+                );
                 let mut sub = Document::load(input)?;
                 let to_delete: Vec<u32> = (1..=page_count).filter(|p| *p != n).collect();
                 sub.delete_pages(&to_delete);

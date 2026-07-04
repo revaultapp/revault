@@ -665,40 +665,17 @@ fn resolve_output_path_reserved(
         OutputFormat::Webp => "webp",
         OutputFormat::Avif => "avif",
     };
-    let canonical_dir = match output_dir {
-        Some(d) => {
-            let canon =
-                std::fs::canonicalize(d).map_err(|e| format!("Invalid output dir '{d}': {e}"))?;
-            if !canon.is_dir() {
-                return Err(format!("Output path is not a directory: {d}"));
-            }
-            Some(canon)
-        }
-        None => None,
-    };
+    let canonical_dir = output_dir
+        .map(crate::core::paths::validate_output_dir)
+        .transpose()?;
     let out_base: &Path = canonical_dir.as_deref().unwrap_or(parent);
-    first_available_path(&out_base.join(format!("{stem}{suffix}.{ext}")), reserved)
-        .to_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| "Invalid output path".to_string())
-}
-
-fn first_available_path(base: &Path, reserved: &mut HashSet<PathBuf>) -> PathBuf {
-    if !base.exists() && reserved.insert(base.to_path_buf()) {
-        return base.to_path_buf();
-    }
-
-    let parent = base.parent().unwrap_or_else(|| Path::new("."));
-    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
-    let ext = base.extension().and_then(|e| e.to_str()).unwrap_or("jpg");
-    let mut n = 2;
-    loop {
-        let candidate = parent.join(format!("{stem}_{n}.{ext}"));
-        if !candidate.exists() && reserved.insert(candidate.clone()) {
-            return candidate;
-        }
-        n += 1;
-    }
+    crate::core::paths::first_available_path(
+        &out_base.join(format!("{stem}{suffix}.{ext}")),
+        reserved,
+    )
+    .to_str()
+    .map(|s| s.to_string())
+    .ok_or_else(|| "Invalid output path".to_string())
 }
 
 fn resolve_batch_output_paths(

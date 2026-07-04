@@ -180,22 +180,14 @@ pub fn resize_batch(
     }
     // Canonicalize once outside the parallel loop — fails fast for the whole
     // batch instead of per-file, and prevents path traversal via "../..".
-    let canonical_output_dir = match output_dir {
-        Some(d) => match std::fs::canonicalize(d) {
-            Ok(canon) if canon.is_dir() => Some(canon),
-            Ok(_) => {
-                return paths
-                    .iter()
-                    .map(|p| ResizeResult::err(p, format!("Output path is not a directory: {d}")))
-                    .collect();
-            }
-            Err(e) => {
-                return paths
-                    .iter()
-                    .map(|p| ResizeResult::err(p, format!("Invalid output dir '{d}': {e}")))
-                    .collect();
-            }
-        },
+    let canonical_output_dir = match output_dir.map(crate::core::paths::validate_output_dir) {
+        Some(Ok(canon)) => Some(canon),
+        Some(Err(e)) => {
+            return paths
+                .iter()
+                .map(|p| ResizeResult::err(p, e.clone()))
+                .collect()
+        }
         None => None,
     };
 
@@ -244,28 +236,13 @@ fn build_output_path(
         .parent()
         .ok_or_else(|| format!("invalid path: {path}"))?;
     let out_base = output_dir.unwrap_or(parent);
-    first_available_path(&out_base.join(format!("{stem}{suffix}.{ext}")), reserved)
-        .to_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| "Invalid output path".to_string())
-}
-
-fn first_available_path(base: &Path, reserved: &mut HashSet<PathBuf>) -> PathBuf {
-    if !base.exists() && reserved.insert(base.to_path_buf()) {
-        return base.to_path_buf();
-    }
-
-    let parent = base.parent().unwrap_or_else(|| Path::new("."));
-    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
-    let ext = base.extension().and_then(|e| e.to_str()).unwrap_or("jpg");
-    let mut n = 2;
-    loop {
-        let candidate = parent.join(format!("{stem}_{n}.{ext}"));
-        if !candidate.exists() && reserved.insert(candidate.clone()) {
-            return candidate;
-        }
-        n += 1;
-    }
+    crate::core::paths::first_available_path(
+        &out_base.join(format!("{stem}{suffix}.{ext}")),
+        reserved,
+    )
+    .to_str()
+    .map(|s| s.to_string())
+    .ok_or_else(|| "Invalid output path".to_string())
 }
 
 #[cfg(test)]

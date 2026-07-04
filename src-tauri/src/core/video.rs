@@ -2,6 +2,7 @@ use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::FfmpegEvent;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -386,44 +387,18 @@ pub fn resolve_video_output_path(
         None => "mp4",
     };
     let dir = match output_dir {
-        Some(d) => {
-            let canon = std::fs::canonicalize(d)
-                .map_err(|e| format!("Invalid output dir '{}': {}", d, e))?;
-            if !canon.is_dir() {
-                return Err(format!("Output path is not a directory: {}", d));
-            }
-            canon
-        }
+        Some(d) => crate::core::paths::validate_output_dir(d)?,
         None => path.parent().ok_or("No parent directory")?.to_path_buf(),
     };
-    let output = first_available_path(&dir.join(format!("{}{}.{}", stem, suffix, ext)));
+    let mut reserved = HashSet::new();
+    let output = crate::core::paths::first_available_path(
+        &dir.join(format!("{}{}.{}", stem, suffix, ext)),
+        &mut reserved,
+    );
     output
         .to_str()
         .map(|s| s.to_string())
         .ok_or("Invalid path".to_string())
-}
-
-fn first_available_path(base: &Path) -> PathBuf {
-    if !base.exists() {
-        return base.to_path_buf();
-    }
-
-    let parent = base.parent().unwrap_or_else(|| Path::new("."));
-    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
-    let ext = base.extension().and_then(|e| e.to_str());
-
-    for n in 2..10_000 {
-        let filename = match ext {
-            Some(ext) => format!("{stem}_{n}.{ext}"),
-            None => format!("{stem}_{n}"),
-        };
-        let candidate = parent.join(filename);
-        if !candidate.exists() {
-            return candidate;
-        }
-    }
-
-    base.to_path_buf()
 }
 
 pub fn compress_video(
