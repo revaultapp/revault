@@ -76,7 +76,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--overlay-scrim);
     backdrop-filter: blur(4px);
   }
 
@@ -87,7 +87,7 @@
     padding: 16px;
     max-width: 800px;
     width: 90vw;
-    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-lg);
   }
 
   .slider-header {
@@ -163,8 +163,8 @@
     border-radius: 4px;
     font-size: 11px;
     font-weight: 600;
-    background: rgba(0, 0, 0, 0.6);
-    color: #fff;
+    background: var(--overlay-scrim);
+    color: var(--text-on-accent);
   }
   .slider-label.left { left: 8px; }
   .slider-label.right { right: 8px; }

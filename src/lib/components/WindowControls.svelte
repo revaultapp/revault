@@ -70,6 +70,7 @@
   }
 
   .ctrl.close:hover {
+    /* Windows close red, intentional — platform convention, not a design token */
     background: #e81123;
     color: white;
   }
