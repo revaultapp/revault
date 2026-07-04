@@ -434,6 +434,8 @@ export const es: Dictionary = {
     privacySubtitle: "Metadatos y datos sensibles",
     videoTitle: "Vídeo",
     videoSubtitle: "Comprime y optimiza vídeos",
+    pdfTitle: "PDF",
+    pdfSubtitle: "Optimiza, fusiona y divide PDFs",
     settingsTitle: "Ajustes",
     settingsSubtitle: "Gestiona tus preferencias",
   },

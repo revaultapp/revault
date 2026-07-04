@@ -8,6 +8,7 @@
     duplicates: [t("topBar.duplicatesTitle"), t("topBar.duplicatesSubtitle")],
     privacy: [t("topBar.privacyTitle"), t("topBar.privacySubtitle")],
     video: [t("topBar.videoTitle"), t("topBar.videoSubtitle")],
+    pdf: [t("topBar.pdfTitle"), t("topBar.pdfSubtitle")],
     settings: [t("topBar.settingsTitle"), t("topBar.settingsSubtitle")],
   });
 

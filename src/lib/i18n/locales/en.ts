@@ -430,6 +430,8 @@ export const en = {
     privacySubtitle: "Metadata and sensitive data",
     videoTitle: "Video",
     videoSubtitle: "Compress and optimize videos",
+    pdfTitle: "PDF",
+    pdfSubtitle: "Optimize, merge and split PDFs",
     settingsTitle: "Settings",
     settingsSubtitle: "Manage your preferences",
   },
