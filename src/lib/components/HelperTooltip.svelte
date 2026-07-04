@@ -7,6 +7,8 @@
 
   let { tip }: Props = $props();
 
+  const tooltipId = $props.id();
+
   let buttonEl = $state<HTMLButtonElement | null>(null);
   let tooltipEl = $state<HTMLDivElement | null>(null);
 
@@ -53,12 +55,14 @@
     bind:this={buttonEl}
     class="helper-btn"
     aria-label={tip}
+    aria-describedby={tooltipId}
   >
     <Info size={16} />
   </button>
 
   <div
     bind:this={tooltipEl}
+    id={tooltipId}
     class="helper-tooltip"
     role="tooltip"
   >{tip}</div>
