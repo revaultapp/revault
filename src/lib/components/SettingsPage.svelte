@@ -3,7 +3,8 @@
   import { theme } from "$lib/stores/theme";
   import { defaultOutputDir } from "$lib/stores/settings";
   import { browseOutputDir } from "$lib/utils";
-  import { t } from "$lib/stores/locale.svelte";
+  import { locale, setLocale, t } from "$lib/stores/locale.svelte";
+  import SegmentedControl from "./SegmentedControl.svelte";
 
   async function pickOutputDir() {
     const dir = await browseOutputDir();
@@ -12,6 +13,16 @@
 
   function resetOutputDir() {
     defaultOutputDir.set(null);
+  }
+
+  let languageSegments = $derived([
+    { id: "en", label: t("settings.languageEnglish") },
+    { id: "es", label: t("settings.languageSpanish") },
+    { id: "fr", label: t("settings.languageFrench") },
+  ] as const);
+
+  function selectLanguage(id: string) {
+    setLocale(id as "en" | "es" | "fr");
   }
 </script>
 
@@ -39,6 +50,17 @@
           <span>{t("settings.themeDark")}</span>
         </button>
       </div>
+    </div>
+    <div class="row">
+      <div class="label">
+        <span class="name">{t("settings.language")}</span>
+      </div>
+      <SegmentedControl
+        segments={languageSegments}
+        selected={locale}
+        onselect={selectLanguage}
+        label={t("settings.language")}
+      />
     </div>
     <div class="row">
       <div class="label">
