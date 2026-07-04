@@ -426,46 +426,6 @@ fn first_available_path(base: &Path) -> PathBuf {
     base.to_path_buf()
 }
 
-fn temporary_output_path(final_path: &Path) -> Result<PathBuf, String> {
-    let parent = final_path
-        .parent()
-        .ok_or_else(|| "Output path has no parent directory".to_string())?;
-    let stem = final_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("video");
-    let ext = final_path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("mp4");
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    Ok(parent.join(format!(
-        ".{stem}.revault-tmp-{}-{nonce}.{ext}",
-        std::process::id()
-    )))
-}
-
-fn install_temp_output(temp_path: &Path, final_path: &Path) -> Result<(), String> {
-    match std::fs::hard_link(temp_path, final_path) {
-        Ok(()) => std::fs::remove_file(temp_path)
-            .map_err(|e| format!("Failed to clean temporary output: {}", e)),
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-            let _ = std::fs::remove_file(temp_path);
-            Err(format!(
-                "Output already exists, refusing to overwrite: {}",
-                final_path.display()
-            ))
-        }
-        Err(e) => {
-            let _ = std::fs::remove_file(temp_path);
-            Err(format!("Failed to move output into place: {}", e))
-        }
-    }
-}
-
 pub fn compress_video(
     input_path: &str,
     preset: VideoPreset,
@@ -477,7 +437,8 @@ pub fn compress_video(
     crate::core::paths::validate_input_path(input_path, false)?;
     let output_path = resolve_video_output_path(input_path, output_dir, "_compressed")?;
     let output_file = PathBuf::from(&output_path);
-    let temp_output = temporary_output_path(&output_file)?;
+    let temp_output =
+        crate::core::paths::temporary_output_path(&output_file, "Output", "video", "mp4")?;
     let temp_output_str = temp_output
         .to_str()
         .ok_or_else(|| "Temporary output path contains invalid UTF-8".to_string())?
@@ -643,7 +604,7 @@ pub fn compress_video(
     if compressed_size >= original_size {
         let _ = std::fs::remove_file(&temp_output);
         std::fs::copy(input_path, &temp_output).map_err(|e| e.to_string())?;
-        install_temp_output(&temp_output, &output_file)?;
+        crate::core::paths::install_temp_output(&temp_output, &output_file, "output")?;
         return Ok(VideoCompressionResult {
             input_path: input_path.to_string(),
             output_path,
@@ -653,7 +614,7 @@ pub fn compress_video(
         });
     }
 
-    install_temp_output(&temp_output, &output_file)?;
+    crate::core::paths::install_temp_output(&temp_output, &output_file, "output")?;
 
     Ok(VideoCompressionResult {
         input_path: input_path.to_string(),
@@ -726,7 +687,8 @@ pub fn trim_video(
 
     let output_path = resolve_video_output_path(input_path, output_dir, "_trimmed")?;
     let output_file = PathBuf::from(&output_path);
-    let temp_output = temporary_output_path(&output_file)?;
+    let temp_output =
+        crate::core::paths::temporary_output_path(&output_file, "Output", "video", "mp4")?;
     let temp_output_str = temp_output
         .to_str()
         .ok_or_else(|| "Temporary output path contains invalid UTF-8".to_string())?
@@ -775,7 +737,7 @@ pub fn trim_video(
         return Err("FFmpeg produced no output — trim likely failed".to_string());
     }
 
-    install_temp_output(&temp_output, &output_file)?;
+    crate::core::paths::install_temp_output(&temp_output, &output_file, "output")?;
 
     Ok(VideoTrimResult {
         input_path: input_path.to_string(),
@@ -1112,7 +1074,8 @@ mod tests {
         std::fs::write(&temp, b"new").unwrap();
         std::fs::write(&final_path, b"old").unwrap();
 
-        let err = install_temp_output(&temp, &final_path).unwrap_err();
+        let err =
+            crate::core::paths::install_temp_output(&temp, &final_path, "output").unwrap_err();
         assert!(err.contains("refusing to overwrite"));
         assert_eq!(std::fs::read(&final_path).unwrap(), b"old");
         assert!(!temp.exists());
@@ -1125,7 +1088,7 @@ mod tests {
         let final_path = dir.path().join("out.mp4");
         std::fs::write(&temp, b"new").unwrap();
 
-        install_temp_output(&temp, &final_path).unwrap();
+        crate::core::paths::install_temp_output(&temp, &final_path, "output").unwrap();
 
         assert_eq!(std::fs::read(&final_path).unwrap(), b"new");
         assert!(!temp.exists());
