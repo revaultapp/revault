@@ -41,6 +41,7 @@ export const en = {
     formatTiff: "TIFF",
     formatBmp: "BMP",
     formatJxl: "JXL",
+    moreInfo: "More info",
   },
   dashboard: {
     spaceSaved: "Space Saved",

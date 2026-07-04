@@ -43,6 +43,7 @@ export const es: Dictionary = {
     formatTiff: "TIFF",
     formatBmp: "BMP",
     formatJxl: "JXL",
+    moreInfo: "Más información",
   },
   dashboard: {
     spaceSaved: "Espacio ahorrado",
