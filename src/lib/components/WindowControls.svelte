@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from "svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { Minus, Square, X, Copy } from "lucide-svelte";
+  import { t } from "$lib/stores/locale.svelte";
 
   let isMacOS = $state(false);
   let isMaximized = $state(false);
@@ -28,17 +29,17 @@
 
 {#if !isMacOS}
   <div class="window-controls">
-    <button class="ctrl min" onclick={() => win.minimize()} aria-label="Minimizar">
+    <button class="ctrl min" onclick={() => win.minimize()} aria-label={t("windowControls.minimizeAriaLabel")}>
       <Minus size={14} />
     </button>
-    <button class="ctrl max" onclick={toggleMax} aria-label={isMaximized ? "Restaurar" : "Maximizar"}>
+    <button class="ctrl max" onclick={toggleMax} aria-label={isMaximized ? t("windowControls.restoreAriaLabel") : t("windowControls.maximizeAriaLabel")}>
       {#if isMaximized}
         <Copy size={12} />
       {:else}
         <Square size={12} />
       {/if}
     </button>
-    <button class="ctrl close" onclick={() => win.close()} aria-label="Cerrar">
+    <button class="ctrl close" onclick={() => win.close()} aria-label={t("windowControls.closeAriaLabel")}>
       <X size={14} />
     </button>
   </div>

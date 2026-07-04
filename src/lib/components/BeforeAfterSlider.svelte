@@ -1,6 +1,7 @@
 <script lang="ts">
   import { convertFileSrc } from "@tauri-apps/api/core";
   import { formatBytes } from "$lib/utils";
+  import { t } from "$lib/stores/locale.svelte";
 
   let { beforePath, afterPath, beforeSize, afterSize, onclose }: {
     beforePath: string;
@@ -38,25 +39,25 @@
 </script>
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && onclose()} />
-<div class="overlay" role="dialog" aria-modal="true" aria-label="Before and after comparison">
+<div class="overlay" role="dialog" aria-modal="true" aria-label={t("beforeAfterSlider.dialogAriaLabel")}>
   <div class="slider-card">
     <div class="slider-header">
-      <span class="slider-title">Before / After</span>
-      <span class="slider-savings">{savings}% smaller</span>
+      <span class="slider-title">{t("beforeAfterSlider.title")}</span>
+      <span class="slider-savings">{t("beforeAfterSlider.savings", { pct: savings })}</span>
       <!-- svelte-ignore a11y_autofocus -->
-      <button class="slider-close" onclick={onclose} autofocus>Close</button>
+      <button class="slider-close" onclick={onclose} autofocus>{t("beforeAfterSlider.close")}</button>
     </div>
     <div class="slider-container" bind:this={container}
       role="slider" tabindex="0"
       aria-valuenow={Math.round(position)} aria-valuemin={0} aria-valuemax={100}
-      aria-label="Before/after comparison"
+      aria-label={t("beforeAfterSlider.sliderAriaLabel")}
       onpointerdown={onpointerdown} onpointermove={onpointermove} onpointerup={onpointerup} onpointercancel={onpointerup}
       onkeydown={(e) => {
         if (e.key === 'ArrowLeft') { e.preventDefault(); position = Math.max(0, position - 5); }
         else if (e.key === 'ArrowRight') { e.preventDefault(); position = Math.min(100, position + 5); }
       }}>
-      <img src={beforeSrc} alt="Original" class="slider-img" draggable="false" />
-      <img src={afterSrc} alt="Processed" class="slider-img" draggable="false"
+      <img src={beforeSrc} alt={t("beforeAfterSlider.originalAlt")} class="slider-img" draggable="false" />
+      <img src={afterSrc} alt={t("beforeAfterSlider.processedAlt")} class="slider-img" draggable="false"
         style="clip-path: inset(0 {100 - position}% 0 0);" />
       <div class="slider-divider" style="left: {position}%;">
         <div class="slider-handle"></div>

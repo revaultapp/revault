@@ -9,16 +9,17 @@
   import { activePage } from "$lib/stores/nav";
   import { savings } from "$lib/stores/savings";
   import { formatBytes } from "$lib/utils";
+  import { t } from "$lib/stores/locale.svelte";
 
   type NavItem = { icon: typeof Compass; id: string; label: string };
-  const navItems: NavItem[] = [
-    { icon: Compass, id: "dashboard", label: "Dashboard" },
-    { icon: Zap, id: "optimize", label: "Optimize" },
-    { icon: ScanSearch, id: "duplicates", label: "Duplicates" },
-    { icon: Shield, id: "privacy", label: "Privacy" },
-    { icon: Film, id: "video", label: "Video" },
-    { icon: FileText, id: "pdf", label: "PDF" },
-  ];
+  let navItems: NavItem[] = $derived([
+    { icon: Compass, id: "dashboard", label: t("sidebar.navDashboard") },
+    { icon: Zap, id: "optimize", label: t("sidebar.navOptimize") },
+    { icon: ScanSearch, id: "duplicates", label: t("sidebar.navDuplicates") },
+    { icon: Shield, id: "privacy", label: t("sidebar.navPrivacy") },
+    { icon: Film, id: "video", label: t("sidebar.navVideo") },
+    { icon: FileText, id: "pdf", label: t("sidebar.navPdf") },
+  ]);
 
   // Savings counter animation
   const displayedBytes = new Tween(0, {
@@ -79,7 +80,7 @@
       <span class="logo-text">Revault</span>
     </div>
 
-    <nav class="nav" aria-label="Primary">
+    <nav class="nav" aria-label={t("sidebar.primaryNavAriaLabel")}>
       {#each navItems as item (item.id)}
         <button
           type="button"
@@ -96,7 +97,7 @@
 
       <div class="saved-badge" class:just-updated={savingsJustUpdated}>
         <Database size={16} strokeWidth={1.8} />
-        <span>Saved: {formatBytes(displayedBytes.current)}</span>
+        <span>{t("sidebar.savedBadge", { amount: formatBytes(displayedBytes.current) })}</span>
       </div>
     </nav>
 
@@ -104,7 +105,7 @@
 
     <div class="divider"></div>
 
-    <nav aria-label="Settings">
+    <nav aria-label={t("sidebar.navSettings")}>
       <button
         type="button"
         class="nav-item settings"
@@ -114,7 +115,7 @@
         bind:this={navRefs['settings']}
       >
         <Settings size={18} strokeWidth={1.8} />
-        <span>Settings</span>
+        <span>{t("sidebar.navSettings")}</span>
       </button>
     </nav>
 

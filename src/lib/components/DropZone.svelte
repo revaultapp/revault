@@ -5,14 +5,19 @@
   import { Upload } from "lucide-svelte";
   import { fade } from "svelte/transition";
   import { IMAGE_EXTENSIONS, IMAGE_EXTENSIONS_RE } from "$lib/types";
+  import { t } from "$lib/stores/locale.svelte";
 
   let {
     onfiles,
     acceptedExtensions = IMAGE_EXTENSIONS_RE,
-    formatTags = ["JPEG", "PNG", "WebP", "HEIC", "TIFF", "BMP", "AVIF", "JXL"],
-    filePickerName = "Images",
+    formatTags = [
+      t("common.formatJpeg"), t("common.formatPng"), t("common.formatWebp"),
+      t("common.formatHeic"), t("common.formatTiff"), t("common.formatBmp"),
+      t("common.formatAvif"), t("common.formatJxl"),
+    ],
+    filePickerName = t("dropZone.filePickerName"),
     filePickerExtensions = [...IMAGE_EXTENSIONS] as string[],
-    dropTitle = "Drop images here",
+    dropTitle = t("dropZone.dropTitle"),
     onrejectedfiles,
   }: {
     onfiles: (paths: string[]) => void;
@@ -117,14 +122,14 @@
     </svg>
     <Upload class="upload-icon" size={40} strokeWidth={1.5} />
     <p class="drop-title">{dropTitle}</p>
-    <p class="drop-sub">or click to browse</p>
+    <p class="drop-sub">{t("dropZone.dropSubtitle")}</p>
     <div class="format-tags">
       {#each formatTags as tag (tag)}
         <span class="tag">{tag}</span>
       {/each}
     </div>
     {#if isInvalid}
-      <p class="invalid-msg" transition:fade={{ duration: 200 }}>Format not supported</p>
+      <p class="invalid-msg" transition:fade={{ duration: 200 }}>{t("dropZone.formatNotSupported")}</p>
     {/if}
   </div>
 </div>
