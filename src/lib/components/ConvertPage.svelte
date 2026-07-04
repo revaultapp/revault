@@ -17,14 +17,15 @@
   import { savings } from "$lib/stores/savings";
   import { activity } from "$lib/stores/activity";
   import { IMAGE_EXTENSIONS } from "$lib/types";
+  import { t } from "$lib/stores/locale.svelte";
 
-  const socialPlatforms = [
-    { id: "instagram-portrait", label: "Instagram Portrait", width: 1080, height: 1350 },
-    { id: "instagram-square", label: "Instagram Square", width: 1080, height: 1080 },
-    { id: "youtube", label: "YouTube", width: 1280, height: 720 },
-    { id: "linkedin", label: "LinkedIn", width: 1200, height: 627 },
-    { id: "tiktok", label: "TikTok", width: 1080, height: 1920 },
-  ];
+  let socialPlatforms = $derived([
+    { id: "instagram-portrait", label: t("convert.platformInstagramPortrait"), width: 1080, height: 1350 },
+    { id: "instagram-square", label: t("convert.platformInstagramSquare"), width: 1080, height: 1080 },
+    { id: "youtube", label: t("convert.platformYoutube"), width: 1280, height: 720 },
+    { id: "linkedin", label: t("convert.platformLinkedin"), width: 1200, height: 627 },
+    { id: "tiktok", label: t("convert.platformTiktok"), width: 1080, height: 1920 },
+  ]);
 
   let targetPct = $derived(
     $files.length === 0 ? 0 : (($summary.done + $summary.failed) / $files.length) * 100
@@ -32,8 +33,11 @@
 
   let headerText = $derived(
     $summary.done > 0 || $summary.failed > 0
-      ? `${$summary.done} of ${$files.length} converted${$summary.failed > 0 ? ` · ${$summary.failed} failed` : ""}`
-      : `${$files.length} image${$files.length > 1 ? "s" : ""} selected`
+      ? t("convert.headerDone", { done: $summary.done, total: $files.length }) +
+        ($summary.failed > 0 ? t("common.failedSuffix", { count: $summary.failed }) : "")
+      : $files.length === 1
+        ? t("common.imagesSelectedOne", { count: $files.length })
+        : t("common.imagesSelectedOther", { count: $files.length })
   );
 
   interface ConversionResult {
@@ -56,12 +60,12 @@
     error: string | null;
   }
 
-  const formats: { value: TargetFormat; label: string }[] = [
-    { value: "Jpeg", label: "JPEG" },
-    { value: "Png", label: "PNG" },
-    { value: "Webp", label: "WebP" },
-    { value: "Avif", label: "AVIF" },
-  ];
+  let formats = $derived<{ value: TargetFormat; label: string }[]>([
+    { value: "Jpeg", label: t("common.formatJpeg") },
+    { value: "Png", label: t("common.formatPng") },
+    { value: "Webp", label: t("common.formatWebp") },
+    { value: "Avif", label: t("common.formatAvif") },
+  ]);
 
   async function browseFiles() {
     const selected = await open({
@@ -196,18 +200,18 @@
   files={$files}
   isProcessing={$isConverting}
   {targetPct}
-  progressLabel="{$summary.done + $summary.failed} of {$files.length} files"
-  progressSublabel={$summary.savedBytes > 0 ? `Saved ${formatBytes($summary.savedBytes)}` : undefined}
+  progressLabel={t("common.progressLabel", { done: $summary.done + $summary.failed, total: $files.length })}
+  progressSublabel={$summary.savedBytes > 0 ? t("common.savedTotal", { amount: formatBytes($summary.savedBytes) }) : undefined}
   onfiles={(paths) => addFiles(paths)}
   onbrowse={browseFiles}
   onclear={handleClear}
-  actionLabel="Convert {$files.length > 1 ? 'All' : ''}"
+  actionLabel={$files.length > 1 ? t("convert.actionButtonAll") : t("convert.actionButton")}
   onaction={startConversion}
   {headerText}
 >
   {#snippet headerSub()}
     {#if $summary.savedBytes > 0}
-      <span class="saved-total">Saved {formatBytes($summary.savedBytes)}</span>
+      <span class="saved-total">{t("common.savedTotal", { amount: formatBytes($summary.savedBytes) })}</span>
     {/if}
   {/snippet}
 
@@ -224,7 +228,7 @@
 
   {#snippet fileStatus(file)}
     {#if file.status === "done"}
-      <button class="btn-icon compare-btn" onclick={() => compareFile = file} aria-label="Compare before and after">
+      <button class="btn-icon compare-btn" onclick={() => compareFile = file} aria-label={t("common.compareAriaLabel")}>
         <Eye size={16} />
       </button>
       <CheckCircle size={18} />
@@ -241,8 +245,8 @@
     {#if $hasHeicFiles && !$heicBannerDismissed}
       <div class="heic-banner">
         <Info size={14} />
-        <span>HEIC files detected — JPEG is recommended for broad compatibility.</span>
-        <button class="banner-dismiss" onclick={() => heicBannerDismissed.set(true)} aria-label="Dismiss">
+        <span>{t("convert.heicBannerText")}</span>
+        <button class="banner-dismiss" onclick={() => heicBannerDismissed.set(true)} aria-label={t("convert.dismissAriaLabel")}>
           <X size={13} />
         </button>
       </div>
@@ -251,7 +255,7 @@
 
   <div class="controls-row">
     <div class="control-group">
-      <span class="label">Format <HelperTooltip tip="Choose the output image format. JPEG is best for photos, PNG for graphics, WebP/AVIF for modern compression." /></span>
+      <span class="label">{t("common.formatLabel")} <HelperTooltip tip={t("convert.formatTooltip")} /></span>
       <div class="pills">
         {#each formats as f}
           <button class="pill" class:active={$targetFormat === f.value} onclick={() => targetFormat.set(f.value)}>
@@ -262,22 +266,22 @@
     </div>
     {#if $targetFormat !== "Png"}
       <div class="control-group">
-        <span class="label">Quality <HelperTooltip tip="Smallest: minimum file size. Balanced: good quality at lower size. High quality: best quality, larger files." /></span>
+        <span class="label">{t("common.qualityLabel")} <HelperTooltip tip={t("common.qualityTooltip")} /></span>
         <div class="pills">
           <button class="pill" class:active={$qualityPreset === "Smallest"}
-            onclick={() => qualityPreset.set("Smallest")}>Smallest</button>
+            onclick={() => qualityPreset.set("Smallest")}>{t("common.qualitySmallest")}</button>
           <button class="pill" class:active={$qualityPreset === "Balanced"}
-            onclick={() => qualityPreset.set("Balanced")}>Balanced</button>
+            onclick={() => qualityPreset.set("Balanced")}>{t("common.qualityBalanced")}</button>
           <button class="pill" class:active={$qualityPreset === "HighQuality"}
-            onclick={() => qualityPreset.set("HighQuality")}>High quality</button>
+            onclick={() => qualityPreset.set("HighQuality")}>{t("common.qualityHighQuality")}</button>
         </div>
       </div>
     {/if}
     <div class="control-group">
-      <span class="label">Output <HelperTooltip tip="Where to save converted files. Defaults to the same folder as the source images." /></span>
+      <span class="label">{t("common.outputLabel")} <HelperTooltip tip={t("convert.outputTooltip")} /></span>
       <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
         <FolderOpen size={14} />
-        {$resolvedOutputDir?.split(/[\\/]/).pop() ?? "Same as input"}
+        {$resolvedOutputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
       </button>
     </div>
   </div>
@@ -288,9 +292,9 @@
     <div class="control-group">
       <div class="toggle-row">
         <div class="toggle-label">
-          <span class="label">Strip GPS <HelperTooltip tip="Removes GPS coordinates and other location metadata from converted images to protect your privacy." /></span>
+          <span class="label">{t("convert.stripGpsLabel")} <HelperTooltip tip={t("convert.stripGpsTooltip")} /></span>
         </div>
-        <ToggleSwitch bind:checked={$stripGps} label="Strip GPS" />
+        <ToggleSwitch bind:checked={$stripGps} label={t("convert.stripGpsLabel")} />
       </div>
     </div>
   </div>
@@ -300,7 +304,7 @@
   <div class="controls-row">
     <div class="social-row">
       <div class="control-group">
-        <span class="label">Social export <HelperTooltip tip="Export images optimized for each social platform's dimensions and format requirements." /></span>
+        <span class="label">{t("convert.socialExportLabel")} <HelperTooltip tip={t("convert.socialExportTooltip")} /></span>
         <div class="social-platforms">
           {#each socialPlatforms as platform}
             <button
@@ -317,7 +321,9 @@
       {#if $selectedPlatforms.length > 0}
         <div class="social-action">
           <button class="social-export-btn" onclick={startSocialExport}>
-            Export to {$selectedPlatforms.length} platform{$selectedPlatforms.length > 1 ? "s" : ""}
+            {$selectedPlatforms.length === 1
+              ? t("convert.exportToPlatformsOne", { count: $selectedPlatforms.length })
+              : t("convert.exportToPlatformsOther", { count: $selectedPlatforms.length })}
           </button>
         </div>
       {/if}

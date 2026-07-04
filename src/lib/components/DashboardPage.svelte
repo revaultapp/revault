@@ -6,6 +6,7 @@
   import { activePage } from "$lib/stores/nav";
   import { formatBytes } from "$lib/utils";
   import { storage, breakdown } from "$lib/stores/storage";
+  import { t } from "$lib/stores/locale.svelte";
 
   let avgCompression = $derived(
     $savings.totalOriginalBytes > 0
@@ -17,15 +18,15 @@
     activePage.set(page as typeof $activePage);
   }
 
-  const activityLabels: Record<string, string> = {
-    compress: "Compressed",
-    convert: "Converted",
-    resize: "Resized",
-    analyze: "Analyzed",
-    video: "Compressed video",
-    gif: "Exported GIF",
-    privacy: "Stripped metadata",
-  };
+  let activityLabels = $derived<Record<string, string>>({
+    compress: t("dashboard.activityCompress"),
+    convert: t("dashboard.activityConvert"),
+    resize: t("dashboard.activityResize"),
+    analyze: t("dashboard.activityAnalyze"),
+    video: t("dashboard.activityVideo"),
+    gif: t("dashboard.activityGif"),
+    privacy: t("dashboard.activityPrivacy"),
+  });
 </script>
 
 <div class="dashboard">
@@ -37,8 +38,12 @@
       </div>
       <div class="stat-content">
         <span class="stat-value">{formatBytes($savings.totalSavedBytes)}</span>
-        <span class="stat-label">Space Saved</span>
-        <span class="stat-sub">{$savings.filesProcessed} files processed</span>
+        <span class="stat-label">{t("dashboard.spaceSaved")}</span>
+        <span class="stat-sub">
+          {$savings.filesProcessed === 1
+            ? t("dashboard.filesProcessedOne", { count: $savings.filesProcessed })
+            : t("dashboard.filesProcessedOther", { count: $savings.filesProcessed })}
+        </span>
       </div>
     </div>
 
@@ -48,8 +53,8 @@
       </div>
       <div class="stat-content">
         <span class="stat-value">{$savings.operationsCount}</span>
-        <span class="stat-label">Files Optimized</span>
-        <span class="stat-sub">successful operations</span>
+        <span class="stat-label">{t("dashboard.filesOptimized")}</span>
+        <span class="stat-sub">{t("dashboard.successfulOperations")}</span>
       </div>
     </div>
 
@@ -59,8 +64,8 @@
       </div>
       <div class="stat-content">
         <span class="stat-value">{avgCompression}%</span>
-        <span class="stat-label">Avg Compression</span>
-        <span class="stat-sub">per file on average</span>
+        <span class="stat-label">{t("dashboard.avgCompression")}</span>
+        <span class="stat-sub">{t("dashboard.perFileAverage")}</span>
       </div>
     </div>
 
@@ -70,22 +75,22 @@
       </div>
       <div class="stat-content">
         <span class="stat-value">{$savings.heicCount}</span>
-        <span class="stat-label">HEIC Converted</span>
-        <span class="stat-sub">macOS native decode</span>
+        <span class="stat-label">{t("dashboard.heicConverted")}</span>
+        <span class="stat-sub">{t("dashboard.macosNativeDecode")}</span>
       </div>
     </div>
   </div>
 
   <!-- Quick Actions -->
-  <div class="section-title">Quick Actions</div>
+  <div class="section-title">{t("dashboard.quickActions")}</div>
   <div class="actions-grid">
     <button class="action-card accent" onclick={() => navigate("optimize")}>
       <div class="action-icon">
         <Zap size={18} />
       </div>
       <div class="action-text">
-        <span class="action-title">Compress Images</span>
-        <span class="action-desc">Reduce file size without quality loss</span>
+        <span class="action-title">{t("dashboard.compressImagesTitle")}</span>
+        <span class="action-desc">{t("dashboard.compressImagesDesc")}</span>
       </div>
     </button>
 
@@ -94,8 +99,8 @@
         <Search size={18} />
       </div>
       <div class="action-text">
-        <span class="action-title">Analyze Folder</span>
-        <span class="action-desc">Find duplicates and storage hogs</span>
+        <span class="action-title">{t("dashboard.analyzeFolderTitle")}</span>
+        <span class="action-desc">{t("dashboard.analyzeFolderDesc")}</span>
       </div>
     </button>
 
@@ -104,8 +109,8 @@
         <Shield size={18} />
       </div>
       <div class="action-text">
-        <span class="action-title">Privacy Scan</span>
-        <span class="action-desc">Strip GPS and identifying metadata</span>
+        <span class="action-title">{t("dashboard.privacyScanTitle")}</span>
+        <span class="action-desc">{t("dashboard.privacyScanDesc")}</span>
       </div>
     </button>
   </div>
@@ -114,15 +119,16 @@
   <div class="bottom-row">
     <!-- Recent Activity -->
     <section class="activity">
-      <h3>Recent Activity</h3>
+      <h3>{t("dashboard.recentActivity")}</h3>
       {#if $activity.length === 0}
         <div class="empty-state">
-          <p>No activity yet</p>
-          <span>Compress or convert some images to get started</span>
+          <p>{t("dashboard.noActivity")}</p>
+          <span>{t("dashboard.noActivityHint")}</span>
         </div>
       {:else}
         <div class="activity-list">
           {#each $activity as item (item.id)}
+            {@const label = activityLabels[item.type] ?? item.type}
             <div class="activity-item">
               <div class="activity-icon">
                 {#if item.type === "compress"}
@@ -138,7 +144,11 @@
                 {/if}
               </div>
               <div class="activity-info">
-                <span class="activity-label">{activityLabels[item.type] ?? item.type} {item.fileCount} file{item.fileCount > 1 ? "s" : ""}</span>
+                <span class="activity-label">
+                  {item.fileCount === 1
+                    ? t("dashboard.activityLineOne", { label, count: item.fileCount })
+                    : t("dashboard.activityLineOther", { label, count: item.fileCount })}
+                </span>
                 <span class="activity-time">{formatTimeAgo(item.timestamp)}</span>
               </div>
               {#if item.savedBytes > 0}
@@ -153,32 +163,32 @@
 
     <!-- Storage Breakdown -->
     <section class="storage">
-      <h3>Storage Breakdown</h3>
+      <h3>{t("dashboard.storageBreakdown")}</h3>
 
       {#if $storage.scanState === "idle"}
         <div class="storage-idle">
           <div class="storage-idle-icon">
             <FolderOpen size={28} />
           </div>
-          <p>Scan a folder to see storage breakdown by type</p>
+          <p>{t("dashboard.scanIdleHint")}</p>
           <Button onclick={() => storage.scanFolder()}>
             <Search size={14} />
-            Scan Folder
+            {t("dashboard.scanFolderButton")}
           </Button>
         </div>
 
       {:else if $storage.scanState === "scanning"}
-        <div class="storage-scanning" role="status" aria-label="Scanning folder">
+        <div class="storage-scanning" role="status" aria-label={t("dashboard.scanningAriaLabel")}>
           <div class="spinner" aria-hidden="true"></div>
-          <p>Scanning folder...</p>
+          <p>{t("dashboard.scanningText")}</p>
           <span class="scan-path">{$storage.folderPath}</span>
         </div>
 
       {:else if $storage.scanState === "error"}
         <div class="storage-error">
-          <p>Scan failed</p>
+          <p>{t("dashboard.scanFailed")}</p>
           <span>{$storage.errorMessage}</span>
-          <Button danger style="margin-top: 8px" onclick={() => storage.scanFolder()}>Try Again</Button>
+          <Button danger style="margin-top: 8px" onclick={() => storage.scanFolder()}>{t("dashboard.tryAgain")}</Button>
         </div>
 
       {:else if $storage.scanState === "done" && $storage.scanResult}
@@ -186,18 +196,18 @@
           <div class="storage-header">
             <div class="storage-hero">
               <span class="hero-value">{formatBytes($storage.scanResult.total_size)}</span>
-              <span class="hero-label">total storage</span>
+              <span class="hero-label">{t("dashboard.totalStorage")}</span>
             </div>
             <div class="storage-meta">
               <span class="meta-item">
                 <span class="meta-value">{$storage.scanResult.images.length}</span>
-                <span class="meta-label">files</span>
+                <span class="meta-label">{t("dashboard.filesLabel")}</span>
               </span>
               {#if $storage.scanResult.skipped > 0}
                 <span class="meta-divider"></span>
                 <span class="meta-item">
                   <span class="meta-value">{$storage.scanResult.skipped}</span>
-                  <span class="meta-label">skipped</span>
+                  <span class="meta-label">{t("dashboard.skippedLabel")}</span>
                 </span>
               {/if}
             </div>
@@ -222,7 +232,7 @@
 
           <Button class="rescan-btn" variant="ghost" onclick={() => storage.scanFolder()}>
             <Search size={12} />
-            Scan another folder
+            {t("dashboard.scanAnotherFolder")}
           </Button>
         </div>
       {/if}

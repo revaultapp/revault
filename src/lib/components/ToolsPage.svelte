@@ -1,21 +1,22 @@
 <script lang="ts">
   import { Minimize2, Repeat, Maximize2 } from "lucide-svelte";
   import { activeTool } from "$lib/stores/nav";
+  import { t } from "$lib/stores/locale.svelte";
   import SegmentedControl from "./SegmentedControl.svelte";
   import CompressPage from "./CompressPage.svelte";
   import ConvertPage from "./ConvertPage.svelte";
   import ResizePage from "./ResizePage.svelte";
 
-  const tools = [
-    { id: "compress", label: "Compress", icon: Minimize2 },
-    { id: "convert", label: "Convert", icon: Repeat },
-    { id: "resize", label: "Resize", icon: Maximize2 },
-  ];
+  let tools = $derived([
+    { id: "compress", label: t("tools.toolCompress"), icon: Minimize2 },
+    { id: "convert", label: t("tools.toolConvert"), icon: Repeat },
+    { id: "resize", label: t("tools.toolResize"), icon: Maximize2 },
+  ]);
 </script>
 
 <div class="tools-page">
   <div class="tools-header">
-    <SegmentedControl segments={tools} bind:selected={$activeTool} label="Tool" />
+    <SegmentedControl segments={tools} bind:selected={$activeTool} label={t("tools.segmentedLabel")} />
   </div>
 
   <div class="tools-content">
