@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **GIF Export**: Create animated GIFs from video via gifski sidecar with streaming pipeline and cancellation
 - **PDF Tools**: PDF metadata stripping, stream compression with embedded image re-encoding, and merge/split (combine multiple PDFs, extract page ranges)
 - **Dashboard**: Storage analysis, compression savings tracker, quick actions, recent activity
+- **Internationalization**: Full EN/ES/FR UI translation with a language selector in Settings, persisted preference (localStorage), and automatic browser-locale detection on first launch
 - **UI/UX**: Locked-dark chrome, cross-platform window controls, Svelte 5 runes reactivity, animated progress indicators, before/after slider with keyboard navigation
 - **Accessibility**: ARIA roles and full keyboard navigation for segmented controls, sidebar, and toggles; global `prefers-reduced-motion` support
 - **Security**: Input path validation across all command entry points, memory limits on HEIC/JXL decode, gifski archive SHA-256 verification, dependency auditing

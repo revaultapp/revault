@@ -55,52 +55,53 @@
     type VideoPreset,
     type PrivacyMode,
   } from "$lib/stores/video";
+  import { t } from "$lib/stores/locale.svelte";
 
-  const modeSegments = [
-    { id: "compress", label: "Comprimir" },
-    { id: "gif", label: "GIF" },
-    { id: "trim", label: "Trim" },
-  ] as const;
+  let modeSegments = $derived([
+    { id: "compress", label: t("video.modeCompress") },
+    { id: "gif", label: t("video.modeGif") },
+    { id: "trim", label: t("video.modeTrim") },
+  ] as const);
 
-  const fpSegments = [
-    { id: "10", label: "Baja · 10" },
-    { id: "15", label: "Media · 15" },
-    { id: "24", label: "Alta · 24" },
-  ] as const;
+  let fpSegments = $derived([
+    { id: "10", label: t("video.fpLow") },
+    { id: "15", label: t("video.fpMedium") },
+    { id: "24", label: t("video.fpHigh") },
+  ] as const);
 
-  const widthSegments = [
-    { id: "320", label: "Chat · 320" },
-    { id: "480", label: "WhatsApp · 480" },
-    { id: "640", label: "Grande · 640" },
-    { id: "720", label: "HD · 720" },
-    { id: "1080", label: "Full HD · 1080" },
-  ] as const;
+  let widthSegments = $derived([
+    { id: "320", label: t("video.widthChat") },
+    { id: "480", label: t("video.widthWhatsapp") },
+    { id: "640", label: t("video.widthLarge") },
+    { id: "720", label: t("video.widthHd") },
+    { id: "1080", label: t("video.widthFullHd") },
+  ] as const);
 
-  const presets: { value: VideoPreset; label: string }[] = [
-    { value: "Smallest", label: "Smallest" },
-    { value: "Balanced", label: "Balanced" },
-    { value: "HighQuality", label: "High Quality" },
-  ];
+  let presets = $derived<{ value: VideoPreset; label: string }[]>([
+    { value: "Smallest", label: t("video.presetSmallest") },
+    { value: "Balanced", label: t("video.presetBalanced") },
+    { value: "HighQuality", label: t("video.presetHighQuality") },
+  ]);
 
-  const privacySegments = [
-    { id: "off" satisfies PrivacyMode, label: "Sin cambios" },
-    { id: "smart" satisfies PrivacyMode, label: "Recomendado" },
-    { id: "gps_only" satisfies PrivacyMode, label: "Solo ubicación" },
-    { id: "full" satisfies PrivacyMode, label: "Máximo" },
-  ] as const;
+  let privacySegments = $derived([
+    { id: "off" satisfies PrivacyMode, label: t("video.privacyOff") },
+    { id: "smart" satisfies PrivacyMode, label: t("video.privacySmart") },
+    { id: "gps_only" satisfies PrivacyMode, label: t("video.privacyGpsOnly") },
+    { id: "full" satisfies PrivacyMode, label: t("video.privacyFull") },
+  ] as const);
 
-  const privacyTooltips: Record<PrivacyMode, string> = {
-    off: "Mantiene el vídeo tal cual, con toda su información original.",
-    smart: "Borra dónde se grabó el vídeo y el modelo del móvil, pero conserva la fecha.",
-    gps_only: "Solo elimina la ubicación. Conserva fecha, cámara y demás detalles.",
-    full: "Borra todo: ubicación, fecha, cámara y cualquier otro rastro del dispositivo.",
-  };
+  let privacyTooltips = $derived<Record<PrivacyMode, string>>({
+    off: t("video.privacyTooltipOff"),
+    smart: t("video.privacyTooltipSmart"),
+    gps_only: t("video.privacyTooltipGpsOnly"),
+    full: t("video.privacyTooltipFull"),
+  });
 
-  const privacyChipText: Record<Exclude<PrivacyMode, "off">, (n: number) => string> = {
-    smart: (n) => `Ubicación y dispositivo eliminados en ${n} vídeo${n !== 1 ? "s" : ""}`,
-    gps_only: (n) => `Ubicación eliminada en ${n} vídeo${n !== 1 ? "s" : ""}`,
-    full: (n) => `Todos los metadatos eliminados en ${n} vídeo${n !== 1 ? "s" : ""}`,
-  };
+  let privacyChipText = $derived<Record<Exclude<PrivacyMode, "off">, (n: number) => string>>({
+    smart: (n) => n === 1 ? t("video.privacyChipSmartOne", { count: n }) : t("video.privacyChipSmartOther", { count: n }),
+    gps_only: (n) => n === 1 ? t("video.privacyChipGpsOnlyOne", { count: n }) : t("video.privacyChipGpsOnlyOther", { count: n }),
+    full: (n) => n === 1 ? t("video.privacyChipFullOne", { count: n }) : t("video.privacyChipFullOther", { count: n }),
+  });
 
   // ── Accordion state ─────────────────────────────────────────────────────────
   let settingsOpen = $state(false);
@@ -110,15 +111,15 @@
     const mode = $videoPrivacyMode;
     const privacyLabel = privacySegments.find(s => s.id === mode)?.label ?? mode;
     if ($videoMode === "compress") {
-      return `Ajustes · ${preset} · ${privacyLabel}`;
+      return t("video.accordionHeaderCompress", { preset, privacy: privacyLabel });
     }
     if ($videoMode === "trim") {
       const len = Math.max(0, $trimSettings.endSec - $trimSettings.startSec);
-      return `Ajustes · ${len.toFixed(1)}s clip`;
+      return t("video.accordionHeaderTrim", { length: len.toFixed(1) });
     }
     const fps = $gifSettings.fps;
     const width = $gifSettings.width;
-    return `Ajustes · ${fps} fps · ${width}px`;
+    return t("video.accordionHeaderGif", { fps, width });
   });
 
   // ── Trim validity ───────────────────────────────────────────────────────────
@@ -134,8 +135,11 @@
 
   let headerText = $derived(
     $videoSummary.done > 0 || $videoSummary.failed > 0
-      ? `${$videoSummary.done} of ${$videoFiles.length} compressed${$videoSummary.failed > 0 ? ` · ${$videoSummary.failed} failed` : ""}`
-      : `${$videoFiles.length} video${$videoFiles.length !== 1 ? "s" : ""} selected`
+      ? t("video.headerDone", { done: $videoSummary.done, total: $videoFiles.length }) +
+        ($videoSummary.failed > 0 ? t("common.failedSuffix", { count: $videoSummary.failed }) : "")
+      : $videoFiles.length === 1
+        ? t("video.videosSelectedOne", { count: $videoFiles.length })
+        : t("video.videosSelectedOther", { count: $videoFiles.length })
   );
 
   let downloadError = $state<string | null>(null);
@@ -178,7 +182,7 @@
       await downloadGifski();
       isGifInstalling = true;
     } catch {
-      gifDownloadError = "No hemos podido descargar el componente. Comprueba tu conexión e inténtalo de nuevo más tarde.";
+      gifDownloadError = t("video.gifDownloadErrorMessage");
     } finally {
       isGifInstalling = false;
     }
@@ -225,7 +229,7 @@
   async function browseFiles() {
     const selected = await open({
       multiple: true,
-      filters: [{ name: "Videos", extensions: [...VIDEO_EXTENSIONS] }],
+      filters: [{ name: t("video.filePickerName"), extensions: [...VIDEO_EXTENSIONS] }],
     });
     if (selected) handleFiles(selected);
   }
@@ -240,9 +244,9 @@
     const pct = Math.round(
       ((file.originalSize - file.compressedSize) / file.originalSize) * 100
     );
-    if (pct > 0) return `${pct}% smaller`;
-    if (pct < 0) return `${Math.abs(pct)}% larger`;
-    return "Same size";
+    if (pct > 0) return t("video.pctSmaller", { pct });
+    if (pct < 0) return t("video.pctLarger", { pct: Math.abs(pct) });
+    return t("video.sameSize");
   }
 
   function isOutputLarger(file: VideoFile): boolean {
@@ -346,53 +350,53 @@
 
 {:else if $ffmpegStatus === "needs_download"}
   <div class="ffmpeg-state">
-    <div class="download-hero" role="region" aria-label="FFmpeg setup required">
+    <div class="download-hero" role="region" aria-label={t("video.ffmpegSetupAriaLabel")}>
       <div class="hero-icon">
         <div class="icon-glow"></div>
         <Film size={48} color="var(--accent)" />
       </div>
-      <h2>Compresión de vídeo, desbloqueada</h2>
+      <h2>{t("video.unlockHeroTitle")}</h2>
       <p class="subtitle">
-        ReVault necesita FFmpeg para comprimir vídeos.<br />
-        Una sola descarga. Funciona sin conexión para siempre.
+        {t("video.ffmpegNeedLine1")}<br />
+        {t("video.ffmpegNeedLine2")}
       </p>
       <div class="trust-grid">
         <div class="trust-item">
           <Shield size={16} color="var(--accent)" />
-          <span>Privado &mdash; descargado directamente desde FFmpeg.org</span>
+          <span>{t("video.trustPrivate")}</span>
         </div>
         <div class="trust-item">
           <Wifi size={16} color="var(--accent)" />
-          <span>Solo una vez &mdash; después funciona sin internet</span>
+          <span>{t("video.trustOffline")}</span>
         </div>
         <div class="trust-item">
           <Zap size={16} color="var(--accent)" />
-          <span>Estándar del sector &mdash; lo usan YouTube y Netflix</span>
+          <span>{t("video.trustIndustry")}</span>
         </div>
       </div>
       {#if downloadError}
         <div class="download-error" role="alert">
           <CircleAlert size={14} />
-          <span>No se pudo descargar. Comprueba tu conexión e inténtalo de nuevo.</span>
+          <span>{t("video.downloadErrorMessage")}</span>
         </div>
       {/if}
       <button class="btn-download" onclick={handleDownload}>
         <Download size={18} />
-        Descargar FFmpeg &middot; Gratis
+        {t("video.downloadButton")}
       </button>
-      <p class="fine-print">~80 MB &middot; Solo tu red</p>
+      <p class="fine-print">{t("video.downloadFinePrint")}</p>
     </div>
   </div>
 
 {:else if $ffmpegStatus === "downloading"}
   <div class="ffmpeg-state">
-    <div class="download-progress-view" role="region" aria-label="Downloading FFmpeg" aria-live="polite">
+    <div class="download-progress-view" role="region" aria-label={t("video.downloadingAriaLabel")} aria-live="polite">
       <div class="hero-icon downloading">
         <div class="icon-glow pulse"></div>
         <Film size={48} color="var(--accent)" />
       </div>
-      <h2>Preparando FFmpeg&hellip;</h2>
-      <p class="subtitle">Solo una vez. No volverás a ver esta pantalla.</p>
+      <h2>{t("video.preparingTitle")}</h2>
+      <p class="subtitle">{t("video.preparingSubtitle")}</p>
       <div class="big-progress-wrap">
         <div class="big-progress-track" role="progressbar" aria-valuenow={Math.round($ffmpegDownloadProgress.percent)} aria-valuemin={0} aria-valuemax={100}>
           <div class="big-progress-fill" style="transform: scaleX({$ffmpegDownloadProgress.percent / 100})">
@@ -410,23 +414,23 @@
 {:else}
   <!-- Mode toggle: centered, above DropZone / file list -->
   <div class="mode-bar">
-    <SegmentedControl segments={modeSegments} bind:selected={$videoMode} label="Video mode" />
+    <SegmentedControl segments={modeSegments} bind:selected={$videoMode} label={t("video.modeAriaLabel")} />
   </div>
 
   <ToolShell
     files={$videoFiles}
     isProcessing={$isCompressing || $gifState === "generating"}
     {targetPct}
-    progressLabel="{$videoSummary.done + $videoSummary.failed} of {$videoFiles.length} files"
-    progressSublabel={$videoSummary.savedBytes > 0 ? `Saved ${formatBytes($videoSummary.savedBytes)}` : undefined}
+    progressLabel={t("common.progressLabel", { done: $videoSummary.done + $videoSummary.failed, total: $videoFiles.length })}
+    progressSublabel={$videoSummary.savedBytes > 0 ? t("common.savedTotal", { amount: formatBytes($videoSummary.savedBytes) }) : undefined}
     onfiles={handleFiles}
     onbrowse={browseFiles}
     onclear={clearVideoFiles}
     actionLabel={$videoMode === "gif"
-      ? (!$gifskiAvailable ? "" : $gifState === "generating" ? "Cancelar" : "Exportar GIF")
+      ? (!$gifskiAvailable ? "" : $gifState === "generating" ? t("video.gifExportCancel") : t("video.gifExportAction"))
       : $videoMode === "trim"
-        ? (trimValid ? "Trim clip" : "")
-        : ($isCompressing ? "Cancel" : $videoSummary.pending === 0 && $videoFiles.length > 0 ? "Compress More" : "Compress")}
+        ? (trimValid ? t("video.trimAction") : "")
+        : ($isCompressing ? t("video.compressCancel") : $videoSummary.pending === 0 && $videoFiles.length > 0 ? t("video.compressMoreAction") : t("video.compressAction"))}
     onaction={$videoMode === "gif"
       ? ($gifState === "generating" ? cancelGifExport : startGifExport)
       : $videoMode === "trim"
@@ -434,17 +438,17 @@
         : ($isCompressing ? cancelCompression : $videoSummary.pending === 0 && $videoFiles.length > 0 ? compressMore : startCompression)}
     actionLoading={$videoMode === "trim" && $trimState === "trimming"}
     {headerText}
-    dropZoneTitle="Drop videos here"
+    dropZoneTitle={t("video.dropZoneTitle")}
     dropZoneFormatTags={["MP4", "MOV", "AVI", "MKV", "WebM", "M4V"]}
     dropZoneAcceptedExtensions={VIDEO_EXTENSIONS_RE}
-    dropZoneFilePickerName="Videos"
+    dropZoneFilePickerName={t("video.filePickerName")}
     dropZoneFilePickerExtensions={[...VIDEO_EXTENSIONS]}
     showThumbnails={false}
     placeholderIcon="video"
   >
     {#snippet headerSub()}
       {#if $videoSummary.savedBytes > 0}
-        <span class="saved-total">Saved {formatBytes($videoSummary.savedBytes)}</span>
+        <span class="saved-total">{t("common.savedTotal", { amount: formatBytes($videoSummary.savedBytes) })}</span>
       {/if}
     {/snippet}
 
@@ -452,41 +456,43 @@
       {#if file.status === "idle"}
         {@const preview = $videoPreviews.get(file.path)}
         {#if !preview || preview.status === "idle"}
-          Ready
+          {t("video.readyLabel")}
         {:else if preview.status === "loading"}
-          <span class="preview-loading">Calculando estimación&hellip;</span>
+          <span class="preview-loading">{t("video.calculatingEstimate")}</span>
         {:else if preview.status === "ready"}
           {#if preview.preview.estimatedSavingsPct < 3}
-            <span class="preview-muted">Ya está bien comprimido</span>
+            <span class="preview-muted">{t("video.alreadyWellCompressed")}</span>
           {:else}
             <span class="preview-muted">
-              {formatMB(preview.preview.originalSizeBytes)}
-              &rarr; ~{formatMB(preview.preview.estimatedSizeBytes)}
-              &middot; {Math.round(preview.preview.estimatedSavingsPct)}% menos
+              {t("video.estimateSavings", {
+                original: formatMB(preview.preview.originalSizeBytes),
+                estimated: formatMB(preview.preview.estimatedSizeBytes),
+                pct: Math.round(preview.preview.estimatedSavingsPct),
+              })}
             </span>
           {/if}
         {:else}
-          Ready
+          {t("video.readyLabel")}
         {/if}
       {:else if file.status === "compressing"}
         <span class="compressing-detail">
           {#if file.fps > 0}
             {file.fps.toFixed(0)} fps &middot; {file.speed.toFixed(1)}x
           {:else}
-            Encoding...
+            {t("video.encodingLabel")}
           {/if}
         </span>
         <span class="progress-bar-track">
           <span class="progress-bar-fill" style="transform: scaleX({file.progress / 100})"></span>
         </span>
       {:else if file.status === "done" && isOutputLarger(file)}
-        <span class="warning-detail">Already optimized &middot; {formatBytes(file.originalSize)} kept</span>
+        <span class="warning-detail">{t("video.alreadyOptimized", { size: formatBytes(file.originalSize) })}</span>
       {:else if file.status === "done"}
         {formatBytes(file.originalSize)} &rarr; {formatBytes(file.compressedSize ?? 0)} &middot; {savedPercent(file)}
       {:else if file.status === "error"}
-        {file.error ?? "Compression failed"}
+        {file.error ?? t("video.compressionFailedFallback")}
       {:else if file.status === "cancelled"}
-        Cancelled
+        {t("video.cancelledLabel")}
       {/if}
     {/snippet}
 
@@ -496,7 +502,7 @@
       {:else if file.status === "done" && isOutputLarger(file)}
         <div class="done-actions">
           {#if file.outputPath}
-            <button class="btn-icon" aria-label="Reveal in file manager" onclick={() => revealVideoOutput(file.outputPath!)}>
+            <button class="btn-icon" aria-label={t("video.revealAriaLabel")} onclick={() => revealVideoOutput(file.outputPath!)}>
               <FolderOpen size={16} />
             </button>
           {/if}
@@ -505,7 +511,7 @@
       {:else if file.status === "done"}
         <div class="done-actions">
           {#if file.outputPath}
-            <button class="btn-icon" aria-label="Reveal in file manager" onclick={() => revealVideoOutput(file.outputPath!)}>
+            <button class="btn-icon" aria-label={t("video.revealAriaLabel")} onclick={() => revealVideoOutput(file.outputPath!)}>
               <FolderOpen size={16} />
             </button>
           {/if}
@@ -514,7 +520,7 @@
       {:else if file.status === "error" || file.status === "cancelled"}
         <CircleAlert size={18} />
       {:else}
-        <button class="btn-icon" aria-label="Remove file" onclick={() => removeVideoFile(file.path)}>
+        <button class="btn-icon" aria-label={t("video.removeFileAriaLabel")} onclick={() => removeVideoFile(file.path)}>
           <X size={16} />
         </button>
       {/if}
@@ -525,18 +531,18 @@
         {#if estimateState.kind === "loading"}
           <div class="estimate-hero-block">
             <span class="estimate-num estimate-num--loading">…</span>
-            <span class="estimate-sub">Calculando ahorro&hellip;</span>
+            <span class="estimate-sub">{t("video.calculatingSavings")}</span>
           </div>
         {:else if estimateState.kind === "ready"}
           <div class="estimate-hero-block">
             <span class="estimate-num">-{Math.round(estimateState.savingsPct)}%</span>
             <span class="estimate-sub">
-              Estimado: {formatMB(estimateState.totalOriginal)} &rarr; {formatMB(estimateState.totalEstimated)}
+              {t("video.estimatedLabel", { original: formatMB(estimateState.totalOriginal), estimated: formatMB(estimateState.totalEstimated) })}
             </span>
           </div>
         {:else if estimateState.kind === "no-gain"}
           <div class="estimate-hero-block">
-            <span class="estimate-sub estimate-sub--muted">Tus videos ya están bien optimizados</span>
+            <span class="estimate-sub estimate-sub--muted">{t("video.videosAlreadyOptimized")}</span>
           </div>
         {/if}
       {:else if $videoMode === "gif" && $gifskiAvailable && $videoFiles.length > 0 && $gifSizeEstimate !== null}
@@ -565,7 +571,7 @@
         <div id="video-settings-body" class="accordion-body" transition:slide={{ duration: 180 }}>
           {#if $videoMode === "compress"}
             <div class="control-group">
-              <span class="label">Preset</span>
+              <span class="label">{t("video.presetLabel")}</span>
               <div class="pills">
                 {#each presets as p}
                   <button
@@ -583,9 +589,9 @@
                   <div class="privacy-icon" class:on={$videoPrivacyMode !== "off"} aria-hidden="true">
                     <ShieldCheck size={16} />
                   </div>
-                  <span class="label">Privacidad</span>
+                  <span class="label">{t("video.privacyLabel")}</span>
                 </div>
-                <SegmentedControl segments={privacySegments} bind:selected={$videoPrivacyMode} label="Privacy mode" />
+                <SegmentedControl segments={privacySegments} bind:selected={$videoPrivacyMode} label={t("video.privacyModeAriaLabel")} />
               </div>
               <p class="privacy-hint">{privacyTooltips[$videoPrivacyMode]}</p>
             </div>
@@ -593,14 +599,14 @@
           {:else if $videoMode === "trim"}
             <!-- Trim mode controls -->
             <div class="control-group gif-range-group">
-              <span class="label">Clip range</span>
+              <span class="label">{t("video.clipRangeLabel")}</span>
               <div class="range-inputs">
                 <input
                   type="number"
                   class="num-input"
                   min="0"
                   step="0.5"
-                  aria-label="Start second"
+                  aria-label={t("video.startSecondAriaLabel")}
                   value={$trimSettings.startSec}
                   oninput={(e) => trimSettings.update(s => ({ ...s, startSec: Math.max(0, parseFloat((e.target as HTMLInputElement).value) || 0) }))}
                 />
@@ -610,13 +616,13 @@
                   class="num-input"
                   min="0"
                   step="0.5"
-                  aria-label="End second"
+                  aria-label={t("video.endSecondAriaLabel")}
                   value={$trimSettings.endSec}
                   oninput={(e) => trimSettings.update(s => ({ ...s, endSec: Math.max(0, parseFloat((e.target as HTMLInputElement).value) || 0) }))}
                 />
               </div>
               <p class="trim-length-hint" class:invalid={!trimValid}>
-                {trimValid ? `Clip length: ${trimClipLength.toFixed(1)}s` : "End must be after start"}
+                {trimValid ? t("video.clipLengthHint", { length: trimClipLength.toFixed(1) }) : t("video.endAfterStartError")}
               </p>
             </div>
 
@@ -626,8 +632,8 @@
               {#if gifGateState === "idle"}
                 <div class="gif-gate" role="status">
                   <CircleAlert size={14} />
-                  <span>Para crear GIFs, ReVault necesita descargar un componente extra. Es rápido y solo pasa una vez.</span>
-                  <button class="btn-ghost" onclick={handleGifDownload}>Descargar</button>
+                  <span>{t("video.gifGateIdleMessage")}</span>
+                  <button class="btn-ghost" onclick={handleGifDownload}>{t("video.downloadAction")}</button>
                 </div>
               {:else if gifGateState === "downloading"}
                 <div class="gif-gate gif-gate--progress" role="status" aria-live="polite">
@@ -640,10 +646,10 @@
                     </div>
                     <span class="gif-progress-text">
                       {#if $gifDownloadProgress && $gifDownloadProgress.total > 0}
-                        Descargando… {formatBytes($gifDownloadProgress.done)} de {formatBytes($gifDownloadProgress.total)}
+                        {t("video.downloadingProgress", { done: formatBytes($gifDownloadProgress.done), total: formatBytes($gifDownloadProgress.total) })}
                         <span class="gif-progress-pct">{Math.round(($gifDownloadProgress.done / $gifDownloadProgress.total) * 100)}%</span>
                       {:else}
-                        Descargando…
+                        {t("video.downloadingEllipsis")}
                       {/if}
                     </span>
                   </div>
@@ -651,30 +657,30 @@
               {:else if gifGateState === "installing"}
                 <div class="gif-gate" role="status" aria-live="polite">
                   <div class="gif-gate-spinner"></div>
-                  <span>Casi listo…</span>
+                  <span>{t("video.almostReady")}</span>
                 </div>
               {:else if gifGateState === "error"}
                 <div class="gif-gate gif-gate--error" role="alert">
                   <CircleAlert size={14} />
                   <div class="gif-gate-error-text">
-                    <span>No hemos podido completar la descarga.</span>
-                    <small>Comprueba tu conexión e inténtalo de nuevo. Si persiste, prueba más tarde.</small>
+                    <span>{t("video.downloadIncompleteError")}</span>
+                    <small>{t("video.downloadRetryHint")}</small>
                   </div>
-                  <button class="btn-ghost" onclick={handleGifDownload}>Reintentar</button>
+                  <button class="btn-ghost" onclick={handleGifDownload}>{t("video.retryAction")}</button>
                 </div>
               {/if}
             {/if}
 
             {#if $gifskiAvailable}
               <div class="control-group gif-range-group">
-                <span class="label">Fragmento <span class="sub-hint">(máx 15 s)</span></span>
+                <span class="label">{t("video.fragmentLabel")} <span class="sub-hint">{t("video.fragmentMaxHint")}</span></span>
                 <div class="range-inputs">
                   <input
                     type="number"
                     class="num-input"
                     min="0"
                     step="0.5"
-                    aria-label="Segundo inicial"
+                    aria-label={t("video.startSecondGifAriaLabel")}
                     value={$gifSettings.startSec}
                     oninput={(e) => gifSettings.update(s => ({ ...s, startSec: Math.max(0, parseFloat((e.target as HTMLInputElement).value) || 0) }))}
                   />
@@ -684,14 +690,14 @@
                     class="num-input"
                     min="0"
                     step="0.5"
-                    aria-label="Segundo final"
+                    aria-label={t("video.endSecondGifAriaLabel")}
                     value={$gifSettings.endSec}
                     oninput={(e) => gifSettings.update(s => ({ ...s, endSec: Math.max(s.startSec + 0.5, Math.min(s.startSec + 15, parseFloat((e.target as HTMLInputElement).value) || s.startSec + 3)) }))}
                   />
                 </div>
               </div>
               <div class="control-group">
-                <span class="label">Fluidez</span>
+                <span class="label">{t("video.fluidityLabel")}</span>
                 <div class="pills">
                   {#each fpSegments as seg}
                     <button
@@ -703,7 +709,7 @@
                 </div>
               </div>
               <div class="control-group">
-                <span class="label">Tamaño</span>
+                <span class="label">{t("video.sizeLabel")}</span>
                 <div class="pills">
                   {#each widthSegments as seg}
                     <button
@@ -715,7 +721,7 @@
                 </div>
               </div>
               <div class="control-group">
-                <span class="label">Calidad</span>
+                <span class="label">{t("video.qualityLabel")}</span>
                 <input
                   type="range"
                   min="1"
@@ -732,10 +738,10 @@
           <!-- Carpeta output — visible in both modes -->
           {#if $videoMode === "compress" || $videoMode === "trim" || $gifskiAvailable}
             <div class="control-group">
-              <span class="label">Carpeta</span>
+              <span class="label">{t("video.folderLabel")}</span>
               <button class="btn-ghost output-btn" onclick={browseOutputDir}>
                 <FolderOpen size={14} />
-                {$videoOutputDir?.split(/[\\/]/).pop() ?? "Misma que el origen"}
+                {$videoOutputDir?.split(/[\\/]/).pop() ?? t("video.sameAsInput")}
               </button>
             </div>
           {/if}
@@ -745,10 +751,10 @@
 
     <!-- GIF encoding progress -->
     {#if $videoMode === "gif" && $gifState === "generating"}
-      <div class="gif-progress-block" role="status" aria-live="polite" aria-label="Exportando GIF">
+      <div class="gif-progress-block" role="status" aria-live="polite" aria-label={t("video.exportingGifAriaLabel")}>
         <div class="gif-progress-header">
           <span class="gif-progress-label">
-            {$gifPhase === "complete" ? "Finalizando…" : "Codificando GIF…"}
+            {$gifPhase === "complete" ? t("video.finalizingLabel") : t("video.encodingGifLabel")}
           </span>
           <span class="gif-progress-pct">{$gifProgress}%</span>
         </div>
@@ -771,10 +777,10 @@
         <div class="gif-done-actions">
           <button class="btn-primary-sm" onclick={() => revealVideoOutput($gifOutputPath!)}>
             <FolderOpen size={14} />
-            Abrir carpeta
+            {t("video.openFolderAction")}
           </button>
           <button class="btn-ghost" onclick={() => { gifState.set("idle"); gifOutputPath.set(null); gifResult.set(null); }}>
-            Crear otro GIF
+            {t("video.createAnotherGif")}
           </button>
         </div>
       </div>
@@ -793,10 +799,10 @@
         <div class="gif-done-actions">
           <button class="btn-primary-sm" onclick={() => revealVideoOutput($trimOutputPath!)}>
             <FolderOpen size={14} />
-            Show in folder
+            {t("video.showInFolderAction")}
           </button>
           <button class="btn-ghost" onclick={() => { trimState.set("idle"); trimOutputPath.set(null); trimResult.set(null); }}>
-            Trim another clip
+            {t("video.trimAnotherClip")}
           </button>
         </div>
       </div>

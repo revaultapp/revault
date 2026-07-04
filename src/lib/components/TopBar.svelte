@@ -1,14 +1,16 @@
 <script lang="ts">
   import { activePage } from "$lib/stores/nav";
+  import { t } from "$lib/stores/locale.svelte";
 
-  const titles: Record<string, [string, string]> = {
-    dashboard: ["Dashboard", "Overview and quick actions"],
-    optimize: ["Optimize", "Compress, convert and resize"],
-    duplicates: ["Duplicates", "Find duplicate photos"],
-    privacy: ["Privacy", "Metadata and sensitive data"],
-    video: ["Video", "Compress and optimize videos"],
-    settings: ["Settings", "Manage your preferences"],
-  };
+  let titles: Record<string, [string, string]> = $derived({
+    dashboard: [t("topBar.dashboardTitle"), t("topBar.dashboardSubtitle")],
+    optimize: [t("topBar.optimizeTitle"), t("topBar.optimizeSubtitle")],
+    duplicates: [t("topBar.duplicatesTitle"), t("topBar.duplicatesSubtitle")],
+    privacy: [t("topBar.privacyTitle"), t("topBar.privacySubtitle")],
+    video: [t("topBar.videoTitle"), t("topBar.videoSubtitle")],
+    pdf: [t("topBar.pdfTitle"), t("topBar.pdfSubtitle")],
+    settings: [t("topBar.settingsTitle"), t("topBar.settingsSubtitle")],
+  });
 
   let current = $derived(titles[$activePage] ?? titles.dashboard);
 </script>

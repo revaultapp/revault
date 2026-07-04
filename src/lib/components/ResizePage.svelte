@@ -8,38 +8,40 @@
   import { browseOutputDir, formatBytes } from "$lib/utils";
   import { stripGps } from "$lib/stores/compress";
   import { IMAGE_EXTENSIONS } from "$lib/types";
+  import { t } from "$lib/stores/locale.svelte";
   import {
     files, isResizing, outputDir, resolvedOutputDir, resizeMode, width, height, summary,
     upscaleWarning, upscaleCount,
     addFiles, removeFile, clearFiles, willUpscale,
+    type ResizeMode,
   } from "$lib/stores/resize";
 
   type Preset = { label: string; w: number; h: number };
   type PresetGroup = { group: string; presets: Preset[] };
 
-  const presetGroups: PresetGroup[] = [
+  let presetGroups = $derived<PresetGroup[]>([
     {
-      group: "General",
+      group: t("resize.presetGroupGeneral"),
       presets: [
-        { label: "Full HD", w: 1920, h: 1080 },
-        { label: "HD", w: 1280, h: 720 },
-        { label: "Thumbnail", w: 300, h: 300 },
+        { label: t("resize.presetFullHd"), w: 1920, h: 1080 },
+        { label: t("resize.presetHd"), w: 1280, h: 720 },
+        { label: t("resize.presetThumbnail"), w: 300, h: 300 },
       ],
     },
     {
-      group: "Social Media",
+      group: t("resize.presetGroupSocialMedia"),
       presets: [
-        { label: "IG Post", w: 1080, h: 1350 },
-        { label: "IG Square", w: 1080, h: 1080 },
-        { label: "IG 3:4", w: 1080, h: 1440 },
-        { label: "IG Story", w: 1080, h: 1920 },
-        { label: "YouTube", w: 1280, h: 720 },
-        { label: "Twitter/X", w: 1200, h: 675 },
-        { label: "LinkedIn", w: 1200, h: 1200 },
-        { label: "TikTok", w: 1080, h: 1920 },
+        { label: t("resize.presetIgPost"), w: 1080, h: 1350 },
+        { label: t("resize.presetIgSquare"), w: 1080, h: 1080 },
+        { label: t("resize.presetIg34"), w: 1080, h: 1440 },
+        { label: t("resize.presetIgStory"), w: 1080, h: 1920 },
+        { label: t("resize.presetYoutube"), w: 1280, h: 720 },
+        { label: t("resize.presetTwitter"), w: 1200, h: 675 },
+        { label: t("resize.presetLinkedin"), w: 1200, h: 1200 },
+        { label: t("resize.presetTiktok"), w: 1080, h: 1920 },
       ],
     },
-  ];
+  ]);
 
   let targetPct = $derived(
     $files.length === 0 ? 0 : (($summary.done + $summary.failed) / $files.length) * 100
@@ -47,9 +49,19 @@
 
   let headerText = $derived(
     $summary.done > 0 || $summary.failed > 0
-      ? `${$summary.done} of ${$files.length} resized${$summary.failed > 0 ? ` · ${$summary.failed} failed` : ""}`
-      : `${$files.length} image${$files.length > 1 ? "s" : ""} selected`
+      ? t("resize.headerDone", { done: $summary.done, total: $files.length }) +
+        ($summary.failed > 0 ? t("common.failedSuffix", { count: $summary.failed }) : "")
+      : $files.length === 1
+        ? t("common.imagesSelectedOne", { count: $files.length })
+        : t("common.imagesSelectedOther", { count: $files.length })
   );
+
+  let modeLabel = $derived($resizeMode === "Fit" ? t("resize.modeFit") : t("resize.modeExact"));
+
+  let modeOptions = $derived<[ResizeMode, string][]>([
+    ["Fit", t("resize.modeFit")],
+    ["Exact", t("resize.modeExact")],
+  ]);
 
   interface ResizeResult {
     input_path: string;
@@ -66,7 +78,7 @@
   async function browseFiles() {
     const selected = await open({
       multiple: true,
-      filters: [{ name: "Images", extensions: [...IMAGE_EXTENSIONS] }],
+      filters: [{ name: t("dropZone.filePickerName"), extensions: [...IMAGE_EXTENSIONS] }],
     });
     if (selected) addFiles(selected);
   }
@@ -125,11 +137,11 @@
   files={$files}
   isProcessing={$isResizing}
   {targetPct}
-  progressLabel="{$summary.done + $summary.failed} of {$files.length} files"
+  progressLabel={t("common.progressLabel", { done: $summary.done + $summary.failed, total: $files.length })}
   onfiles={(paths) => addFiles(paths)}
   onbrowse={browseFiles}
   onclear={clearFiles}
-  actionLabel="Resize {$files.length > 1 ? 'All' : ''}"
+  actionLabel={$files.length > 1 ? t("resize.actionButtonAll") : t("resize.actionButton")}
   onaction={startResize}
   {headerText}
 >
@@ -137,7 +149,9 @@
     {#if $upscaleWarning}
       <span class="upscale-chip">
         <AlertTriangle size={12} />
-        {$upscaleCount} will upscale
+        {$upscaleCount === 1
+          ? t("resize.willUpscaleChipOne", { count: $upscaleCount })
+          : t("resize.willUpscaleChipOther", { count: $upscaleCount })}
       </span>
     {/if}
   {/snippet}
@@ -149,11 +163,11 @@
       {file.error}
     {:else}
       <span class="file-detail-row">
-        <span>{$width}×{$height} · {$resizeMode}</span>
+        <span>{$width}×{$height} · {modeLabel}</span>
         {#if willUpscale(file, $width, $height, $resizeMode)}
           <span class="upscale-flag">
             <AlertTriangle size={14} />
-            will upscale
+            {t("resize.willUpscaleFlag")}
           </span>
         {/if}
       </span>
@@ -173,7 +187,7 @@
   {/snippet}
 
   <div class="control-group">
-    <span class="label">Presets</span>
+    <span class="label">{t("resize.presetsLabel")}</span>
     <div class="preset-sections">
       {#each presetGroups as group}
         <div class="preset-section">
@@ -193,20 +207,20 @@
     </div>
   </div>
   <div class="control-group">
-    <span class="label">Size</span>
+    <span class="label">{t("resize.sizeLabel")}</span>
     <div class="dimension-inputs">
-      <input type="number" min="1" max="10000" bind:value={$width} aria-label="Width" />
+      <input type="number" min="1" max="10000" bind:value={$width} aria-label={t("resize.widthAriaLabel")} />
       <span class="dim-sep">×</span>
-      <input type="number" min="1" max="10000" bind:value={$height} aria-label="Height" />
+      <input type="number" min="1" max="10000" bind:value={$height} aria-label={t("resize.heightAriaLabel")} />
     </div>
   </div>
   <div class="control-group">
     <span class="label">
-      Mode
-      <HelperTooltip tip="Fit: scales to fit within, preserving aspect ratio. Exact: forces exact dimensions, may distort." />
+      {t("resize.modeLabel")}
+      <HelperTooltip tip={t("resize.modeTooltip")} />
     </span>
     <div class="pills">
-      {#each ([["Fit", "Fit"], ["Exact", "Exact"]] as const) as [value, label]}
+      {#each modeOptions as [value, label]}
         <button class="pill" class:active={$resizeMode === value} onclick={() => resizeMode.set(value)}>
           {label}
         </button>
@@ -214,19 +228,19 @@
     </div>
   </div>
   <div class="control-group">
-    <span class="label">Output</span>
+    <span class="label">{t("common.outputLabel")}</span>
     <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
       <FolderOpen size={14} />
-      {$resolvedOutputDir?.split(/[\\/]/).pop() ?? "Same as input"}
+      {$resolvedOutputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
     </button>
   </div>
   <div class="control-group">
     <div class="toggle-row">
       <div class="toggle-label">
-        <span class="label">Strip GPS</span>
-        <span class="control-hint">Remove location data from photos</span>
+        <span class="label">{t("resize.stripGpsLabel")}</span>
+        <span class="control-hint">{t("resize.stripGpsHint")}</span>
       </div>
-      <ToggleSwitch bind:checked={$stripGps} label="Strip GPS" />
+      <ToggleSwitch bind:checked={$stripGps} label={t("resize.stripGpsLabel")} />
     </div>
   </div>
 </ToolShell>

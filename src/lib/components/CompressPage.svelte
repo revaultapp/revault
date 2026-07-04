@@ -19,6 +19,7 @@
   import { savings } from "$lib/stores/savings";
   import { activity } from "$lib/stores/activity";
   import { IMAGE_EXTENSIONS } from "$lib/types";
+  import { t } from "$lib/stores/locale.svelte";
 
   let targetPct = $derived(
     $files.length === 0 ? 0 : (($summary.done + $summary.failed) / $files.length) * 100
@@ -26,8 +27,11 @@
 
   let headerText = $derived(
     $summary.done > 0 || $summary.failed > 0
-      ? `${$summary.done} of ${$files.length} compressed${$summary.failed > 0 ? ` · ${$summary.failed} failed` : ""}`
-      : `${$files.length} image${$files.length > 1 ? "s" : ""} selected`
+      ? t("compress.headerDone", { done: $summary.done, total: $files.length }) +
+        ($summary.failed > 0 ? t("common.failedSuffix", { count: $summary.failed }) : "")
+      : $files.length === 1
+        ? t("common.imagesSelectedOne", { count: $files.length })
+        : t("common.imagesSelectedOther", { count: $files.length })
   );
 
   interface CompressionResult {
@@ -39,18 +43,18 @@
     error: string | null;
   }
 
-  const formats: { value: OutputFormat | null; label: string }[] = [
-    { value: null, label: "Auto (smallest)" },
-    { value: "Jpeg", label: "JPEG" },
-    { value: "Png", label: "PNG" },
-    { value: "Webp", label: "WebP" },
-    { value: "Avif", label: "AVIF" },
-  ];
+  let formats = $derived<{ value: OutputFormat | null; label: string }[]>([
+    { value: null, label: t("compress.formatAuto") },
+    { value: "Jpeg", label: t("common.formatJpeg") },
+    { value: "Png", label: t("common.formatPng") },
+    { value: "Webp", label: t("common.formatWebp") },
+    { value: "Avif", label: t("common.formatAvif") },
+  ]);
 
   async function browseFiles() {
     const selected = await open({
       multiple: true,
-      filters: [{ name: "Images", extensions: [...IMAGE_EXTENSIONS] }],
+      filters: [{ name: t("dropZone.filePickerName"), extensions: [...IMAGE_EXTENSIONS] }],
     });
     if (selected) addFiles(selected);
   }
@@ -101,7 +105,9 @@
       activity.add({ type: "compress", fileCount: $summary.done, savedBytes: $summary.savedBytes });
       if (gps) {
         const n = $summary.done;
-        toastMessage = n === 1 ? 'GPS removed from 1 file' : `GPS removed from ${n} files`;
+        toastMessage = n === 1
+          ? t("compress.gpsRemovedOne", { count: n })
+          : t("compress.gpsRemovedOther", { count: n });
         showToast = true;
         clearTimeout(toastTimer);
         toastTimer = setTimeout(() => { showToast = false; }, 3000);
@@ -117,11 +123,11 @@
 
   function savedPercent(file: CompressFile): string {
     if (!file.compressedSize || file.size === 0) return "";
-    if (file.alreadyOptimal) return "Already optimal";
+    if (file.alreadyOptimal) return t("compress.alreadyOptimal");
     const pct = Math.round(((file.size - file.compressedSize) / file.size) * 100);
-    if (pct > 0) return `${pct}% smaller`;
-    if (pct < 0) return `${Math.abs(pct)}% larger`;
-    return "Same size";
+    if (pct > 0) return t("compress.pctSmaller", { pct });
+    if (pct < 0) return t("compress.pctLarger", { pct: Math.abs(pct) });
+    return t("compress.sameSize");
   }
 
   async function openOutputFolder() {
@@ -193,12 +199,12 @@
   files={$files}
   isProcessing={$isCompressing}
   {targetPct}
-  progressLabel="{$summary.done + $summary.failed} of {$files.length} files"
-  progressSublabel={$summary.savedBytes > 0 ? `Saved ${formatBytes($summary.savedBytes)}` : undefined}
+  progressLabel={t("common.progressLabel", { done: $summary.done + $summary.failed, total: $files.length })}
+  progressSublabel={$summary.savedBytes > 0 ? t("common.savedTotal", { amount: formatBytes($summary.savedBytes) }) : undefined}
   onfiles={(paths) => addFiles(paths)}
   onbrowse={browseFiles}
   onclear={handleClear}
-  actionLabel="Compress {$files.length > 1 ? 'All' : ''}"
+  actionLabel={$files.length > 1 ? t("compress.actionButtonAll") : t("compress.actionButton")}
   onaction={startCompression}
   actionLoading={$isCompressing}
   actionSuccess={compressSuccess}
@@ -206,11 +212,11 @@
 >
   {#snippet headerSub()}
     {#if $summary.savedBytes > 0}
-      <span class="saved-total">Saved {formatBytes($summary.savedBytes)}</span>
+      <span class="saved-total">{t("common.savedTotal", { amount: formatBytes($summary.savedBytes) })}</span>
     {/if}
     {#if $summary.done > 0}
       <button class="btn-ghost open-folder-btn" onclick={openOutputFolder}>
-        Open output folder
+        {t("compress.openOutputFolder")}
       </button>
     {/if}
   {/snippet}
@@ -219,26 +225,28 @@
     {#if $isEstimating}
       <div class="estimate-card">
         <div class="estimate-row">
-          <span class="estimate-label">Estimated</span>
-          <span class="estimate-value estimating">Scanning sample files...</span>
+          <span class="estimate-label">{t("compress.estimatedLabel")}</span>
+          <span class="estimate-value estimating">{t("compress.scanningSampleFiles")}</span>
         </div>
       </div>
     {:else if estimatedBanner}
       <div class="estimate-card">
         <div class="estimate-row">
-          <span class="estimate-label">Estimated</span>
+          <span class="estimate-label">{t("compress.estimatedLabel")}</span>
           <span class="estimate-value">
-            {estimatedBanner.count} files:&nbsp;
-            {formatBytes(estimatedBanner.totalOriginal)}
-            → ~{formatBytes(estimatedBanner.estimated)}
-            <span class="estimate-pct">({estimatedBanner.displayPct}% {estimatedBanner.wouldGrow ? 'larger' : 'smaller'})</span>
+            {estimatedBanner.count === 1
+              ? t("compress.estimateSummaryOne", { count: estimatedBanner.count, original: formatBytes(estimatedBanner.totalOriginal), estimated: formatBytes(estimatedBanner.estimated) })
+              : t("compress.estimateSummaryOther", { count: estimatedBanner.count, original: formatBytes(estimatedBanner.totalOriginal), estimated: formatBytes(estimatedBanner.estimated) })}
+            <span class="estimate-pct">({t(estimatedBanner.wouldGrow ? "compress.pctLarger" : "compress.pctSmaller", { pct: estimatedBanner.displayPct })})</span>
           </span>
         </div>
         <div class="estimate-meta">
           {#if estimatedBanner.filesMayIncrease > 0}
             <span class="estimate-warn">
               <AlertCircle size={12} />
-              {estimatedBanner.filesMayIncrease} file{estimatedBanner.filesMayIncrease > 1 ? 's' : ''} may grow
+              {estimatedBanner.filesMayIncrease === 1
+                ? t("compress.mayGrowOne", { count: estimatedBanner.filesMayIncrease })
+                : t("compress.mayGrowOther", { count: estimatedBanner.filesMayIncrease })}
             </span>
           {/if}
         </div>
@@ -252,13 +260,13 @@
     {:else if file.status === "error"}
       {file.error}
     {:else}
-      Ready
+      {t("compress.ready")}
     {/if}
   {/snippet}
 
   {#snippet fileStatus(file)}
     {#if file.status === "done"}
-      <button class="btn-icon compare-btn" onclick={() => compareFile = file} title="Compare" aria-label="Compare before and after">
+      <button class="btn-icon compare-btn" onclick={() => compareFile = file} title={t("compress.compareTitle")} aria-label={t("common.compareAriaLabel")}>
         <Eye size={16} />
       </button>
       <CheckCircle size={18} />
@@ -272,7 +280,7 @@
   {/snippet}
 
   <div class="control-group">
-    <span class="label">Format <HelperTooltip tip="Choose the output format. Auto selects the format that produces the smallest file." /></span>
+    <span class="label">{t("common.formatLabel")} <HelperTooltip tip={t("compress.formatTooltip")} /></span>
     <div class="pills">
       {#each formats as f}
         <button class="pill" class:active={$format === f.value} onclick={() => format.set(f.value)}>
@@ -282,33 +290,33 @@
     </div>
   </div>
   <div class="control-group">
-    <span class="label">Quality <HelperTooltip tip="Smallest: minimum file size. Balanced: good quality at lower size. High quality: best quality, larger files." /></span>
+    <span class="label">{t("common.qualityLabel")} <HelperTooltip tip={t("common.qualityTooltip")} /></span>
     <div class="pills">
       <button class="pill" class:active={$qualityPreset === "Smallest"}
-        onclick={() => qualityPreset.set("Smallest")}>Smallest</button>
+        onclick={() => qualityPreset.set("Smallest")}>{t("common.qualitySmallest")}</button>
       <button class="pill" class:active={$qualityPreset === "Balanced"}
-        onclick={() => qualityPreset.set("Balanced")}>Balanced</button>
+        onclick={() => qualityPreset.set("Balanced")}>{t("common.qualityBalanced")}</button>
       <button class="pill" class:active={$qualityPreset === "HighQuality"}
-        onclick={() => qualityPreset.set("HighQuality")}>High quality</button>
+        onclick={() => qualityPreset.set("HighQuality")}>{t("common.qualityHighQuality")}</button>
     </div>
     {#if $format === "Png"}
-      <span class="format-hint">PNG is lossless — quality preset doesn't affect output</span>
+      <span class="format-hint">{t("compress.pngLosslessHint")}</span>
     {/if}
   </div>
   <div class="control-group">
-    <span class="label">Output <HelperTooltip tip="Folder where compressed images are saved. Defaults to the same folder as the original." /></span>
+    <span class="label">{t("common.outputLabel")} <HelperTooltip tip={t("compress.outputTooltip")} /></span>
     <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
       <FolderOpen size={14} />
-      {$resolvedOutputDir?.split(/[\\/]/).pop() ?? "Same as input"}
+      {$resolvedOutputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
     </button>
   </div>
   <div class="control-group">
     <div class="toggle-row">
       <div class="toggle-label">
-        <span class="label">Strip Location</span>
-        <span class="control-hint">Remove location data from photos</span>
+        <span class="label">{t("compress.stripLocationLabel")}</span>
+        <span class="control-hint">{t("compress.stripLocationHint")}</span>
       </div>
-      <ToggleSwitch bind:checked={$stripGps} label="Strip location" />
+      <ToggleSwitch bind:checked={$stripGps} label={t("compress.stripLocationLabel")} />
     </div>
   </div>
 </ToolShell>

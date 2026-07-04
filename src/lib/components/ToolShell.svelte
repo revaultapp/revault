@@ -9,6 +9,7 @@
   import ProgressRing from "./ProgressRing.svelte";
   import Button from "./Button.svelte";
   import type { BaseFile } from "$lib/types";
+  import { t } from "$lib/stores/locale.svelte";
 
   let thumbnails = $state<Record<string, string>>({});
   const rm = $derived(prefersReducedMotion.current);
@@ -131,10 +132,10 @@
         {#if headerSub}{@render headerSub()}{/if}
       </div>
       <div class="header-actions">
-        <button class="btn-ghost" onclick={onbrowse}>Add more</button>
+        <button class="btn-ghost" onclick={onbrowse}>{t("toolShell.addMore")}</button>
         <button class="btn-ghost danger" onclick={onclear}>
           <Trash2 size={14} />
-          Clear
+          {t("toolShell.clear")}
         </button>
       </div>
     </div>
