@@ -661,6 +661,131 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    /// Builds a synthetic JPEG whose Exif APP1 segment has GPS in *two*
+    /// places: IFD0 (the "normal" spot) and IFD1 (the thumbnail IFD), the
+    /// latter linked via its own GPSInfo (0x8825) pointer to a private GPS
+    /// sub-IFD. This mirrors the real-world leak where a naive "strip EXIF"
+    /// only clears IFD0 and leaves the embedded thumbnail's own GPS-tagged
+    /// metadata intact. See TIFF 6.0 + Exif 2.3 IFD-linking spec.
+    fn jpeg_with_gps_in_thumbnail_ifd() -> Vec<u8> {
+        let mut tiff = Vec::new();
+        tiff.extend([0x49, 0x49, 0x2A, 0x00]); // "II" + TIFF magic number (LE)
+        tiff.extend(8u32.to_le_bytes()); // offset to IFD0
+
+        // IFD0 @8: no tags of its own, links straight to IFD1 @14
+        tiff.extend(0u16.to_le_bytes());
+        tiff.extend(14u32.to_le_bytes());
+
+        // IFD1 @14: GPSInfo pointer (-> GPS sub-IFD @56) + thumbnail data ptr
+        tiff.extend(3u16.to_le_bytes());
+        tiff.extend(0x8825u16.to_le_bytes());
+        tiff.extend(0x0004u16.to_le_bytes()); // INT32U
+        tiff.extend(1u32.to_le_bytes());
+        tiff.extend(56u32.to_le_bytes()); // -> GPS sub-IFD offset
+        tiff.extend(0x0201u16.to_le_bytes()); // ThumbnailOffset
+        tiff.extend(0x0004u16.to_le_bytes());
+        tiff.extend(1u32.to_le_bytes());
+        tiff.extend(74u32.to_le_bytes()); // -> thumbnail JPEG bytes offset
+        tiff.extend(0x0202u16.to_le_bytes()); // ThumbnailLength
+        tiff.extend(0x0004u16.to_le_bytes());
+        tiff.extend(1u32.to_le_bytes());
+        tiff.extend(4u32.to_le_bytes()); // thumbnail length
+        tiff.extend(0u32.to_le_bytes()); // no more generic IFDs
+
+        // GPS sub-IFD @56, owned by IFD1: GPSLatitudeRef = "N"
+        tiff.extend(1u16.to_le_bytes());
+        tiff.extend(0x0001u16.to_le_bytes());
+        tiff.extend(0x0002u16.to_le_bytes()); // STRING
+        tiff.extend(2u32.to_le_bytes()); // "N\0"
+        tiff.extend([b'N', 0x00, 0x00, 0x00]);
+        tiff.extend(0u32.to_le_bytes());
+
+        // Thumbnail data @74: minimal valid JPEG (SOI+EOI)
+        tiff.extend([0xFF, 0xD8, 0xFF, 0xD9]);
+        assert_eq!(tiff.len(), 78);
+
+        let mut app1 = Vec::new();
+        app1.extend(*b"Exif\0\0");
+        app1.extend(&tiff);
+
+        let mut jpeg = vec![0xFF, 0xD8, 0xFF, 0xE1];
+        jpeg.extend(((app1.len() + 2) as u16).to_be_bytes());
+        jpeg.extend(&app1);
+        jpeg.extend([0xFF, 0xD9]);
+        jpeg
+    }
+
+    #[test]
+    fn strip_metadata_full_strip_removes_thumbnail_ifd_entirely() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("gps_thumb.jpg");
+        fs::write(&input, jpeg_with_gps_in_thumbnail_ifd()).unwrap();
+        let output = dir.path().join("gps_thumb_stripped.jpg");
+
+        strip_metadata(input.to_str().unwrap(), output.to_str().unwrap()).unwrap();
+
+        // The full-strip path (img-parts) drops the entire APP1/Exif segment
+        // as one opaque blob, so there is no Exif container left to parse at
+        // all — IFD0, IFD1/thumbnail wrapper and its GPS sub-IFD are all gone.
+        let after = fs::read(&output).unwrap();
+        let result = Reader::new().read_from_container(&mut std::io::Cursor::new(after.as_slice()));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn strip_gps_in_place_clears_gps_from_thumbnail_ifd_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("gps_thumb.jpg");
+        fs::write(&path, jpeg_with_gps_in_thumbnail_ifd()).unwrap();
+
+        // Sanity check: the thumbnail IFD really does carry its own GPS tag
+        // before stripping (otherwise this test would prove nothing).
+        let before = fs::read(&path).unwrap();
+        let exif_before = Reader::new()
+            .read_from_container(&mut std::io::Cursor::new(before.as_slice()))
+            .unwrap();
+        assert!(exif_before
+            .get_field(Tag::GPSLatitudeRef, In::THUMBNAIL)
+            .is_some());
+
+        strip_gps_in_place(path.to_str().unwrap()).unwrap();
+
+        let after = fs::read(&path).unwrap();
+        let exif_after = Reader::new()
+            .read_from_container(&mut std::io::Cursor::new(after.as_slice()))
+            .unwrap();
+        assert!(exif_after
+            .get_field(Tag::GPSLatitudeRef, In::THUMBNAIL)
+            .is_none());
+        assert!(exif_after
+            .get_field(Tag::GPSLatitudeRef, In::PRIMARY)
+            .is_none());
+    }
+
+    #[test]
+    fn strip_metadata_selective_gps_clears_thumbnail_ifd_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("gps_thumb.jpg");
+        fs::write(&input, jpeg_with_gps_in_thumbnail_ifd()).unwrap();
+        let output = dir.path().join("gps_thumb_stripped.jpg");
+        let opts = StripOptions {
+            gps: true,
+            device: false,
+            datetime: false,
+            author: false,
+        };
+
+        strip_metadata_selective(input.to_str().unwrap(), output.to_str().unwrap(), opts).unwrap();
+
+        let after = fs::read(&output).unwrap();
+        let exif_after = Reader::new()
+            .read_from_container(&mut std::io::Cursor::new(after.as_slice()))
+            .unwrap();
+        assert!(exif_after
+            .get_field(Tag::GPSLatitudeRef, In::THUMBNAIL)
+            .is_none());
+    }
+
     #[test]
     fn build_output_path_same_dir() {
         let mut reserved = HashSet::new();
