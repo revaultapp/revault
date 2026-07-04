@@ -54,7 +54,7 @@
   async function browseFiles() {
     const selected = await open({
       multiple: true,
-      filters: [{ name: "PDF files", extensions: [...PDF_SUPPORTED_EXTENSIONS] }],
+      filters: [{ name: t("pdf.filePickerName"), extensions: [...PDF_SUPPORTED_EXTENSIONS] }],
     });
     if (selected) handleAddFiles(Array.isArray(selected) ? selected : [selected]);
   }
@@ -116,7 +116,7 @@
   async function browseMergeFiles() {
     const selected = await open({
       multiple: true,
-      filters: [{ name: "PDF files", extensions: [...PDF_SUPPORTED_EXTENSIONS] }],
+      filters: [{ name: t("pdf.filePickerName"), extensions: [...PDF_SUPPORTED_EXTENSIONS] }],
     });
     if (selected) handleMergeAdd(Array.isArray(selected) ? selected : [selected]);
   }

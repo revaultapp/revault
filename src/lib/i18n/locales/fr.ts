@@ -132,6 +132,7 @@ export const fr: Dictionary = {
     exportToPlatformsOther: "Exporter vers {count} plateformes",
     heicBannerText: "Fichiers HEIC détectés — JPEG est recommandé pour une meilleure compatibilité.",
     dismissAriaLabel: "Ignorer",
+    noResult: "Aucun résultat renvoyé",
   },
   resize: {
     headerDone: "{done} sur {total} redimensionnées",

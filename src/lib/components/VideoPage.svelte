@@ -229,7 +229,7 @@
   async function browseFiles() {
     const selected = await open({
       multiple: true,
-      filters: [{ name: "Videos", extensions: [...VIDEO_EXTENSIONS] }],
+      filters: [{ name: t("video.filePickerName"), extensions: [...VIDEO_EXTENSIONS] }],
     });
     if (selected) handleFiles(selected);
   }

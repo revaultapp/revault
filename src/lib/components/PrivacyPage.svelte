@@ -86,7 +86,7 @@
   async function browseFiles() {
     const selected = await open({
       multiple: true,
-      filters: [{ name: "Privacy-supported images", extensions: [...PRIVACY_SUPPORTED_EXTENSIONS] }],
+      filters: [{ name: t("privacy.filePickerName"), extensions: [...PRIVACY_SUPPORTED_EXTENSIONS] }],
     });
     if (selected) handleAddFiles(selected);
   }

@@ -130,6 +130,7 @@ export const en = {
     exportToPlatformsOther: "Export to {count} platforms",
     heicBannerText: "HEIC files detected — JPEG is recommended for broad compatibility.",
     dismissAriaLabel: "Dismiss",
+    noResult: "No result returned",
   },
   resize: {
     headerDone: "{done} of {total} resized",

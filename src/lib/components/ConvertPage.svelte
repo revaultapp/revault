@@ -70,7 +70,7 @@
   async function browseFiles() {
     const selected = await open({
       multiple: true,
-      filters: [{ name: "Images", extensions: [...IMAGE_EXTENSIONS] }],
+      filters: [{ name: t("dropZone.filePickerName"), extensions: [...IMAGE_EXTENSIONS] }],
     });
     if (selected) addFiles(selected);
   }
@@ -154,7 +154,7 @@
             files.update((all) =>
               all.map((f) => {
                 if (f.path !== file.path) return f;
-                if (!result) return { ...f, status: "error" as const, error: "No result returned" };
+                if (!result) return { ...f, status: "error" as const, error: t("convert.noResult") };
                 if (result.error) return { ...f, status: "error" as const, error: result.error };
                 return { ...f, status: "done" as const, outputPath: result.output_path, outputSize: result.resized_size, size: result.original_size };
               })

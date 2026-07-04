@@ -133,6 +133,7 @@ export const es: Dictionary = {
     exportToPlatformsOther: "Exportar a {count} plataformas",
     heicBannerText: "Se detectaron archivos HEIC — se recomienda JPEG para mayor compatibilidad.",
     dismissAriaLabel: "Descartar",
+    noResult: "No se devolvió ningún resultado",
   },
   resize: {
     headerDone: "{done} de {total} redimensionadas",
@@ -253,7 +254,7 @@ export const es: Dictionary = {
   video: {
     modeCompress: "Comprimir",
     modeGif: "GIF",
-    modeTrim: "Trim",
+    modeTrim: "Recortar",
     fpLow: "Baja · 10",
     fpMedium: "Media · 15",
     fpHigh: "Alta · 24",
