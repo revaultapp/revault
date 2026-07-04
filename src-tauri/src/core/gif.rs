@@ -7,7 +7,7 @@ use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use crate::core::paths::validate_input_path;
+use crate::core::paths::{install_temp_output, temporary_output_path, validate_input_path};
 use crate::core::video::{get_ffmpeg_path, parse_time_to_secs, probe_video_stats};
 
 pub const GIFSKI_VERSION: &str = "1.34.0";
@@ -137,42 +137,6 @@ fn validate_gif_output_path(output_path: &str) -> Result<PathBuf, String> {
     }
 
     Ok(first_available_path(&parent.join(filename)))
-}
-
-fn temporary_output_path(final_path: &Path) -> Result<PathBuf, String> {
-    let parent = final_path
-        .parent()
-        .ok_or_else(|| "GIF output path has no parent directory".to_string())?;
-    let stem = final_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("gif");
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    Ok(parent.join(format!(
-        ".{stem}.revault-tmp-{}-{nonce}.gif",
-        std::process::id()
-    )))
-}
-
-fn install_temp_output(temp_path: &Path, final_path: &Path) -> Result<(), String> {
-    match std::fs::hard_link(temp_path, final_path) {
-        Ok(()) => std::fs::remove_file(temp_path)
-            .map_err(|e| format!("Failed to clean temporary GIF: {}", e)),
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-            let _ = std::fs::remove_file(temp_path);
-            Err(format!(
-                "Output already exists, refusing to overwrite: {}",
-                final_path.display()
-            ))
-        }
-        Err(e) => {
-            let _ = std::fs::remove_file(temp_path);
-            Err(format!("Failed to move GIF into place: {}", e))
-        }
-    }
 }
 
 /// Heuristic only — for UI preview before encoding. Assumes ~50KB/frame at
@@ -517,7 +481,7 @@ pub fn export_gif(
     opts.validate()?;
     validate_input_path(input_path, false)?;
     let output_path = validate_gif_output_path(output_path)?;
-    let temp_output = temporary_output_path(&output_path)?;
+    let temp_output = temporary_output_path(&output_path, "GIF output", "gif", "gif")?;
     let gifski = gifski_binary_path(app_data_dir)?;
 
     // Probe input ONCE — for clip duration (progress denom) + dimensions (output height calc)
@@ -637,7 +601,7 @@ pub fn export_gif(
         .map(|m| m.len())
         .map_err(|e| format!("gifski produced no output: {}", e))?;
 
-    install_temp_output(&temp_output, &output_path)?;
+    install_temp_output(&temp_output, &output_path, "GIF")?;
 
     // Compute output height deterministically — avoids post-encode probe
     let output_height: u32 = if stats.width > 0 {
@@ -731,7 +695,7 @@ mod tests {
         std::fs::write(&temp, b"new").unwrap();
         std::fs::write(&final_path, b"old").unwrap();
 
-        let err = install_temp_output(&temp, &final_path).unwrap_err();
+        let err = install_temp_output(&temp, &final_path, "GIF").unwrap_err();
         assert!(err.contains("refusing to overwrite"));
         assert_eq!(std::fs::read(&final_path).unwrap(), b"old");
         assert!(!temp.exists());
@@ -744,7 +708,7 @@ mod tests {
         let final_path = dir.path().join("clip.gif");
         std::fs::write(&temp, b"new").unwrap();
 
-        install_temp_output(&temp, &final_path).unwrap();
+        install_temp_output(&temp, &final_path, "GIF").unwrap();
 
         assert_eq!(std::fs::read(&final_path).unwrap(), b"new");
         assert!(!temp.exists());
