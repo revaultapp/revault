@@ -21,7 +21,7 @@ Ultra-lightweight desktop app for image compression, conversion, analysis, and o
 
 Download the latest release for your platform below. Since these builds are not yet signed, you may see security warnings on first launch — these are safe to bypass:
 
-- **macOS:** Right-click (or Control-click) the app → **Open** → click **Open** to confirm. This is a one-time step. If you see "app is damaged", run:
+- **macOS:** On first launch, macOS will block the app (Gatekeeper). Go to **System Settings → Privacy & Security** and click the **Open Anyway** button next to ReVault. Alternatively, remove the quarantine flag in Terminal:
   ```bash
   xattr -dr com.apple.quarantine /Applications/ReVault.app
   ```
