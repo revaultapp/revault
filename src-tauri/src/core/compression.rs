@@ -302,10 +302,10 @@ pub(crate) fn encode_webp_bytes(
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let encoder = webp::Encoder::from_image(img)?;
     // webp::WebPConfig::new() returns Result<Self, ()> — libwebp's WebPInitConfig gives no
-    // detail beyond pass/fail (it fails on header/lib ABI version mismatch). {:?} is `()`,
-    // but we still surface the site instead of silently swallowing it via map_err(|_| ...).
+    // detail beyond pass/fail (it fails on header/lib ABI version mismatch), so there's no
+    // payload to surface beyond naming the likely cause.
     let mut config = webp::WebPConfig::new()
-        .map_err(|e| format!("failed to create WebP config (libwebp ABI mismatch?): {e:?}"))?;
+        .map_err(|_| "failed to create WebP config (libwebp ABI mismatch?)")?;
     config.quality = quality;
     config.method = 6;
     config.thread_level = 1;
