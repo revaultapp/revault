@@ -369,20 +369,23 @@ pub fn resolve_video_output_path(
     input_path: &str,
     output_dir: Option<&str>,
     suffix: &str,
+    remux_mov_to_mp4: bool,
 ) -> Result<String, String> {
     let path = Path::new(input_path);
     let stem = path
         .file_stem()
         .and_then(|s| s.to_str())
         .ok_or("Invalid filename")?;
-    // MOV inputs are remuxed to MP4 — same H.264/H.265 stream, broader compatibility.
-    // Applies to trim too: -c copy just repackages the existing stream.
+    // MOV inputs are remuxed to MP4 only when re-encoding (compress_video) —
+    // same H.264/H.265 stream, broader compatibility. Trim uses `-c copy`
+    // (no re-encode), so the container must stay the original one: copying
+    // e.g. a ProRes stream from .mov into an .mp4 muxer fails outright.
     let input_ext = path
         .extension()
         .and_then(|e| e.to_str())
         .map(|e| e.to_lowercase());
     let ext = match input_ext.as_deref() {
-        Some("mov") => "mp4",
+        Some("mov") if remux_mov_to_mp4 => "mp4",
         Some(e) => e,
         None => "mp4",
     };
@@ -410,7 +413,7 @@ pub fn compress_video(
     progress_cb: impl Fn(VideoProgress) + Send,
 ) -> Result<VideoCompressionResult, String> {
     crate::core::paths::validate_input_path(input_path, false)?;
-    let output_path = resolve_video_output_path(input_path, output_dir, "_compressed")?;
+    let output_path = resolve_video_output_path(input_path, output_dir, "_compressed", true)?;
     let output_file = PathBuf::from(&output_path);
     let temp_output =
         crate::core::paths::temporary_output_path(&output_file, "Output", "video", "mp4")?;
@@ -566,6 +569,7 @@ pub fn compress_video(
         }
         Ok(())
     })();
+    let _ = child.wait();
 
     if let Err(e) = encode_result {
         let _ = std::fs::remove_file(&temp_output);
@@ -660,7 +664,7 @@ pub fn trim_video(
         .map_err(|e| format!("Cannot read video metadata for '{}': {}", input_path, e))?;
     let end = resolve_trim_range(start_sec, end_sec, stats.duration_sec)?;
 
-    let output_path = resolve_video_output_path(input_path, output_dir, "_trimmed")?;
+    let output_path = resolve_video_output_path(input_path, output_dir, "_trimmed", false)?;
     let output_file = PathBuf::from(&output_path);
     let temp_output =
         crate::core::paths::temporary_output_path(&output_file, "Output", "video", "mp4")?;
@@ -704,6 +708,7 @@ pub fn trim_video(
             }
         }
     }
+    let _ = child.wait();
     if !ffmpeg_errors.is_empty() {
         let _ = std::fs::remove_file(&temp_output);
         return Err(ffmpeg_errors.join("; "));
@@ -988,15 +993,17 @@ mod tests {
     fn test_resolve_video_output_path() {
         // Use Path::join for cross-platform comparison — Windows produces
         // backslash separators, Unix produces forward slashes.
-        let result = resolve_video_output_path("/tmp/video.mp4", None, "_compressed").unwrap();
+        let result =
+            resolve_video_output_path("/tmp/video.mp4", None, "_compressed", true).unwrap();
         let expected = Path::new("/tmp")
             .join("video_compressed.mp4")
             .to_string_lossy()
             .to_string();
         assert_eq!(result, expected);
 
-        // MOV inputs are remuxed to MP4 for broader compatibility.
-        let result = resolve_video_output_path("/home/user/clip.mov", None, "_compressed").unwrap();
+        // MOV inputs are remuxed to MP4 for broader compatibility (re-encode path).
+        let result =
+            resolve_video_output_path("/home/user/clip.mov", None, "_compressed", true).unwrap();
         let expected = Path::new("/home/user")
             .join("clip_compressed.mp4")
             .to_string_lossy()
@@ -1004,7 +1011,8 @@ mod tests {
         assert_eq!(result, expected);
 
         // Case-insensitive: .MOV also maps to .mp4.
-        let result = resolve_video_output_path("/home/user/clip.MOV", None, "_compressed").unwrap();
+        let result =
+            resolve_video_output_path("/home/user/clip.MOV", None, "_compressed", true).unwrap();
         let expected = Path::new("/home/user")
             .join("clip_compressed.mp4")
             .to_string_lossy()
@@ -1022,16 +1030,17 @@ mod tests {
         let dir_str = dir.path().to_str().unwrap();
 
         let result =
-            resolve_video_output_path("/tmp/video.mp4", Some(dir_str), "_compressed").unwrap();
+            resolve_video_output_path("/tmp/video.mp4", Some(dir_str), "_compressed", true)
+                .unwrap();
         let expected = canon_dir
             .join("video_compressed.mp4")
             .to_string_lossy()
             .to_string();
         assert_eq!(result, expected);
 
-        // MOV → MP4 remux applies even when output_dir is set.
+        // MOV → MP4 remux applies even when output_dir is set (re-encode path).
         let result =
-            resolve_video_output_path("/tmp/clip.mov", Some(dir_str), "_compressed").unwrap();
+            resolve_video_output_path("/tmp/clip.mov", Some(dir_str), "_compressed", true).unwrap();
         let expected = canon_dir
             .join("clip_compressed.mp4")
             .to_string_lossy()
@@ -1049,6 +1058,7 @@ mod tests {
             "/tmp/clip.mp4",
             Some(dir.path().to_str().unwrap()),
             "_compressed",
+            true,
         )
         .unwrap();
         let expected = std::fs::canonicalize(dir.path())
@@ -1090,8 +1100,12 @@ mod tests {
 
     #[test]
     fn test_resolve_video_output_path_missing_dir() {
-        let result =
-            resolve_video_output_path("/tmp/video.mp4", Some("/nonexistent/dir"), "_compressed");
+        let result = resolve_video_output_path(
+            "/tmp/video.mp4",
+            Some("/nonexistent/dir"),
+            "_compressed",
+            true,
+        );
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Invalid output dir"));
     }
@@ -1103,7 +1117,8 @@ mod tests {
         // that we no longer hand the raw "../.." string back to ffmpeg.
         let dir = tempfile::tempdir().unwrap();
         let traversal = dir.path().join("..").join("..").join("etc");
-        let result = resolve_video_output_path("/tmp/video.mp4", traversal.to_str(), "_compressed");
+        let result =
+            resolve_video_output_path("/tmp/video.mp4", traversal.to_str(), "_compressed", true);
         // Either canonicalize fails (path doesn't exist) or it resolves to
         // something — either way the input string is normalized away.
         if let Ok(out) = result {
@@ -1113,7 +1128,7 @@ mod tests {
 
     #[test]
     fn test_resolve_trim_output_path_uses_trimmed_suffix() {
-        let result = resolve_video_output_path("/tmp/clip.mp4", None, "_trimmed").unwrap();
+        let result = resolve_video_output_path("/tmp/clip.mp4", None, "_trimmed", false).unwrap();
         let expected = Path::new("/tmp")
             .join("clip_trimmed.mp4")
             .to_string_lossy()
@@ -1131,6 +1146,7 @@ mod tests {
             "/tmp/clip.mp4",
             Some(dir.path().to_str().unwrap()),
             "_trimmed",
+            false,
         )
         .unwrap();
         let expected = std::fs::canonicalize(dir.path())
@@ -1140,6 +1156,19 @@ mod tests {
             .to_string();
         assert_eq!(result, expected);
         assert_eq!(std::fs::read(&existing).unwrap(), b"existing");
+    }
+
+    #[test]
+    fn test_resolve_trim_output_path_preserves_mov_container() {
+        // trim_video uses `-c copy` (no re-encode) — the mov→mp4 remux that
+        // compress_video relies on must NOT apply here, since copying a
+        // ProRes stream from .mov into an .mp4 muxer fails outright.
+        let result = resolve_video_output_path("/tmp/clip.mov", None, "_trimmed", false).unwrap();
+        let expected = Path::new("/tmp")
+            .join("clip_trimmed.mov")
+            .to_string_lossy()
+            .to_string();
+        assert_eq!(result, expected);
     }
 
     #[test]
