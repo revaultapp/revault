@@ -566,6 +566,7 @@ pub fn compress_video(
         }
         Ok(())
     })();
+    let _ = child.wait();
 
     if let Err(e) = encode_result {
         let _ = std::fs::remove_file(&temp_output);
@@ -704,6 +705,7 @@ pub fn trim_video(
             }
         }
     }
+    let _ = child.wait();
     if !ffmpeg_errors.is_empty() {
         let _ = std::fs::remove_file(&temp_output);
         return Err(ffmpeg_errors.join("; "));
