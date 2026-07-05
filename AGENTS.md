@@ -110,8 +110,8 @@ Source of truth is `src/app.css`.
 Current test suite (verified 2026-07-05):
 
 - Rust: 195 unit tests via `cd src-tauri && cargo test`.
-- Frontend: 133 Vitest tests via `pnpm test`.
-- Total: 328 passing tests.
+- Frontend: 139 Vitest tests via `pnpm test`.
+- Total: 334 passing tests.
 
 Always verify counts after changing tests by running the commands above; this section should be updated when tests are added or removed.
 
