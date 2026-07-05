@@ -187,7 +187,7 @@
     align-items: center;
     gap: 12px;
     height: 40px;
-    padding: 0 95px 0 8px;
+    padding: 0 16px 0 8px;
     border-radius: var(--radius-sm);
     color: var(--chrome-text-muted);
     font-size: 14px;
@@ -229,6 +229,12 @@
   .nav-item.active span {
     color: var(--chrome-text-primary);
     font-weight: 600;
+  }
+
+  /* Settings sits in a plain <nav>, not the flex column, so a <button>
+     won't stretch on its own — force it to match the nav items' width. */
+  .nav-item.settings {
+    width: 100%;
   }
 
   .spacer {
