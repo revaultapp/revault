@@ -53,10 +53,11 @@
     selectSegment(segments[target].id);
   }
 
-  // Re-measure whenever `selected` changes or on mount
+  // Re-measure whenever `selected` or `segments` changes (e.g. locale switch) or on mount
   $effect(() => {
-    // Touch `selected` to subscribe to changes
+    // Touch `selected` and `segments` to subscribe to changes
     void selected;
+    void segments;
     // Use a microtask so the DOM has updated
     queueMicrotask(measure);
   });

@@ -187,7 +187,7 @@
     align-items: center;
     gap: 12px;
     height: 40px;
-    padding: 0 95px 0 8px;
+    padding: 0 16px 0 8px;
     border-radius: var(--radius-sm);
     color: var(--chrome-text-muted);
     font-size: 14px;
@@ -200,7 +200,11 @@
   }
 
   .nav-item span {
+    overflow: hidden;
     color: var(--chrome-text-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
 
   .nav-item:hover {
