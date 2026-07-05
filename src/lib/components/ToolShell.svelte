@@ -370,7 +370,7 @@
     transform: scale(0.97);
   }
 
-  .controls :global(.pill.active) { background: var(--accent); color: #fff; }
+  .controls :global(.pill.active) { background: var(--accent); color: var(--text-on-accent); }
 
   .controls :global(.quality-value) { color: var(--accent); text-transform: none; letter-spacing: 0; }
 

@@ -27,7 +27,7 @@
 
   --danger: #ef4444;
   --danger-bg: rgba(239, 68, 68, 0.1);
-  --danger-hover: color-mix(in oklch, var(--danger) 85%, black);
+  --danger-hover: #dc2626;
   --warning: #f59e0b;
   --warning-bg: rgba(245, 158, 11, 0.1);
 
