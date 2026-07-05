@@ -3,3 +3,6 @@ contact_links:
   - name: Discussions
     url: https://github.com/revaultapp/revault/discussions
     about: Ask questions and share ideas
+  - name: Report a security vulnerability
+    url: https://github.com/revaultapp/revault/security/advisories/new
+    about: Do not open a public issue for security problems — report privately here.
