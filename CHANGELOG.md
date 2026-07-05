@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Accessibility**: ARIA roles and full keyboard navigation for segmented controls, sidebar, and toggles; global `prefers-reduced-motion` support
 - **Security**: Input path validation across all command entry points, memory limits on HEIC/JXL decode, gifski archive SHA-256 verification, dependency auditing
 - **Packaging**: macOS ad-hoc code signing for Apple Silicon Gatekeeper compatibility
+- **FFmpeg (Apple Silicon)**: automatic FFmpeg download now works out of the box on Apple Silicon Macs (previously required a manual `brew install ffmpeg`)
 
 ### Changed
 - Removed Organize/Rename feature (out of scope)
