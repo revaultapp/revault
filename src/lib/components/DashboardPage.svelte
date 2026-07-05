@@ -482,7 +482,7 @@
   .activity-saved {
     font-size: 12px;
     font-weight: 600;
-    color: var(--accent);
+    color: var(--accent-text);
   }
 
   .activity-divider {
@@ -809,7 +809,7 @@
 
   :global(.rescan-btn:hover) {
     border-color: var(--accent);
-    color: var(--accent);
+    color: var(--accent-text);
     background: var(--accent-subtle);
   }
 

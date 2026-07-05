@@ -376,7 +376,7 @@
 
   .saved-total {
     font-size: 13px;
-    color: var(--accent);
+    color: var(--accent-text);
     font-weight: 500;
   }
 
@@ -398,13 +398,18 @@
   }
 
   .platform-res {
+    /* Opacity-over-color-mix hack removed: 45%/65% opacity of the inherited
+       .pill text landed at ~2.35:1 on --navy-bg (fails WCAG AA). Solid
+       --text-secondary/--text-on-accent clear 6.35:1+ in both themes;
+       hierarchy now comes from font-weight/size instead of opacity. */
     font-size: 11px;
-    opacity: 0.45;
+    font-weight: 400;
+    color: var(--text-secondary);
     font-variant-numeric: tabular-nums;
   }
 
   .platform-pill.active .platform-res {
-    opacity: 0.65;
+    color: var(--text-on-accent);
   }
 
   .social-export-btn {
@@ -413,7 +418,7 @@
     font-size: 12px;
     font-weight: 500;
     border-radius: 8px;
-    color: var(--accent);
+    color: var(--accent-text);
     border: 1px solid color-mix(in oklch, var(--accent) 40%, transparent);
     background: var(--accent-subtle);
     width: fit-content;

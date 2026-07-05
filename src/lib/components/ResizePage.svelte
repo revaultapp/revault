@@ -302,7 +302,7 @@
     padding: 2px 8px;
     border-radius: var(--radius-sm);
     background: var(--warning-bg);
-    color: var(--warning);
+    color: var(--warning-text);
     font-size: 11px;
     font-weight: 500;
   }
@@ -317,7 +317,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    color: var(--warning);
+    color: var(--warning-text);
     font-size: 12px;
     font-weight: 500;
   }

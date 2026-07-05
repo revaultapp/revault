@@ -98,7 +98,7 @@
   }
 
   .slider-title { font-size: 15px; font-weight: 600; }
-  .slider-savings { font-size: 13px; color: var(--accent); font-weight: 500; }
+  .slider-savings { font-size: 13px; color: var(--accent-text); font-weight: 500; }
 
   .slider-close {
     margin-left: auto;
