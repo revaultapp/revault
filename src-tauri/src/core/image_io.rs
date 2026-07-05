@@ -51,11 +51,22 @@ pub fn ext_lowercase(path: &str) -> Option<String> {
         .map(|e| e.to_lowercase())
 }
 
+fn check_jxl_dimensions(width: u32, height: u32) -> Result<(), Box<dyn std::error::Error>> {
+    if width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION {
+        return Err(format!(
+            "JXL dimensions {width}x{height} exceed maximum {MAX_IMAGE_DIMENSION}x{MAX_IMAGE_DIMENSION}"
+        )
+        .into());
+    }
+    Ok(())
+}
+
 fn decode_jxl(path: &str) -> Result<image::DynamicImage, Box<dyn std::error::Error>> {
     let data = read_file_mmap_or_default(path)?;
     let image = jxl_oxide::JxlImage::builder()
         .read(std::io::Cursor::new(&data))
         .map_err(|e| e.to_string())?;
+    check_jxl_dimensions(image.width(), image.height())?;
     let render = image.render_frame(0).map_err(|e| e.to_string())?;
     let fb = render.image_all_channels();
     let (w, h, ch) = (fb.width(), fb.height(), fb.channels());
@@ -209,5 +220,28 @@ mod tests {
     #[test]
     fn dimensions_invalid_path_returns_err() {
         assert!(read_dimensions("/nonexistent/x.jpg").is_err());
+    }
+
+    #[test]
+    fn jxl_dimension_check_rejects_oversized_width() {
+        let err = check_jxl_dimensions(9000, 100).unwrap_err();
+        assert!(
+            err.to_string().contains("exceed maximum"),
+            "expected 'exceed maximum' in: {err}"
+        );
+    }
+
+    #[test]
+    fn jxl_dimension_check_rejects_oversized_height() {
+        let err = check_jxl_dimensions(100, 100_000).unwrap_err();
+        assert!(
+            err.to_string().contains("exceed maximum"),
+            "expected 'exceed maximum' in: {err}"
+        );
+    }
+
+    #[test]
+    fn jxl_dimension_check_accepts_boundary() {
+        assert!(check_jxl_dimensions(MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION).is_ok());
     }
 }
