@@ -28,7 +28,7 @@
     width: 20px;
     height: 20px;
     border-radius: 10px;
-    background: var(--text-on-accent);
+    background: var(--knob-fill);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
     transition: transform 0.2s;
   }
