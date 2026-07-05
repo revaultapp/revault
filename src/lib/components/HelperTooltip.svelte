@@ -1,11 +1,14 @@
 <script lang="ts">
   import { Info } from "lucide-svelte";
+  import { t } from "$lib/stores/locale.svelte";
 
   interface Props {
     tip: string;
   }
 
   let { tip }: Props = $props();
+
+  const tooltipId = $props.id();
 
   let buttonEl = $state<HTMLButtonElement | null>(null);
   let tooltipEl = $state<HTMLDivElement | null>(null);
@@ -52,13 +55,15 @@
   <button
     bind:this={buttonEl}
     class="helper-btn"
-    aria-label={tip}
+    aria-label={t("common.moreInfo")}
+    aria-describedby={tooltipId}
   >
     <Info size={16} />
   </button>
 
   <div
     bind:this={tooltipEl}
+    id={tooltipId}
     class="helper-tooltip"
     role="tooltip"
   >{tip}</div>

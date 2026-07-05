@@ -76,7 +76,7 @@
     padding: 10px 28px;
     border-radius: var(--radius-sm);
     background: var(--accent);
-    color: #fff;
+    color: var(--text-on-accent);
     font-size: 14px;
     font-weight: 600;
     border: none;
@@ -110,7 +110,7 @@
   }
 
   .btn-danger:hover {
-    background: #dc2626;
+    background: var(--danger-hover);
   }
 
   .btn-ghost {
