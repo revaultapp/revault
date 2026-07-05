@@ -792,8 +792,8 @@ fn ffmpeg_archive_source(target: &str) -> Option<(&'static str, &'static str)> {
 }
 
 // evermeet.cx publishes per-version snapshot URLs (unlike the floating
-// getrelease/zip "latest" pointer) but only builds for Intel Macs — no
-// aarch64-apple-darwin build exists here or anywhere else we could verify.
+// getrelease/zip "latest" pointer) but only builds for Intel Macs. Apple
+// Silicon is covered separately by ffmpeg_arm64_mac_source below.
 fn ffmpeg_evermeet_source(binary: &str) -> Option<(&'static str, &'static str)> {
     match binary {
         "ffmpeg" => Some((
@@ -803,6 +803,25 @@ fn ffmpeg_evermeet_source(binary: &str) -> Option<(&'static str, &'static str)> 
         "ffprobe" => Some((
             "https://evermeet.cx/ffmpeg/ffprobe-8.1.2.zip",
             "399b93f0b9862f69767afa343e90c2f48d7e7958cadbb6deb76a012d0e3b7ce3",
+        )),
+        _ => None,
+    }
+}
+
+// No third-party static build of ffmpeg 8.x for aarch64-apple-darwin could be
+// verified (evermeet is Intel-only), so these zips are self-hosted on our own
+// GitHub release — same pattern as gifski's GIFSKI_RELEASE_BASE in
+// core/gif.rs. Durability is on us here, not a third party: if this release
+// tag is ever deleted, re-verify the upstream binary and re-upload it.
+fn ffmpeg_arm64_mac_source(binary: &str) -> Option<(&'static str, &'static str)> {
+    match binary {
+        "ffmpeg" => Some((
+            "https://github.com/revaultapp/revault/releases/download/ffmpeg-arm64-mac-v8.1/ffmpeg81arm.zip",
+            "ebb82529562b71170807bbc6b0e7eb4f0b13af8cbb0e085bb9e8f6fe709598ad",
+        )),
+        "ffprobe" => Some((
+            "https://github.com/revaultapp/revault/releases/download/ffmpeg-arm64-mac-v8.1/ffprobe81arm.zip",
+            "a6640a77d38a6f0527c5b597e599cb36a3427a6931444ed80bc62542421950a1",
         )),
         _ => None,
     }
@@ -843,11 +862,13 @@ fn extract_single_binary_zip(bytes: &[u8], binary_name: &str, dest: &Path) -> Re
     Ok(())
 }
 
-// macOS Intel only — evermeet ships ffmpeg/ffprobe as two separate single-binary
-// zips, so this can't reuse unpack_ffmpeg_without_extras (which expects one
-// combined archive). Progress resets to 0 for the second download; acceptable
-// for a one-time setup step.
+// macOS (Intel via evermeet.cx, Apple Silicon via our self-hosted release) —
+// both ship ffmpeg/ffprobe as two separate single-binary zips, so this can't
+// reuse unpack_ffmpeg_without_extras (which expects one combined archive).
+// Progress resets to 0 for the second download; acceptable for a one-time
+// setup step.
 fn download_ffmpeg_macos(
+    target: &str,
     dest: &Path,
     progress_cb: impl Fn(u64, u64) + Send + 'static,
 ) -> Result<PathBuf, String> {
@@ -855,9 +876,15 @@ fn download_ffmpeg_macos(
         download_ffmpeg_package_with_progress, FfmpegDownloadProgressEvent,
     };
 
+    let source_table = if target == "aarch64-apple-darwin" {
+        ffmpeg_arm64_mac_source
+    } else {
+        ffmpeg_evermeet_source
+    };
+
     for name in ["ffmpeg", "ffprobe"] {
-        let (url, expected_hash) = ffmpeg_evermeet_source(name)
-            .ok_or_else(|| format!("No pinned FFmpeg build for '{}'", name))?;
+        let (url, expected_hash) =
+            source_table(name).ok_or_else(|| format!("No pinned FFmpeg build for '{}'", name))?;
         let archive_path = download_ffmpeg_package_with_progress(url, dest, |event| {
             if let FfmpegDownloadProgressEvent::Downloading {
                 total_bytes,
@@ -900,16 +927,8 @@ pub fn download_ffmpeg(progress_cb: impl Fn(u64, u64) + Send + 'static) -> Resul
 
     let target = crate::core::gif::target_triple()?;
 
-    if target == "aarch64-apple-darwin" {
-        return Err(
-            "No verified FFmpeg build is pinned for Apple Silicon yet. Install FFmpeg \
-             manually (e.g. `brew install ffmpeg`) and ReVault will detect it automatically."
-                .to_string(),
-        );
-    }
-
-    if target == "x86_64-apple-darwin" {
-        return download_ffmpeg_macos(&dest, progress_cb);
+    if target == "aarch64-apple-darwin" || target == "x86_64-apple-darwin" {
+        return download_ffmpeg_macos(target, &dest, progress_cb);
     }
 
     let (url, expected_hash) = ffmpeg_archive_source(target)
@@ -1477,7 +1496,7 @@ mod tests {
     fn ffmpeg_archive_source_covers_pinned_targets_only() {
         assert!(ffmpeg_archive_source("x86_64-pc-windows-msvc").is_some());
         assert!(ffmpeg_archive_source("x86_64-unknown-linux-gnu").is_some());
-        // macOS is handled by ffmpeg_evermeet_source / the aarch64 guard, not this table.
+        // macOS is handled by ffmpeg_evermeet_source / ffmpeg_arm64_mac_source, not this table.
         assert!(ffmpeg_archive_source("x86_64-apple-darwin").is_none());
         assert!(ffmpeg_archive_source("aarch64-apple-darwin").is_none());
         assert!(ffmpeg_archive_source("unknown-target").is_none());
@@ -1488,6 +1507,13 @@ mod tests {
         assert!(ffmpeg_evermeet_source("ffmpeg").is_some());
         assert!(ffmpeg_evermeet_source("ffprobe").is_some());
         assert!(ffmpeg_evermeet_source("ffplay").is_none());
+    }
+
+    #[test]
+    fn ffmpeg_arm64_mac_source_covers_known_binaries_only() {
+        assert!(ffmpeg_arm64_mac_source("ffmpeg").is_some());
+        assert!(ffmpeg_arm64_mac_source("ffprobe").is_some());
+        assert!(ffmpeg_arm64_mac_source("ffplay").is_none());
     }
 
     #[test]
