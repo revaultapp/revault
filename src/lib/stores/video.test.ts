@@ -366,4 +366,36 @@ describe("video store", () => {
     expect(get(trimState)).toBe("idle");
     expect(get(trimError)).toBeNull();
   });
+
+  describe("resolvedVideoOutputDir derived", () => {
+    it("prefers the local videoOutputDir over the default", async () => {
+      const { videoOutputDir, resolvedVideoOutputDir } = await import("./video");
+      const { defaultOutputDir } = await import("./settings");
+
+      defaultOutputDir.set("/default/output");
+      videoOutputDir.set("/custom/output");
+
+      expect(get(resolvedVideoOutputDir)).toBe("/custom/output");
+    });
+
+    it("falls back to defaultOutputDir when videoOutputDir is null", async () => {
+      const { videoOutputDir, resolvedVideoOutputDir } = await import("./video");
+      const { defaultOutputDir } = await import("./settings");
+
+      defaultOutputDir.set("/default/output");
+      videoOutputDir.set(null);
+
+      expect(get(resolvedVideoOutputDir)).toBe("/default/output");
+    });
+
+    it("is null when neither videoOutputDir nor defaultOutputDir is set", async () => {
+      const { videoOutputDir, resolvedVideoOutputDir } = await import("./video");
+      const { defaultOutputDir } = await import("./settings");
+
+      defaultOutputDir.set(null);
+      videoOutputDir.set(null);
+
+      expect(get(resolvedVideoOutputDir)).toBeNull();
+    });
+  });
 });
