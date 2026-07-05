@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Image Compression**: JPEG (mozjpeg SIMD), PNG (oxipng+zopfli), WebP, AVIF (ravif) with quality control and exact-size targeting; JXL decode support (thumbnails)
+- **Image Compression**: JPEG (mozjpeg SIMD), PNG (oxipng+zopfli), WebP, AVIF (ravif) with quality control; JXL decode support (thumbnails)
 - **Convert/HEIC**: Native HEIC decoding (macOS ImageIO, Windows WIC), format conversion (PNG/JPEG/WebP), auto-detect iPhone photos
 - **Resize**: Batch image resize engine with anti-upscaling warnings and default output folder
 - **Duplicates**: Exact duplicate detection (SHA256) and Similar mode for perceptual duplicates (pHash DoubleGradient)

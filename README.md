@@ -1,25 +1,40 @@
-# Revault
+<div align="center">
 
-Ultra-lightweight desktop app for image compression, conversion, analysis, and organization.
+<h1>ReVault</h1>
 
-**Open source. Offline-first. Cross-platform.**
+**Compress, convert, and clean your photos and videos — without your files ever leaving your machine.**
 
-> **Status:** Shipped and actively maintained. 195 Rust unit tests + 139 frontend tests.
+<!-- demo GIF goes here (visual assets tier) -->
+
+![CI](https://img.shields.io/github/actions/workflow/status/revaultapp/revault/ci.yml?branch=main&style=flat)
+![License](https://img.shields.io/github/license/revaultapp/revault?style=flat)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue?style=flat)
+
+</div>
+
+## Privacy & Offline
+
+- 100% local processing — images and video never leave your machine
+- No account, no server, no cloud
+- No telemetry, no tracking
+- Open source and auditable — all processing logic lives in `src-tauri/src/core/`
 
 ## Features
 
-- **Compress** — JPEG (mozjpeg), PNG (oxipng), WebP, AVIF with quality control and exact-size targeting
-- **Convert** — HEIC (native decode), PNG, JPEG, WebP format conversion with batch processing
-- **Resize** — Batch image resize with anti-upscaling safeguards
-- **Duplicates** — Find exact duplicates (SHA256) or perceptually similar images (pHash) in folders
-- **Privacy** — Strip EXIF, GPS, camera info, and metadata from images
-- **Video** — Compress video with CRF presets, privacy modes, MOV→MP4 remux
-- **GIF Export** — Create animated GIFs from video clips via gifski
-- **PDF Tools** — Strip metadata and compress streams in PDF documents
+- **Compress** — JPEG (mozjpeg), PNG (oxipng), WebP, AVIF, with quality control
+- **Convert** — HEIC (native decode), PNG, JPEG, WebP, with batch processing
+- **Resize** — batch image resize with anti-upscaling safeguards
+- **Duplicates** — find exact duplicates (SHA256) or perceptually similar images (pHash)
+- **Privacy** — strip EXIF, GPS, camera info, and metadata from images
+- **Video** — compress with CRF presets, privacy modes, MOV→MP4 remux, lossless trim
+- **GIF Export** — create animated GIFs from video clips via gifski
+- **PDF Tools** — strip metadata, compress streams, and merge/split PDFs
 
 ## Installing
 
-Download the latest release for your platform below. Since these builds are not yet signed, you may see security warnings on first launch — these are safe to bypass:
+An unsigned build is normal for a small open-source project, not a red flag — the warnings below appear because the app isn't code-signed yet, not because it's unsafe. The source is fully auditable in this repo.
+
+Download the latest release for your platform and bypass the warning as follows:
 
 - **macOS:** On first launch, macOS will block the app (Gatekeeper). Go to **System Settings → Privacy & Security** and click the **Open Anyway** button next to ReVault. Alternatively, remove the quarantine flag in Terminal:
   ```bash
@@ -63,6 +78,10 @@ cargo test
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Security
+
+Please report vulnerabilities privately rather than opening a public issue — see [SECURITY.md](SECURITY.md).
 
 ## License
 
