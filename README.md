@@ -1,16 +1,18 @@
 <div align="center">
 
-<h1>ReVault</h1>
-
-**Compress, convert, and clean your photos and videos — without your files ever leaving your machine.**
-
-<!-- demo GIF goes here (visual assets tier) -->
+<img src=".github/assets/banner.png" alt="ReVault — optimize your photos and videos, 100% offline" width="820" />
 
 ![CI](https://img.shields.io/github/actions/workflow/status/revaultapp/revault/ci.yml?branch=main&style=flat)
 ![License](https://img.shields.io/github/license/revaultapp/revault?style=flat)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue?style=flat)
 
+[Discussions](https://github.com/revaultapp/revault/discussions) · [Issues](https://github.com/revaultapp/revault/issues) · [Security](SECURITY.md)
+
 </div>
+
+<!-- demo GIF goes here (visual assets tier) -->
+
+ReVault is an offline-first desktop app that compresses, converts, and cleans up your photos and videos — fast, private, and entirely on your machine.
 
 ## Privacy & Offline
 
