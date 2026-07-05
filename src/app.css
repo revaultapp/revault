@@ -10,10 +10,14 @@
   --text-primary: #0a0f1a;
   --text-secondary: #1e3a5f;
   --text-muted: #7b8da6;
-  --text-on-accent: #fff;
+  /* Dark ink, not white: #10D87A is a high-luminance green, so white text on it
+     is only 1.89:1 (fails WCAG AA). #0c0f0e gives 10.20:1 on --accent and
+     6.64:1 on --accent-hover (color-mix darkens it) — both clear AA (4.5:1). */
+  --text-on-accent: #0c0f0e;
 
   --border: #c5d5e8;
   --toggle-off: #d1d5db;
+  --knob-fill: #fff;
 
   --radius-sm: 8px;
   --radius-md: 12px;

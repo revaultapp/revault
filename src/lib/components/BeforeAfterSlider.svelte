@@ -164,7 +164,7 @@
     font-size: 11px;
     font-weight: 600;
     background: var(--overlay-scrim);
-    color: var(--text-on-accent);
+    color: #fff;
   }
   .slider-label.left { left: 8px; }
   .slider-label.right { right: 8px; }
