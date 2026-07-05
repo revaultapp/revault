@@ -372,7 +372,7 @@
 
   .controls :global(.pill.active) { background: var(--accent); color: var(--text-on-accent); }
 
-  .controls :global(.quality-value) { color: var(--accent); text-transform: none; letter-spacing: 0; }
+  .controls :global(.quality-value) { color: var(--accent-text); text-transform: none; letter-spacing: 0; }
 
   .controls :global(input[type="range"]) { width: 160px; accent-color: var(--accent); }
 
