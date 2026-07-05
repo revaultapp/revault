@@ -12,6 +12,7 @@
     videoFiles,
     videoPreset,
     videoOutputDir,
+    resolvedVideoOutputDir,
     isCompressing,
     videoSummary,
     ffmpegStatus,
@@ -205,7 +206,7 @@
     isCompressing.set(true);
     try {
       for (const file of pending) {
-        await compressVideoFile(file, $videoPreset, $videoOutputDir);
+        await compressVideoFile(file, $videoPreset, $resolvedVideoOutputDir);
         const updated = $videoFiles.find((f) => f.path === file.path);
         if (updated?.status === "cancelled") break;
       }
@@ -741,7 +742,7 @@
               <span class="label">{t("video.folderLabel")}</span>
               <button class="btn-ghost output-btn" onclick={browseOutputDir}>
                 <FolderOpen size={14} />
-                {$videoOutputDir?.split(/[\\/]/).pop() ?? t("video.sameAsInput")}
+                {$resolvedVideoOutputDir?.split(/[\\/]/).pop() ?? t("video.sameAsInput")}
               </button>
             </div>
           {/if}

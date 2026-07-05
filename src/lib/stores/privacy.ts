@@ -1,8 +1,13 @@
 import { writable, derived } from "svelte/store";
 import type { BaseFile } from "$lib/types";
 import { persisted } from "$lib/utils";
+import { defaultOutputDir } from "./settings";
 
 export const outputDir = persisted<string | null>("revault-privacy-outputDir", null);
+export const resolvedOutputDir = derived(
+  [outputDir, defaultOutputDir],
+  ([$out, $def]) => $out ?? $def,
+);
 
 export interface PrivacyFile extends BaseFile {
   status: "pending" | "scanning" | "scanned" | "stripping" | "done" | "error";

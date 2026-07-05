@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { activity } from "./activity";
 import { savings } from "./savings";
 import { persisted } from "$lib/utils";
+import { defaultOutputDir } from "./settings";
 
 // ── FFmpeg availability ───────────────────────────────────────────────────────
 
@@ -114,6 +115,10 @@ export interface VideoCompressionResult {
 export const videoFiles = writable<VideoFile[]>([]);
 export const videoPreset = persisted<VideoPreset>("video_preset", "Balanced");
 export const videoOutputDir = persisted<string | null>("video_output_dir", null);
+export const resolvedVideoOutputDir = derived(
+  [videoOutputDir, defaultOutputDir],
+  ([$out, $def]) => $out ?? $def,
+);
 export const videoPrivacyMode = persisted<PrivacyMode>("video_privacy_mode", "smart");
 export const isCompressing = writable(false);
 
@@ -423,7 +428,7 @@ export async function exportGif(file: VideoFile): Promise<void> {
   const baseName = (file.name || inputPath.split(/[\\/]/).pop() || "video")
     .replace(/\.[^/.]+$/, "");
   const filename = `${baseName}_gif.gif`;
-  const customDir = get(videoOutputDir);
+  const customDir = get(resolvedVideoOutputDir);
   const inputParent = inputPath.substring(
     0,
     Math.max(inputPath.lastIndexOf("/"), inputPath.lastIndexOf("\\"))
@@ -528,7 +533,7 @@ export async function trimVideoFile(file: VideoFile): Promise<void> {
       input: file.path,
       startSec: settings.startSec,
       endSec: settings.endSec,
-      outputDir: get(videoOutputDir),
+      outputDir: get(resolvedVideoOutputDir),
     });
     trimResult.set(result);
     trimOutputPath.set(result.output_path);

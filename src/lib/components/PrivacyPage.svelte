@@ -8,7 +8,7 @@
   import { runWithConcurrency, browseOutputDir } from "$lib/utils";
   import { activity } from "$lib/stores/activity";
   import {
-    files, isProcessing, summary, outputDir,
+    files, isProcessing, summary, outputDir, resolvedOutputDir,
     stripGps, stripDevice, stripDatetime, stripAuthor,
     addFiles, removeFile, clearFiles,
     type PrivacyFile,
@@ -154,7 +154,7 @@
     try {
       const results = await invoke<StripResult[]>("strip_files_selective", {
         paths: [file.path],
-        outputDir: $outputDir,
+        outputDir: $resolvedOutputDir,
         stripGps: opts.gps,
         stripDevice: opts.device,
         stripDatetime: opts.datetime,
@@ -199,7 +199,7 @@
       const allPaths = toStrip.map((f) => f.path);
       const results = await invoke<StripResult[]>("strip_files_selective", {
         paths: allPaths,
-        outputDir: $outputDir,
+        outputDir: $resolvedOutputDir,
         stripGps: opts.gps,
         stripDevice: opts.device,
         stripDatetime: opts.datetime,
@@ -318,7 +318,7 @@
     <span class="label">{t("common.outputLabel")}</span>
     <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
       <FolderOpen size={14} />
-      {$outputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
+      {$resolvedOutputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
     </button>
   </div>
 

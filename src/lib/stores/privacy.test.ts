@@ -50,4 +50,36 @@ describe("privacy store", () => {
 
     expect(localStorage.getItem("revault-privacy-outputDir")).toBe(JSON.stringify("/exports"));
   });
+
+  describe("resolvedOutputDir derived", () => {
+    it("prefers the local outputDir over the default", async () => {
+      const { outputDir, resolvedOutputDir } = await import("./privacy");
+      const { defaultOutputDir } = await import("./settings");
+
+      defaultOutputDir.set("/default/output");
+      outputDir.set("/custom/output");
+
+      expect(get(resolvedOutputDir)).toBe("/custom/output");
+    });
+
+    it("falls back to defaultOutputDir when outputDir is null", async () => {
+      const { outputDir, resolvedOutputDir } = await import("./privacy");
+      const { defaultOutputDir } = await import("./settings");
+
+      defaultOutputDir.set("/default/output");
+      outputDir.set(null);
+
+      expect(get(resolvedOutputDir)).toBe("/default/output");
+    });
+
+    it("is null when neither outputDir nor defaultOutputDir is set", async () => {
+      const { outputDir, resolvedOutputDir } = await import("./privacy");
+      const { defaultOutputDir } = await import("./settings");
+
+      defaultOutputDir.set(null);
+      outputDir.set(null);
+
+      expect(get(resolvedOutputDir)).toBeNull();
+    });
+  });
 });
