@@ -1040,8 +1040,8 @@
 
   .done-actions .btn-icon:hover { color: var(--accent); }
 
-  .warning-detail { color: var(--warning, #f59e0b); }
-  .saved-total { font-size: 13px; color: var(--accent); font-weight: 500; }
+  .warning-detail { color: var(--warning-text, #b45309); }
+  .saved-total { font-size: 13px; color: var(--accent-text); font-weight: 500; }
   .compressing-detail { font-variant-numeric: tabular-nums; }
 
   .progress-bar-track {
