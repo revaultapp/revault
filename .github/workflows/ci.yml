@@ -72,6 +72,22 @@ jobs:
         working-directory: src-tauri
         run: cargo audit
 
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@cargo-deny
+
+      - name: Cargo deny (licenses + sources)
+        working-directory: src-tauri
+        run: cargo deny check licenses sources
+
+      - name: Architecture check (no tauri:: in core/)
+        working-directory: src-tauri
+        run: |
+          if grep -rn "use tauri::" src/core/; then
+            echo "ERROR: tauri:: import found in src/core/ (violates core purity)"
+            exit 1
+          fi
+          echo "core/ is pure Rust"
+
       - name: Install cargo-nextest
         uses: taiki-e/install-action@cargo-nextest
 

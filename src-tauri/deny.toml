@@ -1,0 +1,36 @@
+# cargo-deny configuration for ReVault
+# https://embarkstudios.github.io/cargo-deny/
+#
+# Scope: licenses + sources only. RUSTSEC advisories are handled by the
+# existing `cargo audit` step in CI (single source of truth — no duplicate
+# ignore lists to keep in sync).
+
+[licenses]
+# Permissive / public-domain licenses actually present in the dependency tree
+# (verified via `cargo deny list`). No GPL/AGPL/LGPL is blanket-allowed:
+# the only copyleft hit is r-efi (MIT OR Apache OR LGPL), which resolves via
+# its permissive alternative and never needs LGPL allowed here.
+allow = [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "0BSD",
+    "ISC",
+    "Zlib",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "IJG",   # mozjpeg / mozjpeg-sys
+    "NCSA",  # libfuzzer-sys (dev/fuzz only)
+]
+
+[sources]
+# Only crates.io is trusted. Warn (not deny) so a stray git/registry dep is
+# surfaced in logs without hard-failing CI unexpectedly.
+unknown-registry = "warn"
+unknown-git = "warn"
