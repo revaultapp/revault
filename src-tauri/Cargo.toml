@@ -3,6 +3,7 @@ name = "revault"
 version = "0.1.0"
 description = "Image compression, conversion, analysis and organization tool"
 authors = ["ReVault Contributors"]
+license = "MIT"
 edition = "2021"
 
 [lib]
