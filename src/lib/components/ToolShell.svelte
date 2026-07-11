@@ -3,6 +3,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { Trash2, ImageIcon, Film } from "lucide-svelte";
   import { fly, fade, scale } from "svelte/transition";
+  import { flip } from "svelte/animate";
   import { cubicOut } from "svelte/easing";
   import { prefersReducedMotion } from "svelte/motion";
   import DropZone from "./DropZone.svelte";
@@ -152,6 +153,8 @@
             delay: rm ? 0 : Math.min(i, 9) * 40,
             easing: cubicOut,
           }}
+          out:scale={{ duration: rm ? 0 : 140, start: 0.96, opacity: 0, easing: cubicOut }}
+          animate:flip={{ duration: rm ? 0 : 200, easing: cubicOut }}
         >
           {#if showThumbnails && thumbnails[file.path] && thumbnails[file.path] !== "error"}
             <img class="file-thumb" src={thumbnails[file.path]} alt="" draggable="false" />

@@ -46,6 +46,21 @@
   --accent-hover: color-mix(in oklch, var(--accent) 85%, black);
   --topbar-height: 64px;
 
+  /* Category accent tokens (e.g. dedupe groups, file-type chips). Tuned for
+     dark mode's #060808 background, where they clear 3:1 comfortably. In
+     light mode (--bg-card: #fff) these fail WCAG AA as body text — use them
+     only for borders, icons, and chip backgrounds (3:1 or no requirement),
+     never as text color. */
+  --cat-blue: #5b9dfb;
+  --cat-violet: #b58cfb;
+  --cat-amber: #f5b94d;
+  --cat-pink: #fb7f9c;
+  --cat-cyan: #45d3e8;
+
+  /* Reusable hover/press state-layer, mixed from text color so it reads on any surface. */
+  --state-hover: color-mix(in oklch, var(--text-primary) 6%, transparent);
+  --state-press: color-mix(in oklch, var(--text-primary) 10%, transparent);
+
   --shadow-lg: 0 24px 48px rgba(0, 0, 0, 0.3);
 
   --duration-fast: 0.1s;
