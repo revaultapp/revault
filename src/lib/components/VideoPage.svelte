@@ -617,6 +617,7 @@
                   <button
                     class="pill"
                     class:active={$videoPreset === p.value}
+                    aria-pressed={$videoPreset === p.value}
                     onclick={() => videoPreset.set(p.value)}
                   >{p.label}</button>
                 {/each}
@@ -752,6 +753,7 @@
                     <button
                       class="pill"
                       class:active={$gifSettings.fps === parseInt(seg.id)}
+                      aria-pressed={$gifSettings.fps === parseInt(seg.id)}
                       onclick={() => gifSettings.update(s => ({ ...s, fps: parseInt(seg.id) as 10 | 15 | 24 }))}
                     >{seg.label}</button>
                   {/each}
@@ -764,6 +766,7 @@
                     <button
                       class="pill"
                       class:active={$gifSettings.width === parseInt(seg.id)}
+                      aria-pressed={$gifSettings.width === parseInt(seg.id)}
                       onclick={() => gifSettings.update(s => ({ ...s, width: parseInt(seg.id) as 320 | 480 | 640 | 720 | 1080 }))}
                     >{seg.label}</button>
                   {/each}

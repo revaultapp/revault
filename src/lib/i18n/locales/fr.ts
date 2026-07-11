@@ -197,6 +197,7 @@ export const fr: Dictionary = {
     rescan: "Relancer l'analyse",
     similarFileConfirm: "Ce fichier est visuellement similaire, mais pas un doublon identique octet pour octet. Le déplacer vers la corbeille ?",
     failedToDeleteFile: "Échec de la suppression du fichier",
+    dismissErrorAriaLabel: "Ignorer l'erreur",
     groupsFoundSimilarOne: "{count} groupe similaire trouvé",
     groupsFoundSimilarOther: "{count} groupes similaires trouvés",
     groupsFoundDuplicateOne: "{count} groupe de doublons trouvé",

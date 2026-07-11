@@ -198,6 +198,7 @@ export const es: Dictionary = {
     rescan: "Reescanear",
     similarFileConfirm: "Este es un archivo visualmente similar, no un duplicado idéntico byte a byte. ¿Moverlo a la papelera?",
     failedToDeleteFile: "Error al eliminar el archivo",
+    dismissErrorAriaLabel: "Descartar error",
     groupsFoundSimilarOne: "{count} grupo similar encontrado",
     groupsFoundSimilarOther: "{count} grupos similares encontrados",
     groupsFoundDuplicateOne: "{count} grupo duplicado encontrado",

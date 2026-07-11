@@ -304,7 +304,7 @@
     {:else if file.status === "error"}
       <CircleAlert size={18} />
     {:else}
-      <button class="btn-icon" onclick={() => removeFile(file.path)}>
+      <button class="btn-icon" onclick={() => removeFile(file.path)} aria-label={t("common.removeFileAriaLabel", { name: file.name })}>
         <X size={16} />
       </button>
     {/if}
@@ -460,14 +460,16 @@
 
   .meta-chip :global(svg) {
     flex-shrink: 0;
-    color: var(--chip-color);
+    /* Darkened -text tint for AA icon contrast; bg/border stay on the raw
+       --chip-color (3:1 floor, not text). See app.css --cat-*-text. */
+    color: var(--chip-icon-color);
   }
 
-  .meta-chip--gps { --chip-color: var(--cat-blue); }
-  .meta-chip--device { --chip-color: var(--cat-violet); }
-  .meta-chip--date { --chip-color: var(--cat-amber); }
-  .meta-chip--author { --chip-color: var(--cat-pink); }
-  .meta-chip--technical { --chip-color: var(--cat-cyan); }
+  .meta-chip--gps { --chip-color: var(--cat-blue); --chip-icon-color: var(--cat-blue-text); }
+  .meta-chip--device { --chip-color: var(--cat-violet); --chip-icon-color: var(--cat-violet-text); }
+  .meta-chip--date { --chip-color: var(--cat-amber); --chip-icon-color: var(--cat-amber-text); }
+  .meta-chip--author { --chip-color: var(--cat-pink); --chip-icon-color: var(--cat-pink-text); }
+  .meta-chip--technical { --chip-color: var(--cat-cyan); --chip-icon-color: var(--cat-cyan-text); }
 
   .meta-chip.removed {
     opacity: 0.5;

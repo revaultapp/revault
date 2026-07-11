@@ -57,6 +57,18 @@
   --cat-pink: #fb7f9c;
   --cat-cyan: #45d3e8;
 
+  /* Text/icon-only variants: the raw --cat-* hues above are 1.76-2.74:1 on
+     --bg-card (#fff) — below the 3:1 floor for graphical objects (chip
+     icons). Darkened tints of the same hue clear 4.5:1 on white:
+     blue #3f6daf 5.23:1, violet #7b5faa 5.17:1, amber #86652a 5.37:1,
+     pink #a35265 5.31:1, cyan #25747f 5.41:1. Use these for icon fill on
+     chips; keep --cat-* for chip background/border tints (3:1 or none). */
+  --cat-blue-text: #3f6daf;
+  --cat-violet-text: #7b5faa;
+  --cat-amber-text: #86652a;
+  --cat-pink-text: #a35265;
+  --cat-cyan-text: #25747f;
+
   /* Reusable hover/press state-layer, mixed from text color so it reads on any surface. */
   --state-hover: color-mix(in oklch, var(--text-primary) 6%, transparent);
   --state-press: color-mix(in oklch, var(--text-primary) 10%, transparent);
@@ -100,6 +112,13 @@
   /* Dark theme's --accent/--warning already contrast ~10:1 on --bg-card. */
   --accent-text: var(--accent);
   --warning-text: var(--warning);
+
+  /* Dark theme's raw --cat-* already contrast 7-11:1 on --bg-card. */
+  --cat-blue-text: var(--cat-blue);
+  --cat-violet-text: var(--cat-violet);
+  --cat-amber-text: var(--cat-amber);
+  --cat-pink-text: var(--cat-pink);
+  --cat-cyan-text: var(--cat-cyan);
 
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);

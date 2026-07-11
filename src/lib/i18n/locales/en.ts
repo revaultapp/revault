@@ -194,6 +194,7 @@ export const en = {
     rescan: "Rescan",
     similarFileConfirm: "This is a visually similar file, not a byte-identical duplicate. Move it to trash?",
     failedToDeleteFile: "Failed to delete file",
+    dismissErrorAriaLabel: "Dismiss error",
     groupsFoundSimilarOne: "{count} similar group found",
     groupsFoundSimilarOther: "{count} similar groups found",
     groupsFoundDuplicateOne: "{count} duplicate group found",
