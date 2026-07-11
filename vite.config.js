@@ -29,15 +29,19 @@ export default defineConfig(async () => ({
     },
   },
 
+  // Svelte 5 runes (and rAF-driven primitives like Tween) require the
+  // "browser" condition to resolve to the client build under Vitest+jsdom.
+  // Must be top-level `resolve`, not nested under `test` — Vitest doesn't
+  // read `test.resolve`.
+  resolve: {
+    conditions: process.env.VITEST ? ["browser"] : undefined,
+  },
+
   // Vitest configuration for frontend tests
   test: {
     environment: "jsdom",
     globals: true,
     include: ["src/**/*.test.ts"],
     setupFiles: ["./src/test-setup.ts"],
-    resolve: {
-      // Svelte 5 runes require browser conditions to resolve correctly
-      conditions: process.env.VITEST ? ["browser"] : undefined,
-    },
   },
 }));
