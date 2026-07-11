@@ -235,7 +235,7 @@
     {:else if file.status === "error"}
       <AlertCircle size={18} />
     {:else}
-      <button class="btn-icon" onclick={() => removeFile(file.path)}>
+      <button class="btn-icon" onclick={() => removeFile(file.path)} aria-label={t("common.removeFileAriaLabel", { name: file.name })}>
         <X size={16} />
       </button>
     {/if}
@@ -378,6 +378,11 @@
     font-size: 13px;
     color: var(--accent-text);
     font-weight: 500;
+  }
+
+  .pill.active {
+    font-weight: 600;
+    box-shadow: var(--shadow-xs);
   }
 
   .compare-btn {

@@ -8,6 +8,7 @@
   import HelperTooltip from "./HelperTooltip.svelte";
   import PrivacyToast from "./PrivacyToast.svelte";
   import { formatBytes, browseOutputDir } from "$lib/utils";
+  import { animatedNumber } from "$lib/motion";
   import ToggleSwitch from "./ToggleSwitch.svelte";
   import {
     files, qualityPreset, format, outputDir, resolvedOutputDir, isCompressing, isEstimating, summary,
@@ -187,6 +188,18 @@
     };
   });
 
+  // Estimate hero number + % count up toward the target instead of snapping,
+  // per animatedNumber's own reduced-motion guard.
+  const estimatedBytesTween = animatedNumber(0);
+  const estimatedPctTween = animatedNumber(0);
+
+  $effect(() => {
+    if (estimatedBanner) {
+      estimatedBytesTween.set(estimatedBanner.estimated);
+      estimatedPctTween.set(estimatedBanner.displayPct);
+    }
+  });
+
   let compareFile = $state<CompressFile | null>(null);
 
   function handleClear() {
@@ -224,32 +237,40 @@
   {#snippet estimateCard()}
     {#if $isEstimating}
       <div class="estimate-card">
-        <div class="estimate-row">
-          <span class="estimate-label">{t("compress.estimatedLabel")}</span>
-          <span class="estimate-value estimating">{t("compress.scanningSampleFiles")}</span>
-        </div>
+        <span class="estimate-label">{t("compress.estimatedLabel")}</span>
+        <span class="estimate-scanning">{t("compress.scanningSampleFiles")}</span>
       </div>
     {:else if estimatedBanner}
       <div class="estimate-card">
-        <div class="estimate-row">
-          <span class="estimate-label">{t("compress.estimatedLabel")}</span>
-          <span class="estimate-value">
-            {estimatedBanner.count === 1
-              ? t("compress.estimateSummaryOne", { count: estimatedBanner.count, original: formatBytes(estimatedBanner.totalOriginal), estimated: formatBytes(estimatedBanner.estimated) })
-              : t("compress.estimateSummaryOther", { count: estimatedBanner.count, original: formatBytes(estimatedBanner.totalOriginal), estimated: formatBytes(estimatedBanner.estimated) })}
-            <span class="estimate-pct">({t(estimatedBanner.wouldGrow ? "compress.pctLarger" : "compress.pctSmaller", { pct: estimatedBanner.displayPct })})</span>
+        <span class="estimate-label">{t("compress.estimatedLabel")}</span>
+        <div class="estimate-hero">
+          <span class="estimate-hero-num" class:grow={estimatedBanner.wouldGrow}>
+            {Math.round(estimatedPctTween.current)}<small>%</small>
+          </span>
+          <span class="estimate-hero-word">
+            {t(estimatedBanner.wouldGrow ? "compress.larger" : "compress.smaller")}
           </span>
         </div>
-        <div class="estimate-meta">
-          {#if estimatedBanner.filesMayIncrease > 0}
-            <span class="estimate-warn">
-              <AlertCircle size={12} />
-              {estimatedBanner.filesMayIncrease === 1
-                ? t("compress.mayGrowOne", { count: estimatedBanner.filesMayIncrease })
-                : t("compress.mayGrowOther", { count: estimatedBanner.filesMayIncrease })}
-            </span>
-          {/if}
+        <div class="estimate-bar-track">
+          <div
+            class="estimate-bar-fill"
+            class:grow={estimatedBanner.wouldGrow}
+            style="transform: scaleX({Math.min(Math.abs(estimatedPctTween.current), 100) / 100})"
+          ></div>
         </div>
+        <span class="estimate-range">
+          {estimatedBanner.count === 1
+            ? t("compress.estimateSummaryOne", { count: estimatedBanner.count, original: formatBytes(estimatedBanner.totalOriginal), estimated: formatBytes(estimatedBytesTween.current) })
+            : t("compress.estimateSummaryOther", { count: estimatedBanner.count, original: formatBytes(estimatedBanner.totalOriginal), estimated: formatBytes(estimatedBytesTween.current) })}
+        </span>
+        {#if estimatedBanner.filesMayIncrease > 0}
+          <span class="estimate-warn">
+            <AlertCircle size={12} />
+            {estimatedBanner.filesMayIncrease === 1
+              ? t("compress.mayGrowOne", { count: estimatedBanner.filesMayIncrease })
+              : t("compress.mayGrowOther", { count: estimatedBanner.filesMayIncrease })}
+          </span>
+        {/if}
       </div>
     {/if}
   {/snippet}
@@ -273,7 +294,7 @@
     {:else if file.status === "error"}
       <AlertCircle size={18} />
     {:else}
-      <button class="btn-icon" onclick={() => removeFile(file.path)}>
+      <button class="btn-icon" onclick={() => removeFile(file.path)} aria-label={t("common.removeFileAriaLabel", { name: file.name })}>
         <X size={16} />
       </button>
     {/if}
@@ -336,8 +357,13 @@
 <style>
   .saved-total {
     font-size: 13px;
-    color: var(--accent);
+    color: var(--accent-text);
     font-weight: 500;
+  }
+
+  .pill.active {
+    font-weight: 600;
+    box-shadow: var(--shadow-xs);
   }
 
   .format-hint {
@@ -359,22 +385,18 @@
     font-size: 12px;
   }
 
-  /* Estimate card — prominent pre-compression savings display */
+  /* Estimate card — the pre-compression savings preview, the app's signature
+     panel. Hero number carries the sole accent usage; everything else stays
+     on the neutral scale so the number keeps all the visual weight. */
   .estimate-card {
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 12px 16px;
+    gap: 8px;
+    padding: 16px 20px;
     background: var(--accent-subtle);
     border: 1px solid var(--accent-glow);
     border-radius: var(--radius-sm);
-  }
-
-  .estimate-row {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
   }
 
   .estimate-label {
@@ -382,39 +404,74 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: var(--accent);
+    color: var(--text-muted);
   }
 
-  .estimate-value {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text-primary);
+  .estimate-hero {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .estimate-hero-num {
+    font-size: 38px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--accent-text);
     font-variant-numeric: tabular-nums;
   }
 
-  .estimate-pct {
-    font-weight: 600;
-    color: var(--accent);
+  .estimate-hero-num.grow { color: var(--warning-text); }
+
+  .estimate-hero-num small {
+    font-size: 18px;
+    font-weight: 500;
   }
 
-  .estimate-meta {
-    display: flex;
-    gap: 12px;
-    font-size: 12px;
+  .estimate-hero-word {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+
+  .estimate-bar-track {
+    width: 100%;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--navy-bg);
+    overflow: hidden;
+  }
+
+  .estimate-bar-fill {
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--accent);
+    transform-origin: left center;
+    transition: background-color var(--duration-normal) var(--ease-out);
+  }
+
+  .estimate-bar-fill.grow { background: var(--warning); }
+
+  .estimate-range {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .estimate-scanning {
+    font-size: 13px;
     color: var(--text-muted);
-    margin-top: 4px;
+    font-style: italic;
   }
 
   .estimate-warn {
     display: flex;
     align-items: center;
     gap: 4px;
-    color: var(--warning, #f59e0b);
-  }
-
-  .estimating {
-    color: var(--text-muted);
-    font-style: italic;
+    font-size: 12px;
+    color: var(--warning-text);
   }
 
   /* .toggle-row, .toggle-label, .control-hint — styled globally in ToolShell */

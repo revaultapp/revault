@@ -44,6 +44,7 @@ export const es: Dictionary = {
     formatBmp: "BMP",
     formatJxl: "JXL",
     moreInfo: "Más información",
+    removeFileAriaLabel: "Eliminar {name}",
   },
   dashboard: {
     spaceSaved: "Espacio ahorrado",
@@ -106,6 +107,8 @@ export const es: Dictionary = {
     estimateSummaryOther: "{count} archivos: {original} → ~{estimated}",
     pctSmaller: "{pct}% más pequeño",
     pctLarger: "{pct}% más grande",
+    smaller: "más pequeño",
+    larger: "más grande",
     sameSize: "Mismo tamaño",
     alreadyOptimal: "Ya óptimo",
     mayGrowOne: "{count} archivo puede crecer",

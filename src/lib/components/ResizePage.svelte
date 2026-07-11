@@ -180,7 +180,7 @@
     {:else if file.status === "error"}
       <AlertCircle size={18} />
     {:else}
-      <button class="btn-icon" onclick={() => removeFile(file.path)}>
+      <button class="btn-icon" onclick={() => removeFile(file.path)} aria-label={t("common.removeFileAriaLabel", { name: file.name })}>
         <X size={16} />
       </button>
     {/if}
@@ -246,6 +246,11 @@
 </ToolShell>
 
 <style>
+  .pill.active {
+    font-weight: 600;
+    box-shadow: var(--shadow-xs);
+  }
+
   .preset-sections {
     display: flex;
     flex-direction: column;

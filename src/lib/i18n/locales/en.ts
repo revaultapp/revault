@@ -42,6 +42,7 @@ export const en = {
     formatBmp: "BMP",
     formatJxl: "JXL",
     moreInfo: "More info",
+    removeFileAriaLabel: "Remove {name}",
   },
   dashboard: {
     spaceSaved: "Space Saved",
@@ -103,6 +104,8 @@ export const en = {
     estimateSummaryOther: "{count} files: {original} → ~{estimated}",
     pctSmaller: "{pct}% smaller",
     pctLarger: "{pct}% larger",
+    smaller: "smaller",
+    larger: "larger",
     sameSize: "Same size",
     alreadyOptimal: "Already optimal",
     mayGrowOne: "{count} file may grow",
