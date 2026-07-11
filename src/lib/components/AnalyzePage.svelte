@@ -290,7 +290,7 @@
     {#if $scanError}
       <div class="error-banner" role="alert">
         <span class="error-text">{$scanError}</span>
-        <button class="error-dismiss" onclick={() => scanError.set(null)}>×</button>
+        <button class="error-dismiss" onclick={() => scanError.set(null)} aria-label={t("analyze.dismissErrorAriaLabel")}>×</button>
       </div>
     {/if}
     <div class="header">
