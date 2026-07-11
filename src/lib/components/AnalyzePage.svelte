@@ -7,7 +7,7 @@
   import { flip } from "svelte/animate";
   import { cubicOut } from "svelte/easing";
   import { prefersReducedMotion } from "svelte/motion";
-  import { Trash2, FolderOpen, Search, ChevronDown, ChevronRight, FolderSearch, CircleX, Layers, HardDrive, ImageIcon } from "lucide-svelte";
+  import { Trash2, FolderOpen, Search, ChevronDown, ChevronRight, FolderSearch, CircleX, Layers, HardDrive, ImageIcon, Info } from "lucide-svelte";
   import ProgressRing from "./ProgressRing.svelte";
   import Button from "./Button.svelte";
   import SegmentedControl from "./SegmentedControl.svelte";
@@ -29,6 +29,10 @@
 
   let modeDescription = $derived(
     modeSelection === "similar" ? t("analyze.modeDescSimilar") : t("analyze.modeDescExact")
+  );
+
+  let modeDescriptionDetail = $derived(
+    modeSelection === "similar" ? t("analyze.modeDescSimilarDetail") : t("analyze.modeDescExactDetail")
   );
 
   const rm = $derived(prefersReducedMotion.current);
@@ -238,6 +242,14 @@
           out:fade={{ duration: rm ? 0 : 100, easing: cubicOut }}
         >
           {modeDescription}
+          <button
+            type="button"
+            class="info-btn"
+            aria-label={t("analyze.modeInfoAriaLabel")}
+            title={modeDescriptionDetail}
+          >
+            <Info size={13} />
+          </button>
         </p>
       {/key}
       <Button onclick={browseFolders} aria-label={t("analyze.chooseFoldersAriaLabel")}>
@@ -360,7 +372,7 @@
               {#if $scanMode === "similar"}
                 <span class="similarity-badge">{t("analyze.similarityMatch", { pct: Math.round((1 - group.max_distance / 256) * 100) })}</span>
               {:else}
-                <span class="group-hash" title={t("analyze.byteIdenticalTitle")}>{group.hash.slice(0, 12)}</span>
+                <span class="similarity-badge" title={t("analyze.byteIdenticalTitle")}>{t("analyze.exactBadgeLabel")}</span>
               {/if}
               <span class="group-count">{t("analyze.filesCountLabel", { count: group.files.length })}</span>
             </div>
@@ -504,6 +516,27 @@
     font-size: 12px;
     line-height: 1.5;
     color: var(--text-muted);
+  }
+
+  /* ponytail: el detalle técnico usa title nativo (no keyboard/touch-reachable).
+     La descripción plana siempre es texto visible; el (i) solo realza el método
+     para el curioso. Upgrade a popover accesible si a11y lo exige. */
+  .info-btn {
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+    margin-left: 4px;
+    padding: 2px;
+    border-radius: 4px;
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    cursor: help;
+    transition: color var(--duration-normal) var(--ease-out);
+  }
+
+  .info-btn:hover {
+    color: var(--text-secondary);
   }
 
   .scanning-view {
@@ -678,15 +711,6 @@
     align-items: center;
     gap: 10px;
     color: var(--text-muted);
-  }
-
-  .group-hash {
-    font-family: monospace;
-    font-size: 12px;
-    color: var(--text-secondary);
-    background: var(--navy-bg);
-    padding: 2px 6px;
-    border-radius: 4px;
   }
 
   .similarity-badge {
