@@ -216,6 +216,11 @@ export const fr: Dictionary = {
     moveToTrashTitle: "Déplacer vers la corbeille",
     moveToTrashAriaLabel: "Déplacer le doublon vers la corbeille",
     markedDeletedTag: "Marqué comme supprimé",
+    modeDescExact: "Hachage SHA-256 — copies identiques bit à bit",
+    modeDescSimilar: "pHash perceptuel — quasi-doublons même si la taille, la compression ou le format changent",
+    flowStepScan: "Analyse",
+    flowStepGroup: "Regroupe",
+    flowStepReclaim: "Récupère de l'espace",
   },
   privacy: {
     headerDone: "{done} sur {total} nettoyés",

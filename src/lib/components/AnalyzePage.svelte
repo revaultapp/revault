@@ -3,7 +3,11 @@
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
-  import { Trash2, FolderOpen, Search, ChevronDown, ChevronRight, FolderSearch, CircleX } from "lucide-svelte";
+  import { fade, slide, scale } from "svelte/transition";
+  import { flip } from "svelte/animate";
+  import { cubicOut } from "svelte/easing";
+  import { prefersReducedMotion } from "svelte/motion";
+  import { Trash2, FolderOpen, Search, ChevronDown, ChevronRight, FolderSearch, CircleX, Layers, HardDrive, ImageIcon } from "lucide-svelte";
   import ProgressRing from "./ProgressRing.svelte";
   import Button from "./Button.svelte";
   import SegmentedControl from "./SegmentedControl.svelte";
@@ -23,13 +27,24 @@
     modeSelection = $scanMode;
   });
 
+  let modeDescription = $derived(
+    modeSelection === "similar" ? t("analyze.modeDescSimilar") : t("analyze.modeDescExact")
+  );
+
+  const rm = $derived(prefersReducedMotion.current);
+
   let selectedFolders = $state<string[]>([]);
   let expandedGroups = $state<Set<string>>(new Set());
   let deletedPaths = $state<Set<string>>(new Set());
+  let isDragging = $state(false);
+  let thumbnails = $state<Record<string, string>>({});
 
   onMount(() => {
     const unlisten = getCurrentWebview().onDragDropEvent((event) => {
-      if (event.payload.type === "drop") {
+      if (event.payload.type === "over") {
+        isDragging = true;
+      } else if (event.payload.type === "drop") {
+        isDragging = false;
         const paths = event.payload.paths;
         // Filter to only paths that don't look like image files (Analyze expects folders)
         const newFolders = paths.filter((p: string) => {
@@ -44,6 +59,8 @@
           deletedPaths = new Set();
           expandedGroups = new Set();
         }
+      } else {
+        isDragging = false;
       }
     });
     return () => {
@@ -68,6 +85,31 @@
   let visibleFileCount = $derived(
     visibleGroups.reduce((acc, g) => acc + g.files.length, 0)
   );
+
+  // Lazily fetch thumbnails only for files inside expanded groups (collapsed
+  // groups don't need one yet). Same stale-response guard as ToolShell.
+  $effect(() => {
+    const submitted = new Set<string>();
+    for (const group of visibleGroups) {
+      if (!expandedGroups.has(group.hash)) continue;
+      for (const file of group.files) {
+        if (thumbnails[file.path] !== undefined) continue;
+        thumbnails[file.path] = ""; // mark as loading
+        submitted.add(file.path);
+        invoke<string>("generate_thumbnail", { path: file.path })
+          .then((src) => {
+            if (submitted.has(file.path)) {
+              thumbnails[file.path] = src;
+            }
+          })
+          .catch(() => {
+            if (submitted.has(file.path)) {
+              thumbnails[file.path] = "error";
+            }
+          });
+      }
+    }
+  });
 
   let progressPct = $derived(
     $scanProgress && $scanProgress.total > 0
@@ -162,13 +204,42 @@
 
 {#if selectedFolders.length === 0}
   <div class="empty-view">
-    <div class="folder-drop-zone">
+    <div class="folder-drop-zone" class:dragging={isDragging}>
       <div class="drop-icon">
         <FolderSearch size={48} strokeWidth={1.5} />
       </div>
       <h2 class="drop-title">{t("analyze.dropTitle")}</h2>
       <p class="drop-subtitle">{t("analyze.dropSubtitle")}</p>
+
+      <!-- Decorative — the same flow is already spelled out in the title,
+           subtitle, and action button below, so it's redundant for AT users. -->
+      <div class="flow-diagram" aria-hidden="true">
+        <span class="flow-step">
+          <Search size={14} class="flow-icon flow-icon--blue" />
+          {t("analyze.flowStepScan")}
+        </span>
+        <ChevronRight size={12} class="flow-arrow" />
+        <span class="flow-step">
+          <Layers size={14} class="flow-icon flow-icon--violet" />
+          {t("analyze.flowStepGroup")}
+        </span>
+        <ChevronRight size={12} class="flow-arrow" />
+        <span class="flow-step">
+          <HardDrive size={14} class="flow-icon flow-icon--amber" />
+          {t("analyze.flowStepReclaim")}
+        </span>
+      </div>
+
       <SegmentedControl segments={modeSegments} bind:selected={modeSelection} onselect={handleModeSelect} label={t("analyze.matchModeAriaLabel")} />
+      {#key modeSelection}
+        <p
+          class="mode-description"
+          in:fade={{ duration: rm ? 0 : 150, easing: cubicOut }}
+          out:fade={{ duration: rm ? 0 : 100, easing: cubicOut }}
+        >
+          {modeDescription}
+        </p>
+      {/key}
       <Button onclick={browseFolders} aria-label={t("analyze.chooseFoldersAriaLabel")}>
         <FolderOpen size={16} />
         {t("analyze.chooseFolders")}
@@ -274,7 +345,11 @@
         {@const sortedFiles = [...group.files].sort((a, b) => b.size - a.size)}
         {@const wasted = sortedFiles.slice(1).reduce((a, f) => a + f.size, 0)}
         {@const isExpanded = expandedGroups.has(group.hash)}
-        <div class="group-card">
+        <div
+          class="group-card"
+          animate:flip={{ duration: rm ? 0 : 200, easing: cubicOut }}
+          out:scale={{ duration: rm ? 0 : 160, start: 0.96, opacity: 0, easing: cubicOut }}
+        >
           <button class="group-header" onclick={() => toggleGroup(group.hash)} aria-expanded={isExpanded}>
             <div class="group-info">
               {#if isExpanded}
@@ -295,10 +370,17 @@
           </button>
 
           {#if isExpanded}
-            <div class="group-files">
+            <div class="group-files" transition:slide={{ duration: rm ? 0 : 200, easing: cubicOut }}>
               {#each sortedFiles as file, fi (file.path)}
                 {@const isDeleted = deletedPaths.has(file.path)}
                 <div class="dup-file" class:original={fi === 0} class:deleted={isDeleted}>
+                  {#if thumbnails[file.path] && thumbnails[file.path] !== "error"}
+                    <img class="dup-thumb" src={thumbnails[file.path]} alt="" draggable="false" />
+                  {:else}
+                    <div class="dup-thumb placeholder">
+                      <ImageIcon size={16} />
+                    </div>
+                  {/if}
                   <div class="dup-info">
                     <span class="dup-path" title={file.path}>{file.path.split(/[\\/]/).pop()}</span>
                     <span class="dup-folder">{file.path.split(/[\\/]/).slice(-2, -1)[0] ?? ""}</span>
@@ -349,11 +431,27 @@
     border-radius: var(--radius-xl);
     text-align: center;
     max-width: 400px;
+    transition:
+      transform var(--duration-normal) var(--ease-out),
+      box-shadow var(--duration-normal) var(--ease-out),
+      border-color var(--duration-normal) var(--ease-out);
+  }
+
+  /* Drag-over feedback — same language as DropZone.svelte's .dragging state. */
+  .folder-drop-zone.dragging {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-glow), 0 8px 32px rgba(16, 216, 122, 0.12);
+    transform: scale(1.02);
   }
 
   .drop-icon {
     color: var(--text-muted);
     opacity: 0.6;
+  }
+
+  .folder-drop-zone.dragging .drop-icon {
+    color: var(--accent);
+    opacity: 1;
   }
 
   .drop-title {
@@ -367,6 +465,45 @@
     font-size: 13px;
     color: var(--text-muted);
     margin-top: -8px;
+  }
+
+  .flow-diagram {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .flow-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: var(--text-muted);
+  }
+
+  .flow-step :global(.flow-icon) {
+    flex-shrink: 0;
+  }
+
+  .flow-step :global(.flow-icon--blue) { color: var(--cat-blue); }
+  .flow-step :global(.flow-icon--violet) { color: var(--cat-violet); }
+  .flow-step :global(.flow-icon--amber) { color: var(--cat-amber); }
+
+  .flow-diagram :global(.flow-arrow) {
+    color: var(--text-muted);
+    opacity: 0.5;
+    flex-shrink: 0;
+  }
+
+  .mode-description {
+    max-width: 280px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-muted);
   }
 
   .scanning-view {
@@ -589,6 +726,7 @@
     padding: 10px 16px;
     border-bottom: 1px solid var(--border);
     gap: 12px;
+    transition: opacity var(--duration-normal) var(--ease-out);
   }
 
   .dup-file:last-child {
@@ -602,6 +740,27 @@
   .dup-file.deleted {
     opacity: 0.4;
     text-decoration: line-through;
+  }
+
+  .dup-thumb {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+  }
+
+  .dup-thumb.placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--navy-bg);
+    color: var(--text-muted);
+  }
+
+  .dup-file.original .dup-thumb {
+    border-color: var(--accent);
   }
 
   .dup-info {

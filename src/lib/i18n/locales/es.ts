@@ -217,6 +217,11 @@ export const es: Dictionary = {
     moveToTrashTitle: "Mover a la papelera",
     moveToTrashAriaLabel: "Mover duplicado a la papelera",
     markedDeletedTag: "Marcado como eliminado",
+    modeDescExact: "Hash SHA-256 — copias idénticas bit a bit",
+    modeDescSimilar: "pHash perceptual — casi duplicados aunque cambien tamaño, compresión o formato",
+    flowStepScan: "Escanea",
+    flowStepGroup: "Agrupa",
+    flowStepReclaim: "Recupera espacio",
   },
   privacy: {
     headerDone: "{done} de {total} eliminados",

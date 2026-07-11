@@ -213,6 +213,11 @@ export const en = {
     moveToTrashTitle: "Move to trash",
     moveToTrashAriaLabel: "Move duplicate to trash",
     markedDeletedTag: "Marked deleted",
+    modeDescExact: "SHA-256 hash — bit-for-bit identical copies",
+    modeDescSimilar: "Perceptual pHash — near-duplicates even if size, compression, or format changed",
+    flowStepScan: "Scan",
+    flowStepGroup: "Group",
+    flowStepReclaim: "Reclaim space",
   },
   privacy: {
     headerDone: "{done} of {total} stripped",
