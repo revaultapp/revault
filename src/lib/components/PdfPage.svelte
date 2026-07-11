@@ -234,7 +234,7 @@
           {:else if file.status === "error"}
             <CircleAlert size={18} />
           {:else}
-            <button class="btn-icon" onclick={() => removeFile(file.path)}>
+            <button class="btn-icon" onclick={() => removeFile(file.path)} aria-label={t("common.removeFileAriaLabel", { name: file.name })}>
               <X size={16} />
             </button>
           {/if}
