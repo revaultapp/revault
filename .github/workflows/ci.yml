@@ -79,7 +79,7 @@ jobs:
         working-directory: src-tauri
         run: cargo deny check licenses sources
 
-      - name: Architecture check (no tauri:: in core/)
+      - name: "Architecture check (no tauri:: in core/)"
         working-directory: src-tauri
         run: |
           if grep -rn "use tauri::" src/core/; then
