@@ -254,6 +254,7 @@ export const fr: Dictionary = {
     stripDeviceToggleLabel: "Supprimer les métadonnées de l'appareil",
     stripDatetimeToggleLabel: "Supprimer la date et l'heure",
     stripAuthorToggleLabel: "Supprimer l'auteur",
+    ifd1Hint: "Efface aussi la miniature EXIF intégrée (IFD1), un détail que beaucoup d'outils oublient.",
     noResultError: "Aucun résultat",
   },
   video: {

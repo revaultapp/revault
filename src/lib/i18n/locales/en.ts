@@ -251,6 +251,7 @@ export const en = {
     stripDeviceToggleLabel: "Strip device metadata",
     stripDatetimeToggleLabel: "Strip date and time",
     stripAuthorToggleLabel: "Strip author",
+    ifd1Hint: "Also wipes the embedded EXIF thumbnail (IFD1) — a spot many tools miss.",
     noResultError: "No result",
   },
   video: {

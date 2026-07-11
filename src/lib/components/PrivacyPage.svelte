@@ -1,7 +1,11 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
-  import { CircleCheck, CircleAlert, X, FolderOpen } from "lucide-svelte";
+  import type { ComponentType } from "svelte";
+  import {
+    CircleCheck, CircleAlert, X, FolderOpen,
+    MapPin, Camera, Calendar, User, Settings2, ShieldCheck,
+  } from "lucide-svelte";
   import ToolShell from "./ToolShell.svelte";
   import ToggleSwitch from "./ToggleSwitch.svelte";
   import PrivacyToast from "./PrivacyToast.svelte";
@@ -238,6 +242,13 @@
   }
 </script>
 
+{#snippet metaChip(Icon: ComponentType, category: string, text: string, removed: boolean)}
+  <span class="meta-chip meta-chip--{category}" class:removed>
+    <Icon size={11} aria-hidden="true" />
+    <span class="meta-chip-text">{text}</span>
+  </span>
+{/snippet}
+
 <ToolShell
   files={$files}
   isProcessing={$isProcessing}
@@ -261,16 +272,24 @@
       {file.error}
     {:else if file.status === "done"}
       {#if file.hasMetadata}
-        <span class="meta-removed">{[file.gps && t("privacy.gpsWord"), file.device, file.datetime, file.author && t("privacy.authorWord"), file.technical && t("privacy.technicalWord")].filter(Boolean).join(" · ")}</span>
+        <span class="meta-chips">
+          {#if file.gps}{@render metaChip(MapPin, "gps", t("privacy.gpsWord"), true)}{/if}
+          {#if file.device}{@render metaChip(Camera, "device", file.device, true)}{/if}
+          {#if file.datetime}{@render metaChip(Calendar, "date", file.datetime, true)}{/if}
+          {#if file.author}{@render metaChip(User, "author", t("privacy.authorWord"), true)}{/if}
+          {#if file.technical}{@render metaChip(Settings2, "technical", t("privacy.technicalWord"), true)}{/if}
+        </span>
       {/if}
       {#if file.outputPath}<span class="meta-tag">{file.outputPath.split(/[\\/]/).pop()}</span>{/if}
     {:else if file.status === "scanned" || file.status === "stripping"}
       {#if file.hasMetadata}
-        {#if file.gps}<span class="meta-tag">{t("privacy.gpsWord")}</span>{/if}
-        {#if file.device}<span class="meta-tag">{file.device}</span>{/if}
-        {#if file.datetime}<span class="meta-tag">{file.datetime}</span>{/if}
-        {#if file.author}<span class="meta-tag">{file.author}</span>{/if}
-        {#if file.technical}<span class="meta-tag">{t("privacy.technicalWord")}</span>{/if}
+        <span class="meta-chips">
+          {#if file.gps}{@render metaChip(MapPin, "gps", t("privacy.gpsWord"), false)}{/if}
+          {#if file.device}{@render metaChip(Camera, "device", file.device, false)}{/if}
+          {#if file.datetime}{@render metaChip(Calendar, "date", file.datetime, false)}{/if}
+          {#if file.author}{@render metaChip(User, "author", file.author, false)}{/if}
+          {#if file.technical}{@render metaChip(Settings2, "technical", t("privacy.technicalWord"), false)}{/if}
+        </span>
       {:else}
         {t("privacy.noMetadataFound")}
       {/if}
@@ -308,11 +327,47 @@
   <div class="control-group">
     <span class="label">{t("privacy.stripLabel")}</span>
     <div class="strip-options">
-      <label><ToggleSwitch bind:checked={$stripGps} label={t("privacy.stripGpsToggleLabel")} /> {t("privacy.gpsWord")}</label>
-      <label><ToggleSwitch bind:checked={$stripDevice} label={t("privacy.stripDeviceToggleLabel")} /> {t("privacy.deviceWord")}</label>
-      <label><ToggleSwitch bind:checked={$stripDatetime} label={t("privacy.stripDatetimeToggleLabel")} /> {t("privacy.dateTimeWord")}</label>
-      <label><ToggleSwitch bind:checked={$stripAuthor} label={t("privacy.stripAuthorToggleLabel")} /> {t("privacy.authorWord")}</label>
+      <div class="toggle-row">
+        <div class="toggle-label">
+          <span class="option-name" class:active={$stripGps}>
+            <MapPin size={14} class="option-icon option-icon--gps" aria-hidden="true" />
+            <span class="option-text">{t("privacy.gpsWord")}</span>
+          </span>
+        </div>
+        <ToggleSwitch bind:checked={$stripGps} label={t("privacy.stripGpsToggleLabel")} />
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-label">
+          <span class="option-name" class:active={$stripDevice}>
+            <Camera size={14} class="option-icon option-icon--device" aria-hidden="true" />
+            <span class="option-text">{t("privacy.deviceWord")}</span>
+          </span>
+        </div>
+        <ToggleSwitch bind:checked={$stripDevice} label={t("privacy.stripDeviceToggleLabel")} />
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-label">
+          <span class="option-name" class:active={$stripDatetime}>
+            <Calendar size={14} class="option-icon option-icon--date" aria-hidden="true" />
+            <span class="option-text">{t("privacy.dateTimeWord")}</span>
+          </span>
+        </div>
+        <ToggleSwitch bind:checked={$stripDatetime} label={t("privacy.stripDatetimeToggleLabel")} />
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-label">
+          <span class="option-name" class:active={$stripAuthor}>
+            <User size={14} class="option-icon option-icon--author" aria-hidden="true" />
+            <span class="option-text">{t("privacy.authorWord")}</span>
+          </span>
+        </div>
+        <ToggleSwitch bind:checked={$stripAuthor} label={t("privacy.stripAuthorToggleLabel")} />
+      </div>
     </div>
+    <span class="ifd1-hint">
+      <ShieldCheck size={12} aria-hidden="true" />
+      {t("privacy.ifd1Hint")}
+    </span>
   </div>
   <div class="control-group">
     <span class="label">{t("common.outputLabel")}</span>
@@ -330,28 +385,95 @@
   .strip-options {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
   }
 
-  .strip-options label {
+  .option-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .option-name :global(.option-icon) {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    transition: color var(--duration-normal) var(--ease-out);
+  }
+
+  .option-text {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+    transition: color var(--duration-normal) var(--ease-out);
+  }
+
+  .option-name.active .option-text {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .option-name.active :global(.option-icon--gps) { color: var(--cat-blue); }
+  .option-name.active :global(.option-icon--device) { color: var(--cat-violet); }
+  .option-name.active :global(.option-icon--date) { color: var(--cat-amber); }
+  .option-name.active :global(.option-icon--author) { color: var(--cat-pink); }
+
+  .ifd1-hint {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: var(--text-secondary);
-    cursor: pointer;
+    gap: 4px;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  .ifd1-hint :global(svg) {
+    flex-shrink: 0;
+    color: var(--accent-text);
   }
 
   .meta-tag {
     display: inline;
   }
 
-  .meta-tag + .meta-tag::before {
-    content: " · ";
+  .meta-chips {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
   }
 
-  .meta-removed {
+  .meta-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px 2px 6px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--text-secondary);
+    background: color-mix(in oklch, var(--chip-color) 14%, transparent);
+    border: 1px solid color-mix(in oklch, var(--chip-color) 32%, transparent);
+    white-space: nowrap;
+  }
+
+  .meta-chip :global(svg) {
+    flex-shrink: 0;
+    color: var(--chip-color);
+  }
+
+  .meta-chip--gps { --chip-color: var(--cat-blue); }
+  .meta-chip--device { --chip-color: var(--cat-violet); }
+  .meta-chip--date { --chip-color: var(--cat-amber); }
+  .meta-chip--author { --chip-color: var(--cat-pink); }
+  .meta-chip--technical { --chip-color: var(--cat-cyan); }
+
+  .meta-chip.removed {
+    opacity: 0.5;
+  }
+
+  .meta-chip.removed .meta-chip-text {
     text-decoration: line-through;
-    opacity: 0.45;
   }
 </style>
