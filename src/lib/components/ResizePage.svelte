@@ -197,6 +197,7 @@
               <button
                 class="pill"
                 class:active={$width === p.w && $height === p.h}
+                aria-pressed={$width === p.w && $height === p.h}
                 onclick={() => { width.set(p.w); height.set(p.h); }}
                 title="{p.w}×{p.h}"
               >{p.label}</button>
@@ -221,7 +222,7 @@
     </span>
     <div class="pills">
       {#each modeOptions as [value, label]}
-        <button class="pill" class:active={$resizeMode === value} onclick={() => resizeMode.set(value)}>
+        <button class="pill" class:active={$resizeMode === value} aria-pressed={$resizeMode === value} onclick={() => resizeMode.set(value)}>
           {label}
         </button>
       {/each}

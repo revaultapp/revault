@@ -304,7 +304,7 @@
     <span class="label">{t("common.formatLabel")} <HelperTooltip tip={t("compress.formatTooltip")} /></span>
     <div class="pills">
       {#each formats as f}
-        <button class="pill" class:active={$format === f.value} onclick={() => format.set(f.value)}>
+        <button class="pill" class:active={$format === f.value} aria-pressed={$format === f.value} onclick={() => format.set(f.value)}>
           {f.label}
         </button>
       {/each}
@@ -313,11 +313,11 @@
   <div class="control-group">
     <span class="label">{t("common.qualityLabel")} <HelperTooltip tip={t("common.qualityTooltip")} /></span>
     <div class="pills">
-      <button class="pill" class:active={$qualityPreset === "Smallest"}
+      <button class="pill" class:active={$qualityPreset === "Smallest"} aria-pressed={$qualityPreset === "Smallest"}
         onclick={() => qualityPreset.set("Smallest")}>{t("common.qualitySmallest")}</button>
-      <button class="pill" class:active={$qualityPreset === "Balanced"}
+      <button class="pill" class:active={$qualityPreset === "Balanced"} aria-pressed={$qualityPreset === "Balanced"}
         onclick={() => qualityPreset.set("Balanced")}>{t("common.qualityBalanced")}</button>
-      <button class="pill" class:active={$qualityPreset === "HighQuality"}
+      <button class="pill" class:active={$qualityPreset === "HighQuality"} aria-pressed={$qualityPreset === "HighQuality"}
         onclick={() => qualityPreset.set("HighQuality")}>{t("common.qualityHighQuality")}</button>
     </div>
     {#if $format === "Png"}
