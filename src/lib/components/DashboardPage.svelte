@@ -5,6 +5,7 @@
   import { activity, formatTimeAgo } from "$lib/stores/activity";
   import { activePage } from "$lib/stores/nav";
   import { formatBytes } from "$lib/utils";
+  import { animatedNumber } from "$lib/motion";
   import { storage, breakdown } from "$lib/stores/storage";
   import { t } from "$lib/stores/locale.svelte";
 
@@ -13,6 +14,21 @@
       ? Math.max(0, Math.round(($savings.totalOriginalBytes - $savings.totalCompressedBytes) / $savings.totalOriginalBytes * 100))
       : 0
   );
+
+  // Stat-card headline numbers count up toward their target instead of
+  // snapping, mirroring CompressPage's estimate hero (reduced-motion guard
+  // lives inside animatedNumber itself).
+  const spaceSavedTween = animatedNumber(0);
+  const operationsTween = animatedNumber(0);
+  const avgCompressionTween = animatedNumber(0);
+  const heicTween = animatedNumber(0);
+
+  $effect(() => {
+    spaceSavedTween.set($savings.totalSavedBytes);
+    operationsTween.set($savings.operationsCount);
+    avgCompressionTween.set(avgCompression);
+    heicTween.set($savings.heicCount);
+  });
 
   function navigate(page: string) {
     activePage.set(page as typeof $activePage);
@@ -37,7 +53,7 @@
         <HardDrive size={20} />
       </div>
       <div class="stat-content">
-        <span class="stat-value">{formatBytes($savings.totalSavedBytes)}</span>
+        <span class="stat-value">{formatBytes(spaceSavedTween.current)}</span>
         <span class="stat-label">{t("dashboard.spaceSaved")}</span>
         <span class="stat-sub">
           {$savings.filesProcessed === 1
@@ -52,7 +68,7 @@
         <Image size={20} />
       </div>
       <div class="stat-content">
-        <span class="stat-value">{$savings.operationsCount}</span>
+        <span class="stat-value">{Math.round(operationsTween.current)}</span>
         <span class="stat-label">{t("dashboard.filesOptimized")}</span>
         <span class="stat-sub">{t("dashboard.successfulOperations")}</span>
       </div>
@@ -63,7 +79,7 @@
         <Minimize2 size={20} />
       </div>
       <div class="stat-content">
-        <span class="stat-value">{avgCompression}%</span>
+        <span class="stat-value">{Math.round(avgCompressionTween.current)}%</span>
         <span class="stat-label">{t("dashboard.avgCompression")}</span>
         <span class="stat-sub">{t("dashboard.perFileAverage")}</span>
       </div>
@@ -74,7 +90,7 @@
         <Zap size={20} />
       </div>
       <div class="stat-content">
-        <span class="stat-value">{$savings.heicCount}</span>
+        <span class="stat-value">{Math.round(heicTween.current)}</span>
         <span class="stat-label">{t("dashboard.heicConverted")}</span>
         <span class="stat-sub">{t("dashboard.macosNativeDecode")}</span>
       </div>
@@ -335,6 +351,8 @@
   }
 
   .action-card {
+    position: relative;
+    isolation: isolate;
     background: var(--bg-card);
     border-radius: var(--radius-md);
     padding: 16px;
@@ -342,13 +360,42 @@
     gap: 12px;
     border: 1px solid var(--border);
     cursor: pointer;
-    transition: border-color 0.15s, box-shadow 0.15s;
+    transition: border-color 0.15s, box-shadow 0.15s, transform var(--duration-fast) var(--ease-out);
     text-align: left;
+  }
+
+  /* State layer: a translucent overlay behind the icon/text, not a
+     background-color swap — lets --state-hover/--state-press (defined once
+     in app.css) work over the card's own bg-card without recomputing a
+     composited color per surface. */
+  .action-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: var(--state-hover);
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-out);
+    pointer-events: none;
   }
 
   .action-card:hover {
     border-color: var(--accent);
     box-shadow: 0 0 0 1px var(--accent-subtle);
+  }
+
+  .action-card:hover::after {
+    opacity: 1;
+  }
+
+  .action-card:active {
+    transform: scale(0.97);
+  }
+
+  .action-card:active::after {
+    background: var(--state-press);
+    opacity: 1;
   }
 
   .action-card:focus-visible {

@@ -386,6 +386,7 @@ export const en = {
     processingLabel: "Processing...",
     readyLabel: "Ready",
     revealAction: "Reveal in file manager",
+    openOutputFolder: "Open output folder",
     optionsLabel: "Options",
     stripMetadataLabel: "Strip metadata",
     compressStreamsLabel: "Compress streams",

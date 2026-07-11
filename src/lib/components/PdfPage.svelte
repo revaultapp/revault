@@ -1,5 +1,6 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
+  import { openPath } from "@tauri-apps/plugin-opener";
   import {
     CircleCheck, CircleAlert, X, FolderOpen, Trash2,
     Minimize2, Combine, Scissors, ArrowUp, ArrowDown, FileText,
@@ -86,6 +87,11 @@
       activity.add({ type: "compress", fileCount: doneCount, savedBytes });
       if ($stripMetadata) showPrivacyToast(doneCount);
     }
+  }
+
+  async function openOutputFolder() {
+    const dir = $resolvedOutputDir ?? ($files[0]?.path ? $files[0].path.substring(0, $files[0].path.lastIndexOf($files[0].path.includes('/') ? '/' : '\\')) : null);
+    if (dir) await openPath(dir);
   }
 
   let targetPct = $derived(
@@ -192,6 +198,17 @@
         onaction={startProcess}
         {headerText}
       >
+        {#snippet headerSub()}
+          {#if $summary.savedBytes > 0}
+            <span class="saved-total">{t("common.savedTotal", { amount: formatBytes($summary.savedBytes) })}</span>
+          {/if}
+          {#if $summary.done > 0}
+            <button class="btn-ghost open-folder-btn" onclick={openOutputFolder}>
+              {t("pdf.openOutputFolder")}
+            </button>
+          {/if}
+        {/snippet}
+
         {#snippet fileDetail(file)}
           {#if file.status === "processing"}
             {t("pdf.processingLabel")}
@@ -463,6 +480,17 @@
 
   .size-delta {
     font-variant-numeric: tabular-nums;
+  }
+
+  .saved-total {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent-text);
+  }
+
+  .open-folder-btn {
+    margin-left: 8px;
+    font-size: 12px;
   }
 
   .toggle-hint {

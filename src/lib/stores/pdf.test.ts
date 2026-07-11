@@ -99,7 +99,7 @@ describe("pdf store", () => {
   describe("summary", () => {
     it("counts done, failed, and pending correctly", () => {
       files.set([
-        { path: "/a.pdf", name: "a.pdf", status: "done" },
+        { path: "/a.pdf", name: "a.pdf", status: "done", originalSize: 200, outputSize: 80 },
         { path: "/b.pdf", name: "b.pdf", status: "error" },
         { path: "/c.pdf", name: "c.pdf", status: "pending" },
         { path: "/d.pdf", name: "d.pdf", status: "processing" },
@@ -108,11 +108,19 @@ describe("pdf store", () => {
       expect(s.done).toBe(1);
       expect(s.failed).toBe(1);
       expect(s.pending).toBe(2);
+      expect(s.savedBytes).toBe(120); // 200-80
+    });
+
+    it("clamps savedBytes to 0 when output is larger than input", () => {
+      files.set([
+        { path: "/a.pdf", name: "a.pdf", status: "done", originalSize: 50, outputSize: 100 },
+      ]);
+      expect(get(summary).savedBytes).toBe(0);
     });
 
     it("returns zeros for empty files", () => {
       const s = get(summary);
-      expect(s).toEqual({ done: 0, failed: 0, pending: 0 });
+      expect(s).toEqual({ done: 0, failed: 0, pending: 0, savedBytes: 0 });
     });
   });
 

@@ -390,6 +390,7 @@ export const es: Dictionary = {
     processingLabel: "Procesando...",
     readyLabel: "Listo",
     revealAction: "Mostrar en el gestor de archivos",
+    openOutputFolder: "Abrir carpeta de salida",
     optionsLabel: "Opciones",
     stripMetadataLabel: "Eliminar metadatos",
     compressStreamsLabel: "Comprimir flujos",

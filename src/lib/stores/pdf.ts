@@ -34,11 +34,15 @@ export const resolvedOutputDir = derived(
   ([$out, $def]) => $out ?? $def,
 );
 
-export const summary = derived(files, ($f) => ({
-  done: $f.filter((f) => f.status === "done").length,
-  failed: $f.filter((f) => f.status === "error").length,
-  pending: $f.filter((f) => f.status === "pending" || f.status === "processing").length,
-}));
+export const summary = derived(files, ($f) => {
+  const done = $f.filter((f) => f.status === "done");
+  return {
+    done: done.length,
+    failed: $f.filter((f) => f.status === "error").length,
+    pending: $f.filter((f) => f.status === "pending" || f.status === "processing").length,
+    savedBytes: Math.max(0, done.reduce((acc, f) => acc + ((f.originalSize ?? 0) - (f.outputSize ?? f.originalSize ?? 0)), 0)),
+  };
+});
 
 export function addFiles(paths: string[]) {
   files.update((curr) => {

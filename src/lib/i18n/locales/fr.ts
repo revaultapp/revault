@@ -389,6 +389,7 @@ export const fr: Dictionary = {
     processingLabel: "Traitement en cours...",
     readyLabel: "Prêt",
     revealAction: "Afficher dans le gestionnaire de fichiers",
+    openOutputFolder: "Ouvrir le dossier de sortie",
     optionsLabel: "Options",
     stripMetadataLabel: "Supprimer les métadonnées",
     compressStreamsLabel: "Compresser les flux",
