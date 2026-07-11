@@ -95,11 +95,11 @@ jobs:
         working-directory: src-tauri
         run: cargo nextest run --workspace
 
-      - name: Verify MSRV (1.80)
+      - name: Verify MSRV (1.88)
         working-directory: src-tauri
         run: |
-          rustup toolchain install 1.80
-          cargo +1.80 check --workspace
+          rustup toolchain install 1.88
+          cargo +1.88 check --workspace
 
   # Runs cargo test on macOS and Windows in parallel with quality.
   # These catch platform-specific behaviour (native HEIC, WIC, file paths).

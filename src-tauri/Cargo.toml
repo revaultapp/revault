@@ -5,10 +5,10 @@ description = "Image compression, conversion, analysis and organization tool"
 authors = ["ReVault Contributors"]
 license = "MIT"
 edition = "2021"
-# Conservative MSRV estimate (current stable minus ~2 minors), not exhaustively
-# verified against the dep tree — rustup wasn't available locally to bisect it.
-# CI's "Verify MSRV" step is the actual gate; bump this if that step fails.
-rust-version = "1.80"
+# MSRV = the highest rust-version declared across the resolved dependency tree
+# (`cargo metadata` → max, currently time-macros 1.88). CI's "Verify MSRV" step
+# (`cargo +<ver> check`) is the enforcing gate; bump this if a dep raises its own.
+rust-version = "1.88"
 
 [lib]
 name = "revault_lib"
