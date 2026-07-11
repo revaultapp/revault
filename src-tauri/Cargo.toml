@@ -5,6 +5,7 @@ description = "Image compression, conversion, analysis and organization tool"
 authors = ["ReVault Contributors"]
 license = "MIT"
 edition = "2021"
+rust-version = "1.80"
 
 [lib]
 name = "revault_lib"
