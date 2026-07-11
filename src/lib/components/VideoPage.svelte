@@ -1,12 +1,15 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { slide } from "svelte/transition";
+  import { slide, fade } from "svelte/transition";
+  import { cubicOut } from "svelte/easing";
+  import { prefersReducedMotion } from "svelte/motion";
   import { Film, Shield, ShieldCheck, Download, Zap, Wifi, CircleCheck, CircleAlert, TriangleAlert, FolderOpen, X, ChevronDown } from "lucide-svelte";
   import PrivacyToast from "./PrivacyToast.svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import ToolShell from "./ToolShell.svelte";
   import SegmentedControl from "./SegmentedControl.svelte";
   import { formatBytes } from "$lib/utils";
+  import { animatedNumber } from "$lib/motion";
   import { VIDEO_EXTENSIONS, VIDEO_EXTENSIONS_RE } from "$lib/types";
   import {
     videoFiles,
@@ -57,6 +60,8 @@
     type PrivacyMode,
   } from "$lib/stores/video";
   import { t } from "$lib/stores/locale.svelte";
+
+  const rm = $derived(prefersReducedMotion.current);
 
   let modeSegments = $derived([
     { id: "compress", label: t("video.modeCompress") },
@@ -109,10 +114,11 @@
 
   let accordionHeader = $derived.by(() => {
     const preset = $videoPreset;
+    const presetLabel = presets.find(p => p.value === preset)?.label ?? preset;
     const mode = $videoPrivacyMode;
     const privacyLabel = privacySegments.find(s => s.id === mode)?.label ?? mode;
     if ($videoMode === "compress") {
-      return t("video.accordionHeaderCompress", { preset, privacy: privacyLabel });
+      return t("video.accordionHeaderCompress", { preset: presetLabel, privacy: privacyLabel });
     }
     if ($videoMode === "trim") {
       const len = Math.max(0, $trimSettings.endSec - $trimSettings.startSec);
@@ -339,6 +345,25 @@
     }
     return { kind: "no-gain" as const };
   });
+
+  // Estimate hero number + % count up toward the target instead of snapping,
+  // per animatedNumber's own reduced-motion guard (mirrors CompressPage).
+  const estimatedPctTween = animatedNumber(0);
+  const estimatedBytesTween = animatedNumber(0);
+  const gifSizeTween = animatedNumber(0);
+
+  $effect(() => {
+    if (estimateState.kind === "ready") {
+      estimatedPctTween.set(estimateState.savingsPct);
+      estimatedBytesTween.set(estimateState.totalEstimated);
+    }
+  });
+
+  $effect(() => {
+    if ($gifSizeEstimate !== null) {
+      gifSizeTween.set($gifSizeEstimate);
+    }
+  });
 </script>
 
 {#if $ffmpegStatus === "checking"}
@@ -530,25 +555,39 @@
     {#snippet estimateCard()}
       {#if $videoMode === "compress" && $videoFiles.length > 0}
         {#if estimateState.kind === "loading"}
-          <div class="estimate-hero-block">
-            <span class="estimate-num estimate-num--loading">…</span>
-            <span class="estimate-sub">{t("video.calculatingSavings")}</span>
+          <div class="estimate-card">
+            <span class="estimate-label">{t("video.estimatedLabel")}</span>
+            <span class="estimate-scanning">{t("video.calculatingSavings")}</span>
           </div>
         {:else if estimateState.kind === "ready"}
-          <div class="estimate-hero-block">
-            <span class="estimate-num">-{Math.round(estimateState.savingsPct)}%</span>
-            <span class="estimate-sub">
-              {t("video.estimatedLabel", { original: formatMB(estimateState.totalOriginal), estimated: formatMB(estimateState.totalEstimated) })}
+          <div class="estimate-card">
+            <span class="estimate-label">{t("video.estimatedLabel")}</span>
+            <div class="estimate-hero">
+              <span class="estimate-hero-num">{Math.round(estimatedPctTween.current)}<small>%</small></span>
+              <span class="estimate-hero-word">{t("video.smaller")}</span>
+            </div>
+            <div class="estimate-bar-track">
+              <div
+                class="estimate-bar-fill"
+                style="transform: scaleX({Math.min(Math.max(estimatedPctTween.current, 0), 100) / 100})"
+              ></div>
+            </div>
+            <span class="estimate-range">
+              {estimateState.filesTotal === 1
+                ? t("video.estimateSummaryOne", { count: estimateState.filesTotal, original: formatBytes(estimateState.totalOriginal), estimated: formatBytes(estimatedBytesTween.current) })
+                : t("video.estimateSummaryOther", { count: estimateState.filesTotal, original: formatBytes(estimateState.totalOriginal), estimated: formatBytes(estimatedBytesTween.current) })}
             </span>
           </div>
         {:else if estimateState.kind === "no-gain"}
-          <div class="estimate-hero-block">
-            <span class="estimate-sub estimate-sub--muted">{t("video.videosAlreadyOptimized")}</span>
+          <div class="estimate-card">
+            <span class="estimate-scanning">{t("video.videosAlreadyOptimized")}</span>
           </div>
         {/if}
       {:else if $videoMode === "gif" && $gifskiAvailable && $videoFiles.length > 0 && $gifSizeEstimate !== null}
-        <div class="estimate-hero-block">
-          <span class="estimate-num">≈ {formatMB($gifSizeEstimate)}</span>
+        <div class="estimate-card">
+          <div class="estimate-hero">
+            <span class="estimate-hero-num">≈ {formatBytes(gifSizeTween.current)}</span>
+          </div>
         </div>
       {/if}
     {/snippet}
@@ -594,13 +633,22 @@
                 </div>
                 <SegmentedControl segments={privacySegments} bind:selected={$videoPrivacyMode} label={t("video.privacyModeAriaLabel")} />
               </div>
-              <p class="privacy-hint">{privacyTooltips[$videoPrivacyMode]}</p>
+              {#key $videoPrivacyMode}
+                <p
+                  class="privacy-hint"
+                  in:fade={{ duration: rm ? 0 : 150, easing: cubicOut }}
+                  out:fade={{ duration: rm ? 0 : 100, easing: cubicOut }}
+                >{privacyTooltips[$videoPrivacyMode]}</p>
+              {/key}
             </div>
 
           {:else if $videoMode === "trim"}
             <!-- Trim mode controls -->
             <div class="control-group gif-range-group">
-              <span class="label">{t("video.clipRangeLabel")}</span>
+              <span class="label">
+                {t("video.clipRangeLabel")}
+                <span class="lossless-badge"><CircleCheck size={11} />{t("video.losslessBadge")}</span>
+              </span>
               <div class="range-inputs">
                 <input
                   type="number"
@@ -1074,38 +1122,79 @@
   .preview-loading { font-style: italic; color: var(--text-muted); font-variant-numeric: tabular-nums; }
   .preview-muted { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
-  /* ── Estimate hero block ── */
-  .estimate-hero-block {
+  /* ── Estimate card — mirrors CompressPage's "Estimated" hero panel ── */
+  .estimate-card {
     width: 100%;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    padding: 20px 16px 16px;
-    text-align: center;
+    gap: 8px;
+    padding: 16px 20px;
+    background: var(--accent-subtle);
+    border: 1px solid var(--accent-glow);
+    border-radius: var(--radius-sm);
   }
 
-  .estimate-num {
-    font-size: 48px;
-    font-weight: 800;
-    letter-spacing: -0.04em;
-    color: var(--accent);
-    font-variant-numeric: tabular-nums;
-    line-height: 1;
-  }
-
-  .estimate-num--loading {
+  .estimate-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
     color: var(--text-muted);
-    font-size: 36px;
   }
 
-  .estimate-sub {
+  .estimate-hero {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .estimate-hero-num {
+    font-size: 38px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--accent-text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .estimate-hero-num small {
+    font-size: 18px;
+    font-weight: 500;
+  }
+
+  .estimate-hero-word {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+
+  .estimate-bar-track {
+    width: 100%;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--navy-bg);
+    overflow: hidden;
+  }
+
+  .estimate-bar-fill {
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--accent);
+    transform-origin: left center;
+  }
+
+  .estimate-range {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .estimate-scanning {
     font-size: 13px;
     color: var(--text-muted);
-    font-variant-numeric: tabular-nums;
+    font-style: italic;
   }
-
-  .estimate-sub--muted { color: var(--text-muted); font-style: italic; }
 
   /* ── Accordion ── */
   .accordion {
@@ -1140,6 +1229,13 @@
     flex-direction: column;
     gap: 12px;
     padding-top: 12px;
+  }
+
+  /* Reinforces ToolShell's global accent-bg active state, same treatment as
+     CompressPage/ConvertPage/ResizePage's preset/format/quality pills. */
+  .pill.active {
+    font-weight: 600;
+    box-shadow: var(--shadow-xs);
   }
 
   /* ── Privacy controls ── */
@@ -1200,6 +1296,26 @@
 
   .range-sep { color: var(--text-muted); font-size: 13px; }
   .sub-hint { color: var(--text-muted); font-weight: 400; margin-left: 6px; }
+
+  .lossless-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: color-mix(in oklch, var(--accent) 14%, transparent);
+    border: 1px solid color-mix(in oklch, var(--accent) 32%, transparent);
+    vertical-align: middle;
+  }
+
+  .lossless-badge :global(svg) {
+    color: var(--accent);
+    flex-shrink: 0;
+  }
 
   .trim-length-hint {
     margin: 6px 0 0;
