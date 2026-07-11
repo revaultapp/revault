@@ -5,6 +5,10 @@ description = "Image compression, conversion, analysis and organization tool"
 authors = ["ReVault Contributors"]
 license = "MIT"
 edition = "2021"
+# MSRV = the highest rust-version declared across the resolved dependency tree
+# (`cargo metadata` → max, currently time-macros 1.88). CI's "Verify MSRV" step
+# (`cargo +<ver> check`) is the enforcing gate; bump this if a dep raises its own.
+rust-version = "1.88"
 
 [lib]
 name = "revault_lib"
