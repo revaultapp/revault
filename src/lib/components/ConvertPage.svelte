@@ -16,6 +16,7 @@
   import { qualityPreset, stripGps } from "$lib/stores/compress";
   import { savings } from "$lib/stores/savings";
   import { activity } from "$lib/stores/activity";
+  import { history } from "$lib/stores/history";
   import { IMAGE_EXTENSIONS } from "$lib/types";
   import { t } from "$lib/stores/locale.svelte";
 
@@ -120,6 +121,7 @@
       if (savedBytes > 0) savings.add(savedBytes);
       const heicCount = doneFiles.filter((f) => /\.(heic|heif)$/i.test(f.path)).length;
       if (heicCount > 0) savings.incrementHeic(heicCount);
+      history.recordSavings("img", originalBytes, compressedBytes);
       activity.add({ type: "convert", fileCount: doneFiles.length, savedBytes });
     }
     isConverting.set(false);
@@ -175,6 +177,7 @@
         savings.addOriginalBytes(originalBytes);
         savings.addCompressedBytes(compressedBytes);
         if (savedBytes > 0) savings.add(savedBytes);
+        history.recordSavings("img", originalBytes, compressedBytes);
         activity.add({ type: "convert", fileCount: doneFiles.length, savedBytes });
       }
     } finally {

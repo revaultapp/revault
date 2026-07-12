@@ -1,6 +1,7 @@
 import { writable, derived } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { history } from "./history";
 
 export interface ImageInfo {
   path: string;
@@ -58,6 +59,15 @@ function createStorageStore() {
         });
         if (thisScanId !== currentScanId) return;
         update((s) => ({ ...s, scanState: "done", scanResult: result }));
+        try {
+          history.setLastScan({
+            ts: Date.now(),
+            total: result.total_size,
+            types: groupByExtension(result).map((g) => [g.extension, g.totalSize, g.count]),
+          });
+        } catch {
+          // history recording must never break scanning
+        }
       } catch (err) {
         if (thisScanId !== currentScanId) return;
         update((s) => ({
@@ -76,12 +86,10 @@ function createStorageStore() {
 
 export const storage = createStorageStore();
 
-export const breakdown = derived(storage, ($storage): ExtensionGroup[] => {
-  if (!$storage.scanResult) return [];
-
+export function groupByExtension(result: ScanResult): ExtensionGroup[] {
   const map = new Map<string, { count: number; totalSize: number }>();
 
-  for (const img of $storage.scanResult.images) {
+  for (const img of result.images) {
     const existing = map.get(img.extension) ?? { count: 0, totalSize: 0 };
     map.set(img.extension, {
       count: existing.count + 1,
@@ -89,7 +97,7 @@ export const breakdown = derived(storage, ($storage): ExtensionGroup[] => {
     });
   }
 
-  const total = $storage.scanResult.total_size;
+  const total = result.total_size;
   if (total === 0) return [];
 
   return Array.from(map.entries())
@@ -100,4 +108,9 @@ export const breakdown = derived(storage, ($storage): ExtensionGroup[] => {
       percentage: Math.round((data.totalSize / total) * 100),
     }))
     .sort((a, b) => b.totalSize - a.totalSize);
+}
+
+export const breakdown = derived(storage, ($storage): ExtensionGroup[] => {
+  if (!$storage.scanResult) return [];
+  return groupByExtension($storage.scanResult);
 });

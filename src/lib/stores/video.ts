@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { activity } from "./activity";
 import { savings } from "./savings";
+import { history } from "./history";
 import { persisted } from "$lib/utils";
 import { defaultOutputDir } from "./settings";
 
@@ -297,6 +298,7 @@ export async function compressVideoFile(
         savings.addOriginalBytes(result.original_size);
         savings.addCompressedBytes(result.compressed_size);
       }
+      history.recordSavings("vid", result.original_size, result.compressed_size);
     }
   } catch (err) {
     let msg = String(err);

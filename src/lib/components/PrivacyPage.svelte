@@ -11,6 +11,7 @@
   import PrivacyToast from "./PrivacyToast.svelte";
   import { runWithConcurrency, browseOutputDir } from "$lib/utils";
   import { activity } from "$lib/stores/activity";
+  import { history } from "$lib/stores/history";
   import {
     files, isProcessing, summary, outputDir, resolvedOutputDir,
     stripGps, stripDevice, stripDatetime, stripAuthor,
@@ -230,6 +231,7 @@
       );
       if (successCount > 0) {
         activity.add({ type: "privacy", fileCount: successCount, savedBytes: 0 });
+        history.recordProtected(successCount);
       }
       showPrivacyToast(successCount, gpsStrippedCount);
     } catch (err) {
