@@ -33,7 +33,10 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
-          version: 11
+          # Pinned exact: pnpm 11.12.0 (2026-07-12) ships a broken self-installer
+          # ("Cannot use 'in' operator to search for 'integrity'") that crashes
+          # action-setup's version switch. Unpin to a range once fixed upstream.
+          version: 11.7.0
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
