@@ -438,11 +438,16 @@
   </div>
 
 {:else}
+  <!-- Columna a altura completa: la mode-bar arriba y ToolShell ocupando el
+       resto REAL. Sin esto, el wrapper vacío de ToolShell (height:100%) se
+       suma a la barra y el DropZone queda descentrado + scroll fantasma. -->
+  <div class="video-flow">
   <!-- Mode toggle: centered, above DropZone / file list -->
   <div class="mode-bar">
     <SegmentedControl segments={modeSegments} bind:selected={$videoMode} label={t("video.modeAriaLabel")} />
   </div>
 
+  <div class="tool-area">
   <ToolShell
     files={$videoFiles}
     isProcessing={$isCompressing || $gifState === "generating"}
@@ -865,12 +870,30 @@
       </div>
     {/if}
   </ToolShell>
+  </div>
+  </div>
 
   <PrivacyToast visible={showPrivacyChip} message={privacyChipText[privacyChipMode](privacyChipCount)} />
 {/if}
 
 <style>
   /* ── Mode bar (above DropZone/ToolShell) ── */
+  .video-flow {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  /* El estado vacío de ToolShell (height:100%) se resuelve contra esta área
+     flexada — el DropZone se centra en el hueco real bajo la barra. En el
+     estado de resultados el contenido alto desborda visible y sigue
+     scrolleando via .content-area, como antes. */
+  .tool-area {
+    flex: 1;
+    min-height: 0;
+  }
+
   .mode-bar {
     display: flex;
     justify-content: center;

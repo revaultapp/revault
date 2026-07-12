@@ -7,7 +7,7 @@
   import { flip } from "svelte/animate";
   import { cubicOut } from "svelte/easing";
   import { prefersReducedMotion } from "svelte/motion";
-  import { Trash2, FolderOpen, Search, ChevronDown, ChevronRight, FolderSearch, CircleX, Layers, HardDrive, ImageIcon, Info } from "lucide-svelte";
+  import { Trash2, FolderOpen, Search, ChevronDown, ChevronRight, FolderSearch, CircleX, Layers, HardDrive, ImageIcon } from "lucide-svelte";
   import ProgressRing from "./ProgressRing.svelte";
   import Button from "./Button.svelte";
   import SegmentedControl from "./SegmentedControl.svelte";
@@ -236,21 +236,14 @@
 
       <SegmentedControl segments={modeSegments} bind:selected={modeSelection} onselect={handleModeSelect} label={t("analyze.matchModeAriaLabel")} />
       {#key modeSelection}
-        <p
-          class="mode-description"
+        <div
+          class="mode-copy"
           in:fade={{ duration: rm ? 0 : 150, easing: cubicOut }}
           out:fade={{ duration: rm ? 0 : 100, easing: cubicOut }}
         >
-          {modeDescription}
-          <button
-            type="button"
-            class="info-btn"
-            aria-label={t("analyze.modeInfoAriaLabel")}
-            title={modeDescriptionDetail}
-          >
-            <Info size={13} />
-          </button>
-        </p>
+          <p class="mode-description">{modeDescription}</p>
+          <p class="mode-detail">{modeDescriptionDetail}</p>
+        </div>
       {/key}
       <Button onclick={browseFolders} aria-label={t("analyze.chooseFoldersAriaLabel")}>
         <FolderOpen size={16} />
@@ -518,25 +511,22 @@
     color: var(--text-muted);
   }
 
-  /* ponytail: el detalle técnico usa title nativo (no keyboard/touch-reachable).
-     La descripción plana siempre es texto visible; el (i) solo realza el método
-     para el curioso. Upgrade a popover accesible si a11y lo exige. */
-  .info-btn {
-    display: inline-flex;
+  /* El detalle del método va como texto visible: el (i) con title nativo
+     no renderiza tooltip en WKWebView (macOS), así que nunca se veía. */
+  .mode-copy {
+    display: flex;
+    flex-direction: column;
     align-items: center;
-    vertical-align: middle;
-    margin-left: 4px;
-    padding: 2px;
-    border-radius: 4px;
-    color: var(--text-muted);
-    background: none;
-    border: none;
-    cursor: help;
-    transition: color var(--duration-normal) var(--ease-out);
+    gap: 4px;
   }
 
-  .info-btn:hover {
-    color: var(--text-secondary);
+  .mode-detail {
+    max-width: 340px;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--text-muted);
+    opacity: 0.8;
+    text-wrap: balance;
   }
 
   .scanning-view {
