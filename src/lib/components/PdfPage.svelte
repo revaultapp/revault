@@ -18,6 +18,7 @@
   import PrivacyToast from "./PrivacyToast.svelte";
   import { browseOutputDir, formatBytes } from "$lib/utils";
   import { activity } from "$lib/stores/activity";
+  import { history } from "$lib/stores/history";
   import { savings } from "$lib/stores/savings";
   import { IMAGE_EXTENSIONS, IMAGE_EXTENSIONS_RE } from "$lib/types";
   import {
@@ -85,13 +86,18 @@
     await processPdfs($resolvedOutputDir, $stripMetadata, $compressStreams, $compressImages);
     const doneCount = $summary.done;
     if (doneCount > 0) {
+      let originalBytes = 0;
+      let compressedBytes = 0;
       const savedBytes = $files.reduce((acc, f) => {
         if (f.status === "done" && f.originalSize && f.outputSize) {
+          originalBytes += f.originalSize;
+          compressedBytes += f.outputSize;
           return acc + Math.max(0, f.originalSize - f.outputSize);
         }
         return acc;
       }, 0);
       activity.add({ type: "compress", fileCount: doneCount, savedBytes });
+      history.recordSavings("pdf", originalBytes, compressedBytes);
       if ($stripMetadata) showPrivacyToast(doneCount);
     }
   }
@@ -202,6 +208,7 @@
         savings.addCompressedBytes($imagesResult.outputSize);
         savedBytes = Math.max(0, originalBytes - $imagesResult.outputSize);
         if (savedBytes > 0) savings.add(savedBytes);
+        history.recordSavings("pdf", originalBytes, $imagesResult.outputSize);
       } catch {
         // sizes are best-effort; the PDF was still created
       }

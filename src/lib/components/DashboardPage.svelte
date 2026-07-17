@@ -1,13 +1,28 @@
 <script lang="ts">
-  import { HardDrive, Image, Minimize2, Zap, Search, Shield, FolderOpen, Film } from "lucide-svelte";
+  import {
+    HardDrive,
+    Layers,
+    Minimize2,
+    Shield,
+    Calendar,
+    Share2,
+    Download,
+    Search,
+    ArrowUpRight,
+    FolderOpen,
+  } from "lucide-svelte";
+  import KpiCard from "./KpiCard.svelte";
+  import MonthlyBars from "./MonthlyBars.svelte";
+  import CategoryLines from "./CategoryLines.svelte";
+  import StorageDonut from "./StorageDonut.svelte";
   import Button from "./Button.svelte";
   import { savings } from "$lib/stores/savings";
-  import { activity, formatTimeAgo } from "$lib/stores/activity";
   import { activePage } from "$lib/stores/nav";
   import { formatBytes } from "$lib/utils";
   import { animatedNumber } from "$lib/motion";
   import { storage, breakdown } from "$lib/stores/storage";
-  import { t } from "$lib/stores/locale.svelte";
+  import { history, monthlySeries, momDeltas, categoryShares, protectedTotal } from "$lib/stores/history";
+  import { t, getLocale } from "$lib/stores/locale.svelte";
 
   let avgCompression = $derived(
     $savings.totalOriginalBytes > 0
@@ -19,239 +34,223 @@
   // snapping, mirroring CompressPage's estimate hero (reduced-motion guard
   // lives inside animatedNumber itself).
   const spaceSavedTween = animatedNumber(0);
-  const operationsTween = animatedNumber(0);
   const avgCompressionTween = animatedNumber(0);
-  const heicTween = animatedNumber(0);
+  const protectedTween = animatedNumber(0);
+  const analyzedTween = animatedNumber(0);
 
   $effect(() => {
     spaceSavedTween.set($savings.totalSavedBytes);
-    operationsTween.set($savings.operationsCount);
     avgCompressionTween.set(avgCompression);
-    heicTween.set($savings.heicCount);
+    protectedTween.set($protectedTotal);
+    analyzedTween.set($history.lastScan?.total ?? 0);
   });
 
-  function navigate(page: string) {
-    activePage.set(page as typeof $activePage);
+  function monthLabel(d: Date): string {
+    return new Intl.DateTimeFormat(getLocale(), { month: "short" }).format(d);
   }
 
-  let activityLabels = $derived<Record<string, string>>({
-    compress: t("dashboard.activityCompress"),
-    convert: t("dashboard.activityConvert"),
-    resize: t("dashboard.activityResize"),
-    analyze: t("dashboard.activityAnalyze"),
-    video: t("dashboard.activityVideo"),
-    gif: t("dashboard.activityGif"),
-    privacy: t("dashboard.activityPrivacy"),
+  const monthlyGrandTotal = $derived($monthlySeries.reduce((acc, m) => acc + m.total, 0));
+
+  const categoryLinesShares = $derived(
+    $categoryShares.map((share) => ({
+      kind: share.kind,
+      label:
+        share.kind === "img"
+          ? t("dashboard.catImages")
+          : share.kind === "vid"
+            ? t("dashboard.catVideo")
+            : t("dashboard.catPdf"),
+      sharePct: share.share,
+      delta: share.delta,
+    }))
+  );
+
+  function sharePctFor(kind: "img" | "vid" | "pdf"): number {
+    return Math.round($categoryShares.find((s) => s.kind === kind)?.share ?? 0);
+  }
+
+  const categoryAriaSummary = $derived(
+    t("dashboard.chartCategoryAria", {
+      img: sharePctFor("img"),
+      vid: sharePctFor("vid"),
+      pdf: sharePctFor("pdf"),
+    })
+  );
+
+  // Donut source: prefer this session's live scan result; fall back to the
+  // last persisted scan (survives app restart) so returning users still see
+  // a filled-in panel instead of the idle empty state.
+  const hasDonutData = $derived(
+    $storage.scanState === "done" || ($storage.scanState === "idle" && $history.lastScan !== null)
+  );
+
+  const donutData = $derived.by(() => {
+    if ($storage.scanState === "done" && $storage.scanResult) {
+      return $breakdown.map((g) => ({ label: g.extension, bytes: g.totalSize, count: g.count }));
+    }
+    const scan = $history.lastScan;
+    if (scan) {
+      return scan.types.map(([ext, bytes, count]) => ({ label: ext.toUpperCase(), bytes, count }));
+    }
+    return [];
   });
+
+  const donutTotalBytes = $derived(donutData.reduce((acc, s) => acc + s.bytes, 0));
+
+  const donutFacts = $derived([
+    { value: formatBytes($savings.totalSavedBytes), label: t("dashboard.donutFactFreed") },
+    { value: String($savings.filesProcessed), label: t("dashboard.donutFactFiles") },
+    { value: String($protectedTotal), label: t("dashboard.donutFactNoMetadata") },
+    { value: String($savings.heicCount), label: t("dashboard.donutFactHeic") },
+  ]);
+
+  function goToOptimize() {
+    activePage.set("optimize");
+  }
 </script>
 
 <div class="dashboard">
-  <!-- Stats Row -->
-  <div class="stats-row">
-    <div class="stat-card accent">
-      <div class="stat-icon">
-        <HardDrive size={20} />
-      </div>
-      <div class="stat-content">
-        <span class="stat-value">{formatBytes(spaceSavedTween.current)}</span>
-        <span class="stat-label">{t("dashboard.spaceSaved")}</span>
-        <span class="stat-sub">
-          {$savings.filesProcessed === 1
-            ? t("dashboard.filesProcessedOne", { count: $savings.filesProcessed })
-            : t("dashboard.filesProcessedOther", { count: $savings.filesProcessed })}
-        </span>
-      </div>
+  <header class="dash-head">
+    <h2>{t("dashboard.panelTitle")}</h2>
+    <div class="dash-head-actions">
+      <button class="range-pill" type="button" disabled>
+        <Calendar size={12} />
+        {t("dashboard.rangeLastYear")}
+      </button>
+      <button class="icon-btn" type="button" aria-label={t("dashboard.shareAria")} disabled>
+        <Share2 size={14} />
+      </button>
+      <button class="icon-btn" type="button" aria-label={t("dashboard.exportAria")} disabled>
+        <Download size={14} />
+      </button>
+      <Button size="sm" class="scan-cta" onclick={() => storage.scanFolder()}>
+        <Search size={14} />
+        {t("dashboard.scanFolderButton")}
+      </Button>
+    </div>
+  </header>
+
+  <div class="row row-a">
+    <div class="kpi-grid">
+      <KpiCard
+        label={t("dashboard.kpiSpaceRecovered")}
+        icon={HardDrive}
+        value={formatBytes(spaceSavedTween.current)}
+        delta={$momDeltas.saved}
+        deltaSuffix={t("dashboard.vsPrevMonth")}
+      />
+      <KpiCard
+        label={t("dashboard.kpiAnalyzedSize")}
+        icon={Layers}
+        value={$history.lastScan ? formatBytes(analyzedTween.current) : "—"}
+      />
+      <KpiCard
+        label={t("dashboard.avgCompression")}
+        icon={Minimize2}
+        value="{Math.round(avgCompressionTween.current)}%"
+        delta={$momDeltas.compression}
+        deltaSuffix={t("dashboard.vsPrevMonth")}
+      />
+      <KpiCard
+        label={t("dashboard.kpiProtectedFiles")}
+        icon={Shield}
+        value={Math.round(protectedTween.current).toString()}
+        sub={t("dashboard.kpiProtectedSub")}
+      />
     </div>
 
-    <div class="stat-card">
-      <div class="stat-icon">
-        <Image size={20} />
+    <section class="chart-card">
+      <div class="card-head">
+        <span class="card-title">{t("dashboard.chartMonthlyTitle")}</span>
+        <button class="card-corner" type="button" tabindex="-1" aria-hidden="true">
+          <ArrowUpRight size={14} />
+        </button>
       </div>
-      <div class="stat-content">
-        <span class="stat-value">{Math.round(operationsTween.current)}</span>
-        <span class="stat-label">{t("dashboard.filesOptimized")}</span>
-        <span class="stat-sub">{t("dashboard.successfulOperations")}</span>
+      <div class="card-body">
+        <MonthlyBars
+          series={$monthlySeries}
+          heroIndex={$monthlySeries.length - 1}
+          {monthLabel}
+          formatValue={formatBytes}
+          ariaSummary={t("dashboard.chartMonthlyAria", { total: formatBytes(monthlyGrandTotal) })}
+          tableCaption={t("dashboard.tableCaptionMonthly")}
+          valueLabel={t("dashboard.kpiSpaceRecovered")}
+          emptyTitle={t("dashboard.emptyHistoryTitle")}
+          emptyHint={t("dashboard.emptyHistoryHint")}
+          emptyCta={t("dashboard.emptyHistoryCta")}
+          onCta={goToOptimize}
+        />
       </div>
-    </div>
-
-    <div class="stat-card">
-      <div class="stat-icon">
-        <Minimize2 size={20} />
-      </div>
-      <div class="stat-content">
-        <span class="stat-value">{Math.round(avgCompressionTween.current)}%</span>
-        <span class="stat-label">{t("dashboard.avgCompression")}</span>
-        <span class="stat-sub">{t("dashboard.perFileAverage")}</span>
-      </div>
-    </div>
-
-    <div class="stat-card accent">
-      <div class="stat-icon">
-        <Zap size={20} />
-      </div>
-      <div class="stat-content">
-        <span class="stat-value">{Math.round(heicTween.current)}</span>
-        <span class="stat-label">{t("dashboard.heicConverted")}</span>
-        <span class="stat-sub">{t("dashboard.macosNativeDecode")}</span>
-      </div>
-    </div>
+    </section>
   </div>
 
-  <!-- Quick Actions -->
-  <div class="section-title">{t("dashboard.quickActions")}</div>
-  <div class="actions-grid">
-    <button class="action-card accent" onclick={() => navigate("optimize")}>
-      <div class="action-icon">
-        <Zap size={18} />
+  <div class="row row-b">
+    <section class="chart-card">
+      <div class="card-head">
+        <span class="card-title">{t("dashboard.chartCategoryTitle")}</span>
+        <button class="card-corner" type="button" tabindex="-1" aria-hidden="true">
+          <ArrowUpRight size={14} />
+        </button>
       </div>
-      <div class="action-text">
-        <span class="action-title">{t("dashboard.compressImagesTitle")}</span>
-        <span class="action-desc">{t("dashboard.compressImagesDesc")}</span>
+      <div class="card-body">
+        <CategoryLines
+          series={$monthlySeries}
+          shares={categoryLinesShares}
+          {monthLabel}
+          formatValue={formatBytes}
+          ariaSummary={categoryAriaSummary}
+          tableCaption={t("dashboard.tableCaptionCategory")}
+          emptyTitle={t("dashboard.emptyHistoryTitle")}
+          emptyHint={t("dashboard.emptyHistoryHint")}
+          emptyCta={t("dashboard.emptyHistoryCta")}
+          onCta={goToOptimize}
+        />
       </div>
-    </button>
-
-    <button class="action-card" onclick={() => navigate("duplicates")}>
-      <div class="action-icon">
-        <Search size={18} />
-      </div>
-      <div class="action-text">
-        <span class="action-title">{t("dashboard.analyzeFolderTitle")}</span>
-        <span class="action-desc">{t("dashboard.analyzeFolderDesc")}</span>
-      </div>
-    </button>
-
-    <button class="action-card" onclick={() => navigate("privacy")}>
-      <div class="action-icon">
-        <Shield size={18} />
-      </div>
-      <div class="action-text">
-        <span class="action-title">{t("dashboard.privacyScanTitle")}</span>
-        <span class="action-desc">{t("dashboard.privacyScanDesc")}</span>
-      </div>
-    </button>
-  </div>
-
-  <!-- Bottom Row -->
-  <div class="bottom-row">
-    <!-- Recent Activity -->
-    <section class="activity">
-      <h3>{t("dashboard.recentActivity")}</h3>
-      {#if $activity.length === 0}
-        <div class="empty-state">
-          <p>{t("dashboard.noActivity")}</p>
-          <span>{t("dashboard.noActivityHint")}</span>
-        </div>
-      {:else}
-        <div class="activity-list">
-          {#each $activity as item (item.id)}
-            {@const label = activityLabels[item.type] ?? item.type}
-            <div class="activity-item">
-              <div class="activity-icon">
-                {#if item.type === "compress"}
-                  <Minimize2 size={14} />
-                {:else if item.type === "convert"}
-                  <Zap size={14} />
-                {:else if item.type === "video"}
-                  <Film size={14} />
-                {:else if item.type === "privacy"}
-                  <Shield size={14} />
-                {:else}
-                  <Image size={14} />
-                {/if}
-              </div>
-              <div class="activity-info">
-                <span class="activity-label">
-                  {item.fileCount === 1
-                    ? t("dashboard.activityLineOne", { label, count: item.fileCount })
-                    : t("dashboard.activityLineOther", { label, count: item.fileCount })}
-                </span>
-                <span class="activity-time">{formatTimeAgo(item.timestamp)}</span>
-              </div>
-              {#if item.savedBytes > 0}
-                <span class="activity-saved">{formatBytes(item.savedBytes)}</span>
-              {/if}
-            </div>
-            <div class="activity-divider"></div>
-          {/each}
-        </div>
-      {/if}
     </section>
 
-    <!-- Storage Breakdown -->
-    <section class="storage">
-      <h3>{t("dashboard.storageBreakdown")}</h3>
-
-      {#if $storage.scanState === "idle"}
-        <div class="storage-idle">
-          <div class="storage-idle-icon">
-            <FolderOpen size={28} />
+    <section class="chart-card">
+      <div class="card-head">
+        <span class="card-title">{t("dashboard.chartDonutTitle")}</span>
+        <button class="card-corner" type="button" tabindex="-1" aria-hidden="true">
+          <ArrowUpRight size={14} />
+        </button>
+      </div>
+      <div class="card-body">
+        {#if $storage.scanState === "scanning"}
+          <div class="donut-status" role="status" aria-label={t("dashboard.scanningAriaLabel")}>
+            <div class="spinner" aria-hidden="true"></div>
+            <p>{t("dashboard.scanningText")}</p>
+            <span class="status-path">{$storage.folderPath}</span>
           </div>
-          <p>{t("dashboard.scanIdleHint")}</p>
-          <Button onclick={() => storage.scanFolder()}>
-            <Search size={14} />
-            {t("dashboard.scanFolderButton")}
-          </Button>
-        </div>
-
-      {:else if $storage.scanState === "scanning"}
-        <div class="storage-scanning" role="status" aria-label={t("dashboard.scanningAriaLabel")}>
-          <div class="spinner" aria-hidden="true"></div>
-          <p>{t("dashboard.scanningText")}</p>
-          <span class="scan-path">{$storage.folderPath}</span>
-        </div>
-
-      {:else if $storage.scanState === "error"}
-        <div class="storage-error">
-          <p>{t("dashboard.scanFailed")}</p>
-          <span>{$storage.errorMessage}</span>
-          <Button danger style="margin-top: 8px" onclick={() => storage.scanFolder()}>{t("dashboard.tryAgain")}</Button>
-        </div>
-
-      {:else if $storage.scanState === "done" && $storage.scanResult}
-        <div class="storage-results">
-          <div class="storage-header">
-            <div class="storage-hero">
-              <span class="hero-value">{formatBytes($storage.scanResult.total_size)}</span>
-              <span class="hero-label">{t("dashboard.totalStorage")}</span>
-            </div>
-            <div class="storage-meta">
-              <span class="meta-item">
-                <span class="meta-value">{$storage.scanResult.images.length}</span>
-                <span class="meta-label">{t("dashboard.filesLabel")}</span>
-              </span>
-              {#if $storage.scanResult.skipped > 0}
-                <span class="meta-divider"></span>
-                <span class="meta-item">
-                  <span class="meta-value">{$storage.scanResult.skipped}</span>
-                  <span class="meta-label">{t("dashboard.skippedLabel")}</span>
-                </span>
-              {/if}
-            </div>
+        {:else if $storage.scanState === "error"}
+          <div class="donut-status error" role="alert">
+            <p>{t("dashboard.scanFailed")}</p>
+            <span>{$storage.errorMessage}</span>
+            <Button danger size="sm" style="margin-top: 8px" onclick={() => storage.scanFolder()}>
+              {t("dashboard.tryAgain")}
+            </Button>
           </div>
-
-          <div class="breakdown-list">
-            {#each $breakdown as group (group.extension)}
-              <div class="breakdown-row">
-                <span class="ext-dot" data-ext={group.extension}></span>
-                <span class="ext-name">{group.extension}</span>
-                <div class="bar-track">
-                  <div
-                    class="bar-fill"
-                    style="transform: scaleX({group.percentage / 100})"
-                  ></div>
-                </div>
-                <span class="ext-size">{formatBytes(group.totalSize)}</span>
-                <span class="ext-count">{group.count}</span>
-              </div>
-            {/each}
+        {:else if hasDonutData}
+          <StorageDonut
+            segments={donutData}
+            totalLabel={formatBytes(donutTotalBytes)}
+            centerSub={t("dashboard.totalStorage")}
+            facts={donutFacts}
+            formatValue={formatBytes}
+            ariaSummary={t("dashboard.chartDonutAria", { total: formatBytes(donutTotalBytes) })}
+            tableCaption={t("dashboard.tableCaptionDonut")}
+          />
+        {:else}
+          <div class="donut-status">
+            <span class="status-icon" aria-hidden="true"><FolderOpen size={20} /></span>
+            <p>{t("dashboard.scanIdleHint")}</p>
+            <button class="status-cta" type="button" onclick={() => storage.scanFolder()}>
+              <Search size={12} />
+              {t("dashboard.scanFolderButton")}
+            </button>
           </div>
-
-          <Button class="rescan-btn" variant="ghost" onclick={() => storage.scanFolder()}>
-            <Search size={12} />
-            {t("dashboard.scanAnotherFolder")}
-          </Button>
-        </div>
-      {/if}
+        {/if}
+      </div>
     </section>
   </div>
 </div>
@@ -260,327 +259,198 @@
   .dashboard {
     display: flex;
     flex-direction: column;
-    gap: 24px;
-    padding: 28px;
-    overflow-y: auto;
+    gap: 14px;
+    /* .content-area already contributes 28px; no extra padding here. */
+    padding: 0;
     height: 100%;
+    overflow-y: auto;
   }
 
-  /* Stats Row */
-  .stats-row {
+  .dash-head {
     display: flex;
-    gap: 16px;
-  }
-
-  .stat-card {
-    flex: 1;
-    background: var(--bg-card);
-    border-radius: var(--radius-md);
-    padding: 16px;
-    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
     gap: 12px;
+  }
+
+  .dash-head h2 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+  }
+
+  .dash-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .range-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 12px;
     border: 1px solid var(--border);
-    position: relative;
-    overflow: hidden;
-  }
-
-  .stat-card::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    background: var(--accent);
-  }
-
-  .stat-icon {
-    width: 40px;
-    height: 40px;
     border-radius: var(--radius-sm);
-    background: var(--accent-subtle);
+    background: var(--bg-card);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: default;
+  }
+
+  .icon-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--accent);
-    flex-shrink: 0;
-  }
-
-  .stat-content {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-  }
-
-  .stat-value {
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--text-primary);
-    line-height: 1.2;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .stat-label {
-    font-size: 13px;
-    font-weight: 600;
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
     color: var(--text-secondary);
+    transition: background-color var(--duration-normal) var(--ease-out), color var(--duration-normal) var(--ease-out);
   }
 
-  .stat-sub {
-    font-size: 11px;
-    color: var(--text-muted);
-    margin-top: 2px;
-  }
-
-  /* Quick Actions */
-  .section-title {
-    font-size: 14px;
-    font-weight: 700;
+  .icon-btn:hover {
+    background: var(--navy-bg);
     color: var(--text-primary);
   }
 
-  .actions-grid {
+  .icon-btn:active {
+    transform: scale(0.96);
+  }
+
+  :global(button.scan-cta) {
+    background: linear-gradient(135deg, var(--chart-hero-a), var(--chart-hero-b));
+    color: var(--text-on-accent);
+  }
+
+  .row {
+    display: grid;
+    flex-shrink: 0;
+    gap: 14px;
+    min-height: 0;
+  }
+
+  .row-a {
+    grid-template-columns: 0.95fr 1.35fr;
+    min-height: 230px;
+  }
+
+  .row-b {
+    grid-template-columns: 1.25fr 1fr;
+    flex: 1;
+    min-height: 260px;
+  }
+
+  .kpi-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 16px;
-  }
-
-  .action-card:last-child:nth-child(odd) {
-    grid-column: 1 / -1;
-  }
-
-  .action-card {
-    position: relative;
-    isolation: isolate;
-    background: var(--bg-card);
-    border-radius: var(--radius-md);
-    padding: 16px;
-    display: flex;
+    grid-template-rows: 1fr 1fr;
     gap: 12px;
-    border: 1px solid var(--border);
-    cursor: pointer;
-    transition: border-color 0.15s, box-shadow 0.15s, transform var(--duration-fast) var(--ease-out);
-    text-align: left;
-  }
-
-  /* State layer: a translucent overlay behind the icon/text, not a
-     background-color swap — lets --state-hover/--state-press (defined once
-     in app.css) work over the card's own bg-card without recomputing a
-     composited color per surface. */
-  .action-card::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    border-radius: inherit;
-    background: var(--state-hover);
-    opacity: 0;
-    transition: opacity var(--duration-fast) var(--ease-out);
-    pointer-events: none;
-  }
-
-  .action-card:hover {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent-subtle);
-  }
-
-  .action-card:hover::after {
-    opacity: 1;
-  }
-
-  .action-card:active {
-    transform: scale(0.97);
-  }
-
-  .action-card:active::after {
-    background: var(--state-press);
-    opacity: 1;
-  }
-
-  .action-card:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
-
-  .action-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: var(--radius-sm);
-    background: var(--accent-subtle);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--accent);
-    flex-shrink: 0;
-  }
-
-  .action-text {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-  }
-
-  .action-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .action-desc {
-    font-size: 12px;
-    color: var(--text-muted);
-  }
-
-  /* Bottom Row */
-  .bottom-row {
-    display: flex;
-    gap: 16px;
-    flex: 1;
     min-height: 0;
   }
 
-  .activity,
-  .storage {
-    flex: 1;
-    background: var(--bg-card);
+  .chart-card {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    padding: 16px;
+    border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    padding: 20px;
-    border: 1px solid var(--border);
+    background: var(--bg-card);
+    box-shadow: var(--shadow-xs);
+  }
+
+  .card-head {
     display: flex;
-    flex-direction: column;
-    position: relative;
-    overflow: hidden;
-    min-height: 0;
-  }
-
-  .activity h3,
-  .storage h3 {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text-primary);
-    margin-bottom: 16px;
-  }
-
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    flex: 1;
-    gap: 4px;
-    color: var(--text-muted);
-  }
-
-  .empty-state p {
-    font-size: 13px;
-    font-weight: 500;
-  }
-
-  .empty-state span {
-    font-size: 11px;
-  }
-
-  .activity-list {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-  }
-
-  .activity-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 0;
-  }
-
-  .activity-icon {
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
-    background: var(--accent-subtle);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--accent);
     flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
   }
 
-  .activity-info {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    min-width: 0;
-  }
-
-  .activity-label {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-primary);
-  }
-
-  .activity-time {
+  .card-title {
     font-size: 11px;
-    color: var(--text-muted);
+    font-weight: 600;
+    color: var(--chart-tick);
+    letter-spacing: 0.02em;
   }
 
-  .activity-saved {
-    font-size: 12px;
-    font-weight: 600;
+  .card-corner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    transition: background-color var(--duration-normal) var(--ease-out), color var(--duration-normal) var(--ease-out);
+  }
+
+  .card-corner:hover {
+    background: var(--navy-bg);
     color: var(--accent-text);
   }
 
-  .activity-divider {
-    height: 1px;
-    background: var(--border);
-  }
-
-  .activity-divider:last-child {
-    display: none;
-  }
-
-  /* Storage Idle State */
-  .storage-idle {
+  .card-body {
     flex: 1;
+    min-height: 0;
+  }
+
+  .donut-status {
     display: flex;
+    height: 100%;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 12px;
+    gap: 10px;
     color: var(--text-muted);
     text-align: center;
   }
 
-  .storage-idle-icon {
-    width: 56px;
-    height: 56px;
-    border-radius: var(--radius-md);
-    background: var(--accent-subtle);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--accent);
+  .donut-status.error {
+    color: var(--danger-text);
   }
 
-  .storage-idle p {
+  .donut-status p {
     font-size: 13px;
     font-weight: 500;
-    max-width: 200px;
-    line-height: 1.4;
+    color: var(--text-secondary);
   }
 
-  /* Storage Scanning State */
-  .storage-scanning {
-    flex: 1;
+  .donut-status.error p {
+    color: var(--danger-text);
+    font-weight: 600;
+  }
+
+  .donut-status span {
+    max-width: 220px;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .status-icon {
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 12px;
-    color: var(--text-muted);
-    text-align: center;
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-md);
+    background: var(--accent-subtle);
+    color: var(--accent-text);
+  }
+
+  .status-path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .spinner {
@@ -596,271 +466,27 @@
     to { transform: rotate(360deg); }
   }
 
-  .storage-scanning p {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-secondary);
-  }
-
-  .scan-path {
-    font-size: 11px;
-    color: var(--text-muted);
-    max-width: 200px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* Storage Error State */
-  .storage-error {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    color: var(--danger);
-    text-align: center;
-  }
-
-  .storage-error p {
-    font-size: 13px;
-    font-weight: 600;
-  }
-
-  .storage-error span {
-    font-size: 11px;
-    color: var(--text-muted);
-    max-width: 200px;
-  }
-
-  /* Storage Results */
-  .storage-results {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  .storage-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    padding-bottom: 16px;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .storage-hero {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .hero-value {
-    font-size: 28px;
-    font-weight: 700;
-    color: var(--text-primary);
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -0.02em;
-  }
-
-  .hero-label {
-    font-size: 12px;
-    color: var(--text-muted);
-    font-weight: 500;
-  }
-
-  .storage-meta {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    background: var(--bg-main);
-    border-radius: var(--radius-sm);
-  }
-
-  .meta-item {
-    display: flex;
-    align-items: baseline;
-    gap: 4px;
-  }
-
-  .meta-value {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-primary);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .meta-label {
-    font-size: 11px;
-    color: var(--text-muted);
-  }
-
-  .meta-divider {
-    width: 1px;
-    height: 12px;
-    background: var(--border);
-  }
-
-  .breakdown-list {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    flex: 1;
-    overflow-y: auto;
-    padding-right: 4px;
-  }
-
-  /* Custom scrollbar */
-  .breakdown-list::-webkit-scrollbar {
-    width: 4px;
-  }
-
-  .breakdown-list::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .breakdown-list::-webkit-scrollbar-thumb {
-    background: var(--border);
-    border-radius: 2px;
-  }
-
-  .breakdown-row {
-    display: grid;
-    grid-template-columns: 10px 48px 1fr 64px 36px;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 10px;
-    border-radius: var(--radius-sm);
-    transition: background-color 0.15s;
-    min-width: 0;
-  }
-
-  .breakdown-row:hover {
-    background: var(--bg-main);
-  }
-
-  .ext-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    flex-shrink: 0;
-    background: var(--ext-color, var(--accent));
-  }
-
-  /* Extension-specific colors */
-  .ext-dot[data-ext="JPG"],
-  .ext-dot[data-ext="JPEG"] {
-    --ext-color: #f59e0b;
-  }
-
-  .ext-dot[data-ext="PNG"] {
-    --ext-color: #3b82f6;
-  }
-
-  .ext-dot[data-ext="HEIC"] {
-    --ext-color: #8b5cf6;
-  }
-
-  .ext-dot[data-ext="RAW"],
-  .ext-dot[data-ext="CR2"],
-  .ext-dot[data-ext="NEF"],
-  .ext-dot[data-ext="ARW"] {
-    --ext-color: #ef4444;
-  }
-
-  .ext-dot[data-ext="WEBP"] {
-    --ext-color: #06b6d4;
-  }
-
-  .ext-dot[data-ext="GIF"] {
-    --ext-color: #ec4899;
-  }
-
-  .ext-dot[data-ext="TIFF"],
-  .ext-dot[data-ext="TIF"] {
-    --ext-color: #14b8a6;
-  }
-
-  .ext-dot[data-ext="BMP"] {
-    --ext-color: #f97316;
-  }
-
-  .ext-name {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    letter-spacing: 0.02em;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .bar-track {
-    height: 6px;
-    background: var(--bg-main);
-    border-radius: 3px;
-    overflow: hidden;
-    min-width: 0;
-  }
-
-  .bar-fill {
-    height: 100%;
-    width: 100%;
-    background: color-mix(in oklch, var(--accent) 40%, var(--text-muted) 60%);
-    border-radius: 3px;
-    transform-origin: left;
-    transition: transform 0.4s ease-out;
-    flex-shrink: 0;
-  }
-
-  .ext-size {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-primary);
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .ext-count {
-    font-size: 11px;
-    color: var(--text-muted);
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  :global(.rescan-btn) {
+  .status-cta {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
     gap: 6px;
-    padding: 8px 14px;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--text-muted);
+    padding: 6px 14px;
+    margin-top: 2px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    transition: border-color 0.15s, color 0.15s, background-color 0.15s;
-    align-self: flex-start;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    transition: background-color var(--duration-normal) var(--ease-out), border-color var(--duration-normal) var(--ease-out);
   }
 
-  :global(.rescan-btn:hover) {
+  .status-cta:hover {
+    background: var(--accent-subtle);
     border-color: var(--accent);
     color: var(--accent-text);
-    background: var(--accent-subtle);
   }
 
-  :global(.rescan-btn:active) {
+  .status-cta:active {
     transform: scale(0.98);
   }
 </style>

@@ -41,6 +41,11 @@
      and other non-text/graphical uses (only need 3:1 or no requirement). */
   --accent-text: #0a7d47;
   --warning-text: #b45309;
+  /* --danger (#ef4444) as small text on --bg-card white is 3.76:1 (fails AA).
+     #c0362c is a darker tint of the same hue, 5.52:1 on white. Use this for
+     legible danger text (delta arrows, error copy); keep --danger for
+     icons/borders/backgrounds (only need 3:1 or no requirement). */
+  --danger-text: #c0362c;
 
   --accent-subtle: rgba(16, 216, 122, 0.08);
   --accent-hover: color-mix(in oklch, var(--accent) 85%, black);
@@ -74,6 +79,40 @@
   --state-press: color-mix(in oklch, var(--text-primary) 10%, transparent);
 
   --shadow-lg: 0 24px 48px rgba(0, 0, 0, 0.3);
+
+  /* Dashboard chart tokens — sequential green ramp for the donut/breakdown
+     marks, plus per-category line colors, grid/hatch textures, and hero-bar
+     gradient stops. Light values are a darker ramp than dark's (validated
+     with dataviz/scripts/validate_palette.js against --bg-card #ffffff: all
+     5 --chart-* steps clear 3:1 "Contrast vs surface" — the hard gate for a
+     sequential ramp; the lightness-band/CVD-separation WARN/FAIL is
+     acceptable here per the design brief since this ramp always ships with
+     direct value labels, never color-alone identity). See
+     .claude/agent-memory/revault-ui-engineer for the exact validator output. */
+  --chart-1: #0f3d21;
+  --chart-2: #14532d;
+  --chart-3: #166534;
+  --chart-4: #15803d;
+  --chart-5: #16a34a;
+  --chart-line-img: #0a7d47;
+  --chart-line-vid: #0f766e;
+  --chart-line-pdf: #475569;
+  --chart-grid: rgba(13, 21, 18, 0.06);
+  --chart-hatch: rgba(71, 85, 105, 0.35);
+  --chart-hatch-bg: rgba(13, 21, 18, 0.03);
+  /* Gradient stops for the single "hero" (current month) bar and the
+     scan-folder CTA. --text-on-accent (#0c0f0e) sits on top of both stops at
+     8.18:1 / 6.42:1 — comfortably clears AA even for normal-size button text. */
+  --chart-hero-a: #12c176;
+  --chart-hero-b: #0aab5e;
+  /* --text-muted (#7b8da6) is only 3.39:1 on --bg-card white — fails AA for
+     the small numeric tick/label text used throughout the chart components
+     (axis ticks, month labels, legend labels, tooltip sub-text, card titles).
+     #5c6b64 is a green-tinted gray (same family as the locked-dark chrome's
+     --chrome-text-muted) darkened enough to clear 5.61:1. Use --chart-tick
+     for that specific small-text role; --text-muted is still fine for
+     larger/less critical muted text elsewhere. */
+  --chart-tick: #5c6b64;
 
   --duration-fast: 0.1s;
   --duration-normal: 0.2s;
@@ -112,6 +151,9 @@
   /* Dark theme's --accent/--warning already contrast ~10:1 on --bg-card. */
   --accent-text: var(--accent);
   --warning-text: var(--warning);
+  /* --danger (#ef4444) is 5.12:1 on dark --bg-card (#0c0f0e) — already
+     clears AA, so reuse it directly rather than introducing a second color. */
+  --danger-text: var(--danger);
 
   /* Dark theme's raw --cat-* already contrast 7-11:1 on --bg-card. */
   --cat-blue-text: var(--cat-blue);
@@ -123,6 +165,25 @@
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.35);
+
+  /* Dark theme's ramp already validated (verified 2026-07): all 5 steps clear
+     3:1 against --bg-card #0c0f0e. */
+  --chart-1: #237F4E;
+  --chart-2: #2E9660;
+  --chart-3: #32A467;
+  --chart-4: #4FB87F;
+  --chart-5: #72CA9B;
+  --chart-line-img: #10D87A;
+  --chart-line-vid: #72CA9B;
+  --chart-line-pdf: #5F6B7C;
+  --chart-grid: rgba(255, 255, 255, 0.05);
+  --chart-hatch: rgba(167, 180, 173, 0.28);
+  --chart-hatch-bg: rgba(255, 255, 255, 0.025);
+  --chart-hero-a: #1af395;
+  --chart-hero-b: #0a9d5c;
+  /* --text-muted (#5a6b63) is only 3.41:1 on dark --bg-card — fails AA for
+     small chart tick/label text. #8a978f clears 6.33:1. */
+  --chart-tick: #8a978f;
 }
 
 *,

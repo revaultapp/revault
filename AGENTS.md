@@ -107,11 +107,11 @@ Source of truth is `src/app.css`.
 
 ## Testing Baseline
 
-Current test suite (verified 2026-07-17, images→PDF feature):
+Current test suite (verified 2026-07-17, images→PDF + dashboard analytics):
 
 - Rust: 208 unit tests via `cd src-tauri && cargo test`.
-- Frontend: 150 Vitest tests via `pnpm test`.
-- Total: 358 passing tests.
+- Frontend: 162 Vitest tests via `pnpm test`.
+- Total: 370 passing tests.
 
 Always verify counts after changing tests by running the commands above; this section should be updated when tests are added or removed.
 

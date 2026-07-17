@@ -19,6 +19,7 @@
   } from "$lib/stores/compress";
   import { savings } from "$lib/stores/savings";
   import { activity } from "$lib/stores/activity";
+  import { history } from "$lib/stores/history";
   import { IMAGE_EXTENSIONS } from "$lib/types";
   import { t } from "$lib/stores/locale.svelte";
 
@@ -103,6 +104,7 @@
       savings.addOriginalBytes(originalBytes);
       savings.addCompressedBytes(compressedBytes);
       savings.add($summary.savedBytes);
+      history.recordSavings("img", originalBytes, compressedBytes);
       activity.add({ type: "compress", fileCount: $summary.done, savedBytes: $summary.savedBytes });
       if (gps) {
         const n = $summary.done;

@@ -76,7 +76,7 @@
     {/if}
 
     <div class="logo-row">
-      <img class="logo-icon" src="/logo2.png" alt="" />
+      <img class="logo-icon" src="/logo-mark.png" alt="" />
       <span class="logo-text">Revault</span>
     </div>
 
