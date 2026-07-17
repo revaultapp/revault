@@ -367,6 +367,100 @@ describe("video store", () => {
     expect(get(trimError)).toBeNull();
   });
 
+  it("audioSettings persists with auto/192 defaults", async () => {
+    const { audioSettings } = await import("./video");
+    expect(get(audioSettings)).toEqual({ format: "auto", bitrateKbps: 192 });
+    audioSettings.set({ format: "mp3", bitrateKbps: 320 });
+    expect(localStorage.getItem("audio_extract_settings")).toBe(
+      '{"format":"mp3","bitrateKbps":320}'
+    );
+  });
+
+  it("extractAudioFile happy path sets done state, result and full progress", async () => {
+    mockInvoke.mockResolvedValueOnce({
+      input_path: "/test/video.mp4",
+      output_path: "/test/video_audio.m4a",
+      output_size: 4_000_000,
+      was_lossless_copy: true,
+    });
+    const {
+      audioState,
+      audioResult,
+      audioError,
+      audioProgress,
+      audioSettings,
+      extractAudioFile,
+    } = await import("./video");
+
+    audioSettings.set({ format: "auto", bitrateKbps: 192 });
+
+    const file = {
+      path: "/test/video.mp4",
+      name: "video.mp4",
+      status: "idle" as const,
+      originalSize: 0,
+      progress: 0,
+      fps: 0,
+      speed: 0,
+    };
+
+    await extractAudioFile(file);
+
+    expect(get(audioState)).toBe("done");
+    expect(get(audioResult)?.output_path).toBe("/test/video_audio.m4a");
+    expect(get(audioResult)?.was_lossless_copy).toBe(true);
+    expect(get(audioProgress)).toBe(100);
+    expect(get(audioError)).toBeNull();
+    expect(mockInvoke).toHaveBeenCalledWith("extract_audio", {
+      input: "/test/video.mp4",
+      outputDir: null,
+      format: "auto",
+      bitrateKbps: 192,
+    });
+  });
+
+  it("extractAudioFile error path sets error state", async () => {
+    mockInvoke.mockRejectedValueOnce(new Error("This file has no audio track"));
+    const { audioState, audioResult, audioError, extractAudioFile } = await import("./video");
+
+    const file = {
+      path: "/test/video.mp4",
+      name: "video.mp4",
+      status: "idle" as const,
+      originalSize: 0,
+      progress: 0,
+      fps: 0,
+      speed: 0,
+    };
+
+    await extractAudioFile(file);
+
+    expect(get(audioState)).toBe("error");
+    expect(get(audioResult)).toBeNull();
+    expect(get(audioError)).toContain("no audio track");
+  });
+
+  it("extractAudioFile cancelled path resets to idle", async () => {
+    mockInvoke.mockRejectedValueOnce(new Error("extraction cancelled"));
+    const { audioState, audioError, audioProgress, extractAudioFile } = await import("./video");
+
+    const file = {
+      path: "/test/video.mp4",
+      name: "video.mp4",
+      status: "idle" as const,
+      originalSize: 0,
+      progress: 0,
+      fps: 0,
+      speed: 0,
+    };
+
+    await extractAudioFile(file);
+
+    expect(get(audioState)).toBe("idle");
+    expect(get(audioError)).toBeNull();
+    expect(get(audioProgress)).toBe(0);
+  });
+
   describe("resolvedVideoOutputDir derived", () => {
     it("prefers the local videoOutputDir over the default", async () => {
       const { videoOutputDir, resolvedVideoOutputDir } = await import("./video");

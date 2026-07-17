@@ -5,6 +5,10 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 
 static ACTIVE_CANCEL: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
+// Separate flag from ACTIVE_CANCEL on purpose: that one doubles as the
+// "compression already running" re-entrancy guard, and an audio extraction
+// must not block a video compression (or vice versa).
+static AUDIO_CANCEL: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
 
 #[tauri::command]
 pub async fn compress_video(
@@ -75,6 +79,64 @@ pub async fn trim_video(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn extract_audio(
+    app: AppHandle,
+    input: String,
+    output_dir: Option<String>,
+    format: String,
+    bitrate_kbps: u32,
+) -> Result<video::AudioExtractResult, String> {
+    let format = match format.as_str() {
+        "auto" => video::AudioExtractFormat::Auto,
+        "mp3" => video::AudioExtractFormat::Mp3,
+        other => return Err(format!("unknown audio format: {other}")),
+    };
+    let cancel_flag = Arc::new(AtomicBool::new(false));
+    {
+        let mut active = AUDIO_CANCEL.lock().map_err(|e| e.to_string())?;
+        if active.is_some() {
+            return Err("audio extraction already running".to_string());
+        }
+        *active = Some(cancel_flag.clone());
+    }
+    let cancel_for_worker = cancel_flag.clone();
+
+    let join_result = tauri::async_runtime::spawn_blocking(move || {
+        video::extract_audio(
+            &input,
+            output_dir.as_deref(),
+            video::AudioExtractOptions {
+                format,
+                bitrate_kbps,
+            },
+            cancel_for_worker,
+            move |progress| {
+                let _ = app.emit("audio-extract-progress", &progress);
+            },
+        )
+    })
+    .await;
+
+    let mut active = AUDIO_CANCEL.lock().map_err(|e| e.to_string())?;
+    if active
+        .as_ref()
+        .map(|flag| Arc::ptr_eq(flag, &cancel_flag))
+        .unwrap_or(false)
+    {
+        *active = None;
+    }
+    join_result.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn cancel_audio_extract() -> Result<(), String> {
+    if let Some(flag) = AUDIO_CANCEL.lock().map_err(|e| e.to_string())?.as_ref() {
+        flag.store(true, Ordering::SeqCst);
+    }
+    Ok(())
 }
 
 #[tauri::command]
