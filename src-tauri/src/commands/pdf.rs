@@ -43,6 +43,37 @@ pub async fn merge_pdfs(
 }
 
 #[tauri::command]
+pub async fn images_to_pdf(
+    paths: Vec<String>,
+    output_dir: Option<String>,
+    page_size: String,
+    margin: String,
+) -> Result<pdf::ImagesToPdfResult, String> {
+    let page_size = match page_size.as_str() {
+        "fit" => pdf::PageSize::Fit,
+        "a4" => pdf::PageSize::A4,
+        "letter" => pdf::PageSize::Letter,
+        other => return Err(format!("unknown page size: {other}")),
+    };
+    let margin = match margin.as_str() {
+        "none" => pdf::PageMargin::None,
+        "small" => pdf::PageMargin::Small,
+        "big" => pdf::PageMargin::Big,
+        other => return Err(format!("unknown margin: {other}")),
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        pdf::images_to_pdf(
+            &paths,
+            output_dir.as_deref(),
+            pdf::ImagesToPdfOptions { page_size, margin },
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub async fn split_pdf(
     input: String,
     mode: String,
