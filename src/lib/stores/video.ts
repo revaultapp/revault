@@ -332,7 +332,7 @@ export async function cancelCompression(): Promise<void> {
 
 // ── GIF export ─────────────────────────────────────────────────────────────────
 
-export type VideoMode = "compress" | "gif" | "trim";
+export type VideoMode = "compress" | "gif" | "trim" | "audio";
 
 export type GifSettings = {
   startSec: number;
@@ -549,6 +549,81 @@ export async function trimVideoFile(file: VideoFile): Promise<void> {
       trimState.set("error");
       trimError.set(msg);
     }
+  }
+}
+
+// ── Audio extraction ───────────────────────────────────────────────────────────
+
+export type AudioFormat = "auto" | "mp3";
+export type AudioBitrate = 128 | 192 | 320;
+
+export type AudioSettings = { format: AudioFormat; bitrateKbps: AudioBitrate };
+
+export interface AudioExtractResult {
+  input_path: string;
+  output_path: string;
+  output_size: number;
+  was_lossless_copy: boolean;
+}
+
+export const audioSettings = persisted<AudioSettings>("audio_extract_settings", {
+  format: "auto",
+  bitrateKbps: 192,
+});
+
+export const audioState = writable<"idle" | "extracting" | "done" | "error">("idle");
+export const audioResult = writable<AudioExtractResult | null>(null);
+export const audioError = writable<string | null>(null);
+export const audioProgress = writable<number>(0);
+
+export async function extractAudioFile(file: VideoFile): Promise<void> {
+  const settings = get(audioSettings);
+
+  audioState.set("extracting");
+  audioError.set(null);
+  audioResult.set(null);
+  audioProgress.set(0);
+
+  const unlisten = await listen<VideoProgress>("audio-extract-progress", (event) => {
+    const p = event.payload;
+    if (p.input_path !== file.path) return;
+    audioProgress.set(Math.round(p.percent));
+  });
+
+  try {
+    const result = await invoke<AudioExtractResult>("extract_audio", {
+      input: file.path,
+      outputDir: get(resolvedVideoOutputDir),
+      format: settings.format,
+      bitrateKbps: settings.bitrateKbps,
+    });
+    audioProgress.set(100);
+    audioResult.set(result);
+    audioState.set("done");
+    // Deliberately NOT recording byte-level savings/history here: extraction
+    // is additive (the source video is kept), so "originalSize - outputSize"
+    // would inflate the Dashboard's space-saved figures with fake savings.
+    activity.add({ type: "video", fileCount: 1, savedBytes: 0 });
+    savings.incrementOps(1);
+  } catch (e) {
+    const msg = String(e);
+    if (msg.includes("cancelled")) {
+      audioState.set("idle");
+      audioProgress.set(0);
+    } else {
+      audioState.set("error");
+      audioError.set(msg);
+    }
+  } finally {
+    unlisten();
+  }
+}
+
+export async function cancelAudioExtract(): Promise<void> {
+  try {
+    await invoke("cancel_audio_extract");
+  } catch {
+    // best-effort cancel — process may have already exited
   }
 }
 

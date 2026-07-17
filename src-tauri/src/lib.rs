@@ -54,6 +54,8 @@ pub fn run() {
             commands::thumbnail::get_image_dimensions,
             commands::video::compress_video,
             commands::video::trim_video,
+            commands::video::extract_audio,
+            commands::video::cancel_audio_extract,
             commands::video::preview_video_compression,
             commands::video::cancel_video_compress,
             commands::video::check_ffmpeg,

@@ -55,6 +55,15 @@
     trimOutputPath,
     trimError,
     trimVideoFile,
+    audioSettings,
+    audioState,
+    audioResult,
+    audioError,
+    audioProgress,
+    extractAudioFile,
+    cancelAudioExtract,
+    type AudioFormat,
+    type AudioBitrate,
     type VideoFile,
     type VideoPreset,
     type PrivacyMode,
@@ -67,7 +76,15 @@
     { id: "compress", label: t("video.modeCompress") },
     { id: "gif", label: t("video.modeGif") },
     { id: "trim", label: t("video.modeTrim") },
+    { id: "audio", label: t("video.modeAudio") },
   ] as const);
+
+  let audioFormatSegments = $derived([
+    { id: "auto", label: t("video.audioFormatAuto") },
+    { id: "mp3", label: t("video.audioFormatMp3") },
+  ] as const);
+
+  const audioBitrateOptions = [128, 192, 320] as const;
 
   let fpSegments = $derived([
     { id: "10", label: t("video.fpLow") },
@@ -123,6 +140,11 @@
     if ($videoMode === "trim") {
       const len = Math.max(0, $trimSettings.endSec - $trimSettings.startSec);
       return t("video.accordionHeaderTrim", { length: len.toFixed(1) });
+    }
+    if ($videoMode === "audio") {
+      return $audioSettings.format === "auto"
+        ? t("video.accordionHeaderAudioAuto")
+        : t("video.accordionHeaderAudioMp3", { bitrate: $audioSettings.bitrateKbps });
     }
     const fps = $gifSettings.fps;
     const width = $gifSettings.width;
@@ -205,6 +227,12 @@
     const file = $videoFiles[0];
     if (!file || !trimValid) return;
     await trimVideoFile(file);
+  }
+
+  async function startAudioExtract() {
+    const file = $videoFiles[0];
+    if (!file) return;
+    await extractAudioFile(file);
   }
 
   async function startCompression() {
@@ -450,7 +478,7 @@
   <div class="tool-area">
   <ToolShell
     files={$videoFiles}
-    isProcessing={$isCompressing || $gifState === "generating"}
+    isProcessing={$isCompressing || $gifState === "generating" || $audioState === "extracting"}
     {targetPct}
     progressLabel={t("common.progressLabel", { done: $videoSummary.done + $videoSummary.failed, total: $videoFiles.length })}
     progressSublabel={$videoSummary.savedBytes > 0 ? t("common.savedTotal", { amount: formatBytes($videoSummary.savedBytes) }) : undefined}
@@ -461,12 +489,16 @@
       ? (!$gifskiAvailable ? "" : $gifState === "generating" ? t("video.gifExportCancel") : t("video.gifExportAction"))
       : $videoMode === "trim"
         ? (trimValid ? t("video.trimAction") : "")
-        : ($isCompressing ? t("video.compressCancel") : $videoSummary.pending === 0 && $videoFiles.length > 0 ? t("video.compressMoreAction") : t("video.compressAction"))}
+        : $videoMode === "audio"
+          ? ($audioState === "extracting" ? t("video.audioExtractCancel") : t("video.audioExtractAction"))
+          : ($isCompressing ? t("video.compressCancel") : $videoSummary.pending === 0 && $videoFiles.length > 0 ? t("video.compressMoreAction") : t("video.compressAction"))}
     onaction={$videoMode === "gif"
       ? ($gifState === "generating" ? cancelGifExport : startGifExport)
       : $videoMode === "trim"
         ? startTrim
-        : ($isCompressing ? cancelCompression : $videoSummary.pending === 0 && $videoFiles.length > 0 ? compressMore : startCompression)}
+        : $videoMode === "audio"
+          ? ($audioState === "extracting" ? cancelAudioExtract : startAudioExtract)
+          : ($isCompressing ? cancelCompression : $videoSummary.pending === 0 && $videoFiles.length > 0 ? compressMore : startCompression)}
     actionLoading={$videoMode === "trim" && $trimState === "trimming"}
     {headerText}
     dropZoneTitle={t("video.dropZoneTitle")}
@@ -681,6 +713,43 @@
               </p>
             </div>
 
+          {:else if $videoMode === "audio"}
+            <!-- Audio extraction controls -->
+            <div class="control-group">
+              <span class="label">{t("video.audioFormatLabel")}</span>
+              <div class="pills">
+                {#each audioFormatSegments as seg}
+                  <button
+                    class="pill"
+                    class:active={$audioSettings.format === seg.id}
+                    aria-pressed={$audioSettings.format === seg.id}
+                    onclick={() => audioSettings.update(s => ({ ...s, format: seg.id as AudioFormat }))}
+                  >{seg.label}</button>
+                {/each}
+              </div>
+              {#key $audioSettings.format}
+                <p
+                  class="privacy-hint"
+                  in:fade={{ duration: rm ? 0 : 150, easing: cubicOut }}
+                  out:fade={{ duration: rm ? 0 : 100, easing: cubicOut }}
+                >{$audioSettings.format === "auto" ? t("video.audioFormatAutoHint") : t("video.audioFormatMp3Hint")}</p>
+              {/key}
+            </div>
+
+            <div class="control-group">
+              <span class="label">{t("video.audioBitrateLabel")}</span>
+              <div class="pills">
+                {#each audioBitrateOptions as kbps}
+                  <button
+                    class="pill"
+                    class:active={$audioSettings.bitrateKbps === kbps}
+                    aria-pressed={$audioSettings.bitrateKbps === kbps}
+                    onclick={() => audioSettings.update(s => ({ ...s, bitrateKbps: kbps as AudioBitrate }))}
+                  >{kbps} kbps</button>
+                {/each}
+              </div>
+            </div>
+
           {:else}
             <!-- GIF mode controls -->
             {#if $gifskiAvailable === false}
@@ -793,7 +862,7 @@
           {/if}
 
           <!-- Carpeta output — visible in both modes -->
-          {#if $videoMode === "compress" || $videoMode === "trim" || $gifskiAvailable}
+          {#if $videoMode === "compress" || $videoMode === "trim" || $videoMode === "audio" || $gifskiAvailable}
             <div class="control-group">
               <span class="label">{t("video.folderLabel")}</span>
               <button class="btn-ghost output-btn" onclick={browseOutputDir}>
@@ -867,6 +936,47 @@
       <div class="gif-error-card" role="alert">
         <CircleAlert size={14} />
         <span>{$trimError}</span>
+      </div>
+    {/if}
+
+    <!-- Audio extraction progress -->
+    {#if $videoMode === "audio" && $audioState === "extracting"}
+      <div class="gif-progress-block" role="status" aria-live="polite" aria-label={t("video.extractingAudioAriaLabel")}>
+        <div class="gif-progress-header">
+          <span class="gif-progress-label">{t("video.extractingAudioLabel")}</span>
+          <span class="gif-progress-pct">{$audioProgress}%</span>
+        </div>
+        <div class="gif-enc-track" role="progressbar" aria-valuenow={$audioProgress} aria-valuemin={0} aria-valuemax={100}>
+          <div class="gif-enc-fill" style="transform: scaleX({$audioProgress / 100})"></div>
+        </div>
+      </div>
+    {/if}
+
+    <!-- Audio done state -->
+    {#if $videoMode === "audio" && $audioState === "done" && $audioResult}
+      <div class="gif-done">
+        <CircleCheck size={28} color="var(--accent)" />
+        <span class="gif-done-name">{$audioResult.output_path.split(/[\\/]/).pop()}</span>
+        <span class="gif-done-meta">
+          {formatMB($audioResult.output_size)}
+          {#if $audioResult.was_lossless_copy}
+            <span class="lossless-badge"><CircleCheck size={11} />{t("video.losslessBadge")}</span>
+          {/if}
+        </span>
+        <div class="gif-done-actions">
+          <button class="btn-primary-sm" onclick={() => revealVideoOutput($audioResult!.output_path)}>
+            <FolderOpen size={14} />
+            {t("video.showInFolderAction")}
+          </button>
+          <button class="btn-ghost" onclick={() => { audioState.set("idle"); audioResult.set(null); audioProgress.set(0); }}>
+            {t("video.extractAnotherAudio")}
+          </button>
+        </div>
+      </div>
+    {:else if $videoMode === "audio" && $audioState === "error" && $audioError}
+      <div class="gif-error-card" role="alert">
+        <CircleAlert size={14} />
+        <span>{$audioError}</span>
       </div>
     {/if}
   </ToolShell>

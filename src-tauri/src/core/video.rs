@@ -725,6 +725,307 @@ pub fn trim_video(
     })
 }
 
+// ---------- Audio extraction ----------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AudioExtractFormat {
+    /// Stream-copy AAC into .m4a when possible; otherwise transcode to MP3.
+    Auto,
+    /// Always transcode to MP3 at the requested bitrate.
+    Mp3,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct AudioExtractOptions {
+    pub format: AudioExtractFormat,
+    pub bitrate_kbps: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AudioExtractResult {
+    pub input_path: String,
+    pub output_path: String,
+    pub output_size: u64,
+    pub was_lossless_copy: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AudioProbe {
+    pub has_audio: bool,
+    pub codec_name: Option<String>,
+    /// Absolute stream index + codec of a cover-art video stream
+    /// (disposition.attached_pic == 1), if the container carries one.
+    pub attached_pic_index: Option<u64>,
+    pub attached_pic_codec: Option<String>,
+}
+
+fn parse_audio_probe_from_json(json: &serde_json::Value) -> AudioProbe {
+    let empty = Vec::new();
+    let streams = json
+        .get("streams")
+        .and_then(|s| s.as_array())
+        .unwrap_or(&empty);
+
+    let audio = streams
+        .iter()
+        .find(|s| s.get("codec_type").and_then(|v| v.as_str()) == Some("audio"));
+
+    let attached_pic = streams.iter().find(|s| {
+        s.get("codec_type").and_then(|v| v.as_str()) == Some("video")
+            && s.get("disposition")
+                .and_then(|d| d.get("attached_pic"))
+                .and_then(|v| v.as_i64())
+                == Some(1)
+    });
+
+    AudioProbe {
+        has_audio: audio.is_some(),
+        codec_name: audio
+            .and_then(|s| s.get("codec_name"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        attached_pic_index: attached_pic
+            .and_then(|s| s.get("index"))
+            .and_then(|v| v.as_u64()),
+        attached_pic_codec: attached_pic
+            .and_then(|s| s.get("codec_name"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+    }
+}
+
+pub fn probe_audio_stream(path: &str) -> Result<AudioProbe, String> {
+    let probe_bin = ffprobe_path();
+    let output = std::process::Command::new(&probe_bin)
+        .args([
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
+            "-show_streams",
+            path,
+        ])
+        .output()
+        .map_err(|e| format!("ffprobe failed: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("ffprobe exited with error: {}", stderr));
+    }
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).map_err(|e| format!("ffprobe JSON parse: {}", e))?;
+    Ok(parse_audio_probe_from_json(&json))
+}
+
+/// Builds the output-side ffmpeg args for an extraction.
+/// Returns `(extension, was_lossless_copy, args)`. Pure — unit-testable
+/// without spawning ffmpeg (the FfmpegCommand builder isn't introspectable,
+/// same reasoning as `trim_time_args`).
+fn audio_extract_plan(
+    probe: &AudioProbe,
+    opts: AudioExtractOptions,
+) -> Result<(&'static str, bool, Vec<String>), String> {
+    if !probe.has_audio {
+        return Err("This file has no audio track".to_string());
+    }
+
+    let lossless = matches!(opts.format, AudioExtractFormat::Auto)
+        && probe.codec_name.as_deref() == Some("aac");
+    let ext = if lossless { "m4a" } else { "mp3" };
+
+    if !lossless && !(64..=320).contains(&opts.bitrate_kbps) {
+        return Err(format!(
+            "MP3 bitrate {} kbps is out of range (64-320)",
+            opts.bitrate_kbps
+        ));
+    }
+
+    // Explicit -map: ffmpeg's default stream selection picks the audio track
+    // with the MOST channels, not the first — a dual-language or 5.1+commentary
+    // MP4 would silently extract the wrong track without this.
+    let mut args: Vec<String> = vec!["-map".into(), "0:a:0".into()];
+
+    // Cover art lives in the container as a video stream with the attached_pic
+    // disposition — a plain -vn would drop it. Only mjpeg/png covers are
+    // stream-copyable into both mp3 (ID3 APIC) and m4a; anything else falls
+    // back to -vn rather than failing the whole extraction.
+    let cover = match (
+        probe.attached_pic_index,
+        probe.attached_pic_codec.as_deref(),
+    ) {
+        (Some(idx), Some("mjpeg" | "png")) => Some(idx),
+        _ => None,
+    };
+    if let Some(idx) = cover {
+        args.push("-map".into());
+        args.push(format!("0:{}", idx));
+        args.push("-c:v".into());
+        args.push("copy".into());
+        if lossless {
+            args.push("-disposition:v:0".into());
+            args.push("attached_pic".into());
+        } else {
+            args.push("-id3v2_version".into());
+            args.push("3".into());
+        }
+    } else {
+        args.push("-vn".into());
+    }
+
+    if lossless {
+        args.push("-c:a".into());
+        args.push("copy".into());
+    } else {
+        args.push("-c:a".into());
+        args.push("libmp3lame".into());
+        args.push("-b:a".into());
+        args.push(format!("{}k", opts.bitrate_kbps));
+    }
+
+    // Extraction is not a privacy feature: keep title/artist/album tags.
+    args.push("-map_metadata".into());
+    args.push("0".into());
+
+    Ok((ext, lossless, args))
+}
+
+/// `resolve_video_output_path` can't force an arbitrary extension (it only
+/// conditionally remaps mov→mp4), so audio outputs get their own resolver:
+/// `{stem}_audio.{ext}`, non-clobbering via `first_available_path`.
+fn resolve_audio_output_path(
+    input_path: &str,
+    output_dir: Option<&str>,
+    ext: &str,
+) -> Result<String, String> {
+    let input = Path::new(input_path);
+    let stem = input
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("audio");
+    let dir = match output_dir {
+        Some(d) => crate::core::paths::validate_output_dir(d)?,
+        None => input.parent().unwrap_or(Path::new(".")).to_path_buf(),
+    };
+    let mut reserved = HashSet::new();
+    let out = crate::core::paths::first_available_path(
+        &dir.join(format!("{stem}_audio.{ext}")),
+        &mut reserved,
+    );
+    out.to_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Output path contains invalid UTF-8".to_string())
+}
+
+pub fn extract_audio(
+    input_path: &str,
+    output_dir: Option<&str>,
+    opts: AudioExtractOptions,
+    cancelled: Arc<AtomicBool>,
+    progress_cb: impl Fn(VideoProgress) + Send,
+) -> Result<AudioExtractResult, String> {
+    crate::core::paths::validate_input_path(input_path, false)?;
+    // Duration for progress %; probe failure is a hard error (same policy as
+    // compress_video: media we can't probe is media we can't reliably process).
+    let stats = probe_video_stats(input_path)
+        .map_err(|e| format!("Cannot read media metadata for '{}': {}", input_path, e))?;
+    let probe = probe_audio_stream(input_path)?;
+    let (ext, was_lossless_copy, plan_args) = audio_extract_plan(&probe, opts)?;
+
+    let output_path = resolve_audio_output_path(input_path, output_dir, ext)?;
+    let output_file = PathBuf::from(&output_path);
+    let temp_output =
+        crate::core::paths::temporary_output_path(&output_file, "Output", "audio", ext)?;
+    let temp_output_str = temp_output
+        .to_str()
+        .ok_or_else(|| "Temporary output path contains invalid UTF-8".to_string())?
+        .to_string();
+
+    if cancelled.load(Ordering::SeqCst) {
+        return Err("cancelled".to_string());
+    }
+
+    let total_duration = stats.duration_sec;
+    let ffmpeg_bin = get_ffmpeg_path();
+    let mut cmd = FfmpegCommand::new_with_path(ffmpeg_bin);
+    // -fflags +genpts: same malformed-input tolerance as compress_video
+    // (input-side option, must precede -i).
+    cmd.arg("-fflags")
+        .arg("+genpts")
+        .input(input_path)
+        .overwrite();
+    for arg in &plan_args {
+        cmd.arg(arg);
+    }
+    cmd.output(&temp_output_str);
+
+    let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+    let encode_result: Result<(), String> = (|| {
+        let mut ffmpeg_errors: Vec<String> = Vec::new();
+        for event in child.iter().map_err(|e| e.to_string())? {
+            match event {
+                FfmpegEvent::Progress(p) => {
+                    let current_secs = parse_time_to_secs(&p.time).unwrap_or(0.0);
+                    let percent = if total_duration > 0.0 {
+                        ((current_secs / total_duration) * 100.0).min(100.0) as f32
+                    } else {
+                        0.0
+                    };
+                    progress_cb(VideoProgress {
+                        input_path: input_path.to_string(),
+                        percent,
+                        fps: p.fps,
+                        size_kb: p.size_kb,
+                        speed: p.speed,
+                    });
+                }
+                FfmpegEvent::Log(level, msg) => {
+                    use ffmpeg_sidecar::event::LogLevel;
+                    if matches!(level, LogLevel::Fatal | LogLevel::Error) {
+                        ffmpeg_errors.push(msg);
+                    }
+                }
+                _ => {}
+            }
+            if cancelled.load(Ordering::SeqCst) {
+                let _ = child.kill();
+                let _ = std::fs::remove_file(&temp_output);
+                return Err("cancelled".to_string());
+            }
+        }
+        if !ffmpeg_errors.is_empty() {
+            return Err(ffmpeg_errors.join("; "));
+        }
+        Ok(())
+    })();
+    // Always reap the child — success, error, or cancel-kill — to avoid
+    // zombie ffmpeg processes (the PR #71 bug class).
+    let _ = child.wait();
+
+    if let Err(e) = encode_result {
+        let _ = std::fs::remove_file(&temp_output);
+        return Err(e);
+    }
+
+    let output_size = std::fs::metadata(&temp_output)
+        .map_err(|e| {
+            format!(
+                "FFmpeg produced no output — extraction likely failed: {}",
+                e
+            )
+        })?
+        .len();
+    crate::core::paths::install_temp_output(&temp_output, &output_file, "output")?;
+
+    Ok(AudioExtractResult {
+        input_path: input_path.to_string(),
+        output_path,
+        output_size,
+        was_lossless_copy,
+    })
+}
+
 pub fn reveal_in_file_manager(path: &str) -> Result<(), String> {
     let canonical = crate::core::paths::validate_input_path(path, false)?;
     let canonical_str = canonical
@@ -1588,5 +1889,194 @@ mod tests {
 
         let err = extract_single_binary_zip(&bytes, "ffmpeg", dir.path()).unwrap_err();
         assert!(err.contains("missing expected binary"), "got: {}", err);
+    }
+
+    // ---- audio extraction ----
+
+    fn probe_from(streams: serde_json::Value) -> AudioProbe {
+        parse_audio_probe_from_json(&serde_json::json!({ "streams": streams }))
+    }
+
+    fn opts(format: AudioExtractFormat, bitrate_kbps: u32) -> AudioExtractOptions {
+        AudioExtractOptions {
+            format,
+            bitrate_kbps,
+        }
+    }
+
+    #[test]
+    fn parse_audio_probe_finds_aac_track() {
+        let probe = probe_from(serde_json::json!([
+            { "index": 0, "codec_type": "video", "codec_name": "h264",
+              "disposition": { "attached_pic": 0 } },
+            { "index": 1, "codec_type": "audio", "codec_name": "aac" }
+        ]));
+        assert!(probe.has_audio);
+        assert_eq!(probe.codec_name.as_deref(), Some("aac"));
+        assert_eq!(probe.attached_pic_index, None);
+    }
+
+    #[test]
+    fn parse_audio_probe_detects_missing_audio() {
+        let probe = probe_from(serde_json::json!([
+            { "index": 0, "codec_type": "video", "codec_name": "h264" }
+        ]));
+        assert!(!probe.has_audio);
+        assert_eq!(probe.codec_name, None);
+    }
+
+    #[test]
+    fn parse_audio_probe_finds_attached_pic() {
+        let probe = probe_from(serde_json::json!([
+            { "index": 0, "codec_type": "video", "codec_name": "h264",
+              "disposition": { "attached_pic": 0 } },
+            { "index": 1, "codec_type": "audio", "codec_name": "aac" },
+            { "index": 2, "codec_type": "video", "codec_name": "mjpeg",
+              "disposition": { "attached_pic": 1 } }
+        ]));
+        assert_eq!(probe.attached_pic_index, Some(2));
+        assert_eq!(probe.attached_pic_codec.as_deref(), Some("mjpeg"));
+    }
+
+    #[test]
+    fn audio_plan_auto_aac_is_lossless_m4a_copy() {
+        let probe = probe_from(serde_json::json!([
+            { "index": 0, "codec_type": "audio", "codec_name": "aac" }
+        ]));
+        let (ext, lossless, args) =
+            audio_extract_plan(&probe, opts(AudioExtractFormat::Auto, 192)).unwrap();
+        let joined = args.join(" ");
+        assert_eq!(ext, "m4a");
+        assert!(lossless);
+        assert!(joined.contains("-map 0:a:0"));
+        assert!(joined.contains("-c:a copy"));
+        assert!(joined.contains("-vn"), "no cover art → -vn expected");
+        assert!(!joined.contains("libmp3lame"));
+    }
+
+    #[test]
+    fn audio_plan_auto_opus_transcodes_to_mp3() {
+        let probe = probe_from(serde_json::json!([
+            { "index": 0, "codec_type": "audio", "codec_name": "opus" }
+        ]));
+        let (ext, lossless, args) =
+            audio_extract_plan(&probe, opts(AudioExtractFormat::Auto, 192)).unwrap();
+        let joined = args.join(" ");
+        assert_eq!(ext, "mp3");
+        assert!(!lossless);
+        assert!(joined.contains("-c:a libmp3lame"));
+        assert!(joined.contains("-b:a 192k"));
+    }
+
+    #[test]
+    fn audio_plan_forced_mp3_transcodes_even_aac() {
+        let probe = probe_from(serde_json::json!([
+            { "index": 0, "codec_type": "audio", "codec_name": "aac" }
+        ]));
+        let (ext, lossless, args) =
+            audio_extract_plan(&probe, opts(AudioExtractFormat::Mp3, 320)).unwrap();
+        assert_eq!(ext, "mp3");
+        assert!(!lossless);
+        assert!(args.join(" ").contains("-b:a 320k"));
+    }
+
+    #[test]
+    fn audio_plan_rejects_out_of_range_bitrate() {
+        let probe = probe_from(serde_json::json!([
+            { "index": 0, "codec_type": "audio", "codec_name": "mp3" }
+        ]));
+        let err = audio_extract_plan(&probe, opts(AudioExtractFormat::Mp3, 32)).unwrap_err();
+        assert!(err.contains("out of range"), "got: {}", err);
+    }
+
+    #[test]
+    fn audio_plan_errors_without_audio_track() {
+        let probe = probe_from(serde_json::json!([
+            { "index": 0, "codec_type": "video", "codec_name": "h264" }
+        ]));
+        let err = audio_extract_plan(&probe, opts(AudioExtractFormat::Auto, 192)).unwrap_err();
+        assert!(err.contains("no audio track"), "got: {}", err);
+    }
+
+    #[test]
+    fn audio_plan_maps_mjpeg_cover_art_for_mp3() {
+        let probe = probe_from(serde_json::json!([
+            { "index": 0, "codec_type": "audio", "codec_name": "opus" },
+            { "index": 1, "codec_type": "video", "codec_name": "mjpeg",
+              "disposition": { "attached_pic": 1 } }
+        ]));
+        let (_, _, args) = audio_extract_plan(&probe, opts(AudioExtractFormat::Mp3, 192)).unwrap();
+        let joined = args.join(" ");
+        assert!(joined.contains("-map 0:1"));
+        assert!(joined.contains("-c:v copy"));
+        assert!(joined.contains("-id3v2_version 3"));
+        assert!(!joined.contains("-vn"));
+    }
+
+    #[test]
+    fn audio_plan_m4a_cover_keeps_attached_pic_disposition() {
+        let probe = probe_from(serde_json::json!([
+            { "index": 0, "codec_type": "audio", "codec_name": "aac" },
+            { "index": 1, "codec_type": "video", "codec_name": "png",
+              "disposition": { "attached_pic": 1 } }
+        ]));
+        let (ext, _, args) =
+            audio_extract_plan(&probe, opts(AudioExtractFormat::Auto, 192)).unwrap();
+        assert_eq!(ext, "m4a");
+        assert!(args.join(" ").contains("-disposition:v:0 attached_pic"));
+    }
+
+    #[test]
+    fn audio_plan_unsupported_cover_codec_falls_back_to_vn() {
+        let probe = probe_from(serde_json::json!([
+            { "index": 0, "codec_type": "audio", "codec_name": "aac" },
+            { "index": 1, "codec_type": "video", "codec_name": "hevc",
+              "disposition": { "attached_pic": 1 } }
+        ]));
+        let (_, _, args) = audio_extract_plan(&probe, opts(AudioExtractFormat::Auto, 192)).unwrap();
+        let joined = args.join(" ");
+        assert!(joined.contains("-vn"));
+        assert!(!joined.contains("-c:v copy"));
+    }
+
+    #[test]
+    fn audio_plan_always_preserves_metadata() {
+        let probe = probe_from(serde_json::json!([
+            { "index": 0, "codec_type": "audio", "codec_name": "aac" }
+        ]));
+        let (_, _, args) = audio_extract_plan(&probe, opts(AudioExtractFormat::Auto, 192)).unwrap();
+        assert!(args.join(" ").contains("-map_metadata 0"));
+    }
+
+    #[test]
+    fn resolve_audio_output_path_uses_audio_suffix_and_forced_ext() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("clip.mp4");
+        std::fs::write(&input, b"x").unwrap();
+        let out = resolve_audio_output_path(input.to_str().unwrap(), None, "m4a").unwrap();
+        assert!(out.ends_with("clip_audio.m4a"), "got: {}", out);
+    }
+
+    #[test]
+    fn resolve_audio_output_path_does_not_clobber() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("clip.mp4");
+        std::fs::write(&input, b"x").unwrap();
+        std::fs::write(dir.path().join("clip_audio.mp3"), b"existing").unwrap();
+        let out = resolve_audio_output_path(input.to_str().unwrap(), None, "mp3").unwrap();
+        assert!(out.ends_with("clip_audio_2.mp3"), "got: {}", out);
+    }
+
+    #[test]
+    fn resolve_audio_output_path_rejects_missing_output_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("clip.mp4");
+        std::fs::write(&input, b"x").unwrap();
+        assert!(resolve_audio_output_path(
+            input.to_str().unwrap(),
+            Some("/nonexistent/dir"),
+            "mp3"
+        )
+        .is_err());
     }
 }
