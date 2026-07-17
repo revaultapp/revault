@@ -1,9 +1,11 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
   import { openPath } from "@tauri-apps/plugin-opener";
+  import { invoke } from "@tauri-apps/api/core";
   import {
     CircleCheck, CircleAlert, X, FolderOpen, Trash2,
     Minimize2, Combine, Scissors, ArrowUp, ArrowDown, FileText,
+    Images, Image as ImageIcon,
   } from "lucide-svelte";
   import { fly } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
@@ -17,6 +19,8 @@
   import { browseOutputDir, formatBytes } from "$lib/utils";
   import { activity } from "$lib/stores/activity";
   import { history } from "$lib/stores/history";
+  import { savings } from "$lib/stores/savings";
+  import { IMAGE_EXTENSIONS, IMAGE_EXTENSIONS_RE } from "$lib/types";
   import {
     files, isProcessing, summary, outputDir, stripMetadata, compressStreams,
     compressImages,
@@ -24,6 +28,8 @@
     revealPdfOutput, type PdfFile,
     mergeFiles, isMerging, mergeResult, mergeError,
     addMergeFiles, removeMergeFile, moveMergeFile, clearMerge, mergePdfs,
+    imageFiles, isBuildingPdf, imagesResult, imagesError, pageSize, pageMargin,
+    addImageFiles, removeImageFile, moveImageFile, clearImages, imagesToPdf,
     splitFile, isSplitting, splitResults, splitError,
     setSplitFile, clearSplit, splitPdf, type SplitKind,
   } from "$lib/stores/pdf";
@@ -40,9 +46,10 @@
     { id: "optimize", label: t("pdf.modeOptimize"), icon: Minimize2 },
     { id: "merge", label: t("pdf.modeMerge"), icon: Combine },
     { id: "split", label: t("pdf.modeSplit"), icon: Scissors },
+    { id: "imagesToPdf", label: t("pdf.modeImagesToPdf"), icon: Images },
   ] as const);
 
-  let mode = $state<"optimize" | "merge" | "split">("optimize");
+  let mode = $state<"optimize" | "merge" | "split" | "imagesToPdf">("optimize");
 
   const rm = $derived(prefersReducedMotion.current);
 
@@ -144,6 +151,68 @@
     await mergePdfs($resolvedOutputDir);
     if ($mergeResult) {
       activity.add({ type: "merge", fileCount, savedBytes: 0 });
+    }
+  }
+
+  // --- Images → PDF ---
+
+  let pageSizes = $derived([
+    { id: "a4", label: "A4" },
+    { id: "letter", label: t("pdf.pageSizeLetter") },
+    { id: "fit", label: t("pdf.pageSizeFit") },
+  ] as const);
+
+  let marginChoices = $derived([
+    { id: "none", label: t("pdf.marginNone") },
+    { id: "small", label: t("pdf.marginSmall") },
+    { id: "big", label: t("pdf.marginBig") },
+  ] as const);
+
+  let imageThumbs = $state<Record<string, string>>({});
+  const requestedThumbs = new Set<string>();
+  $effect(() => {
+    for (const f of $imageFiles) {
+      if (requestedThumbs.has(f.path)) continue;
+      requestedThumbs.add(f.path);
+      invoke<string>("generate_thumbnail", { path: f.path })
+        .then((uri) => { imageThumbs[f.path] = uri; })
+        .catch(() => {});
+    }
+  });
+
+  async function browseImageFiles() {
+    const selected = await open({
+      multiple: true,
+      filters: [{ name: t("dropZone.filePickerName"), extensions: [...IMAGE_EXTENSIONS] }],
+    });
+    if (selected) handleImagesAdd(Array.isArray(selected) ? selected : [selected]);
+  }
+
+  function handleImagesAdd(paths: string[]) {
+    const valid = paths.filter((p) => IMAGE_EXTENSIONS_RE.test(p));
+    if (valid.length > 0) addImageFiles(valid);
+  }
+
+  async function startImagesToPdf() {
+    if ($imageFiles.length < 1) return;
+    const fileCount = $imageFiles.length;
+    const paths = $imageFiles.map((f) => f.path);
+    await imagesToPdf($resolvedOutputDir);
+    if ($imagesResult) {
+      let savedBytes = 0;
+      try {
+        const sizes = await invoke<number[]>("get_file_sizes", { paths });
+        const originalBytes = sizes.reduce((a, b) => a + b, 0);
+        savings.incrementOps(fileCount);
+        savings.addOriginalBytes(originalBytes);
+        savings.addCompressedBytes($imagesResult.outputSize);
+        savedBytes = Math.max(0, originalBytes - $imagesResult.outputSize);
+        if (savedBytes > 0) savings.add(savedBytes);
+        history.recordSavings("pdf", originalBytes, $imagesResult.outputSize);
+      } catch {
+        // sizes are best-effort; the PDF was still created
+      }
+      activity.add({ type: "convert", fileCount, savedBytes });
     }
   }
 
@@ -350,6 +419,106 @@
             </div>
             <Button class="action-btn" loading={$isMerging} disabled={$mergeFiles.length < 2} onclick={startMerge}>
               {t("pdf.mergeAction")}
+            </Button>
+          </div>
+        </div>
+      {/if}
+    {:else if mode === "imagesToPdf"}
+      {#if $imageFiles.length === 0}
+        <div class="mode-empty">
+          <DropZone
+            onfiles={handleImagesAdd}
+            dropTitle={t("pdf.dropTitleImagesToPdf")}
+          />
+        </div>
+      {:else if $imagesResult}
+        <div class="result-view">
+          <div class="result-card">
+            <CircleCheck size={28} color="var(--accent)" />
+            <span class="result-name">{$imagesResult.outputPath.split(/[\\/]/).pop()}</span>
+            <span class="result-meta">
+              {formatBytes($imagesResult.outputSize)} · {$imagesResult.pageCount === 1 ? t("pdf.pageCountOne", { count: $imagesResult.pageCount }) : t("pdf.pageCountOther", { count: $imagesResult.pageCount })}
+            </span>
+            <div class="result-actions">
+              <button class="btn-primary-sm" onclick={() => revealPdfOutput($imagesResult!.outputPath)}>
+                <FolderOpen size={14} />
+                {t("pdf.revealAction")}
+              </button>
+              <button class="btn-ghost" onclick={clearImages}>{t("pdf.imagesToPdfAnotherAction")}</button>
+            </div>
+          </div>
+        </div>
+      {:else}
+        <div class="tool-view">
+          <div class="header">
+            <div class="header-left">
+              <h2>{$imageFiles.length === 1 ? t("pdf.imagesSelectedOne", { count: $imageFiles.length }) : t("pdf.imagesSelectedOther", { count: $imageFiles.length })}</h2>
+              <span class="sub">{t("pdf.reorderImagesHint")}</span>
+            </div>
+            <div class="header-actions">
+              <button class="btn-ghost" onclick={browseImageFiles}>{t("pdf.addMoreAction")}</button>
+              <button class="btn-ghost danger" onclick={clearImages}>
+                <Trash2 size={14} />
+                {t("pdf.clearAction")}
+              </button>
+            </div>
+          </div>
+
+          {#if $imagesError}
+            <div class="error-card" role="alert">
+              <CircleAlert size={14} />
+              <span>{$imagesError}</span>
+            </div>
+          {/if}
+
+          <div class="merge-list">
+            {#each $imageFiles as file, i (file.path)}
+              <div
+                class="merge-row"
+                in:fly={{ y: 8, opacity: 0, duration: rm ? 0 : 220, delay: rm ? 0 : Math.min(i, 9) * 40, easing: cubicOut }}
+              >
+                <span class="merge-index">{i + 1}</span>
+                {#if imageThumbs[file.path]}
+                  <img class="i2p-thumb" src={imageThumbs[file.path]} alt="" />
+                {:else}
+                  <div class="i2p-thumb i2p-thumb-placeholder"><ImageIcon size={16} /></div>
+                {/if}
+                <span class="merge-name">{file.name}</span>
+                <div class="merge-actions">
+                  <button class="btn-icon" disabled={i === 0} onclick={() => moveImageFile(file.path, -1)} aria-label={t("pdf.moveUpAriaLabel", { name: file.name })}>
+                    <ArrowUp size={14} />
+                  </button>
+                  <button class="btn-icon" disabled={i === $imageFiles.length - 1} onclick={() => moveImageFile(file.path, 1)} aria-label={t("pdf.moveDownAriaLabel", { name: file.name })}>
+                    <ArrowDown size={14} />
+                  </button>
+                  <button class="btn-icon" onclick={() => removeImageFile(file.path)} aria-label={t("pdf.removeFileAriaLabel", { name: file.name })}>
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+            {/each}
+          </div>
+
+          <div class="controls">
+            <div class="control-group">
+              <span class="label">{t("pdf.pageSizeLabel")}</span>
+              <SegmentedControl segments={pageSizes} bind:selected={$pageSize} label={t("pdf.pageSizeAriaLabel")} />
+            </div>
+            {#if $pageSize !== "fit"}
+              <div class="control-group">
+                <span class="label">{t("pdf.marginLabel")}</span>
+                <SegmentedControl segments={marginChoices} bind:selected={$pageMargin} label={t("pdf.marginAriaLabel")} />
+              </div>
+            {/if}
+            <div class="control-group">
+              <span class="label">{t("common.outputLabel")}</span>
+              <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
+                <FolderOpen size={14} />
+                {$outputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
+              </button>
+            </div>
+            <Button class="action-btn" loading={$isBuildingPdf} disabled={$imageFiles.length < 1} onclick={startImagesToPdf}>
+              {t("pdf.imagesToPdfAction")}
             </Button>
           </div>
         </div>
@@ -654,6 +823,25 @@
 
   .merge-actions .btn-icon:hover:not(:disabled) { color: var(--accent); }
   .merge-actions .btn-icon:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* --- Images → PDF list thumbnails --- */
+
+  .i2p-thumb {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    object-fit: cover;
+    border-radius: 6px;
+    background: var(--bg-main);
+  }
+
+  .i2p-thumb-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+  }
 
   /* --- Controls row (Merge / Split) --- */
 

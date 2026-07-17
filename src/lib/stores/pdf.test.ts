@@ -28,6 +28,17 @@ import {
   setSplitFile,
   clearSplit,
   splitPdf,
+  imageFiles,
+  isBuildingPdf,
+  imagesResult,
+  imagesError,
+  pageSize,
+  pageMargin,
+  addImageFiles,
+  removeImageFile,
+  moveImageFile,
+  clearImages,
+  imagesToPdf,
 } from "./pdf";
 import { defaultOutputDir } from "./settings";
 
@@ -47,6 +58,9 @@ describe("pdf store", () => {
     mockInvoke.mockReset();
     clearMerge();
     clearSplit();
+    clearImages();
+    pageSize.set("a4");
+    pageMargin.set("small");
   });
 
   describe("addFiles", () => {
@@ -283,6 +297,92 @@ describe("pdf store", () => {
     it("is a no-op when no split file is set", async () => {
       await splitPdf("each", undefined, undefined, null);
       expect(mockInvoke).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("addImageFiles / removeImageFile / moveImageFile", () => {
+    it("adds files preserving order and dedupes", () => {
+      addImageFiles(["/pics/a.jpg", "/pics/b.png"]);
+      addImageFiles(["/pics/b.png", "/pics/c.heic"]);
+      expect(get(imageFiles).map((f) => f.path)).toEqual(["/pics/a.jpg", "/pics/b.png", "/pics/c.heic"]);
+    });
+
+    it("removes a file by path", () => {
+      addImageFiles(["/pics/a.jpg", "/pics/b.png"]);
+      removeImageFile("/pics/a.jpg");
+      expect(get(imageFiles).map((f) => f.path)).toEqual(["/pics/b.png"]);
+    });
+
+    it("moves a file up and down without going out of bounds", () => {
+      addImageFiles(["/pics/a.jpg", "/pics/b.png", "/pics/c.heic"]);
+      moveImageFile("/pics/b.png", -1);
+      expect(get(imageFiles).map((f) => f.path)).toEqual(["/pics/b.png", "/pics/a.jpg", "/pics/c.heic"]);
+
+      moveImageFile("/pics/b.png", 1);
+      expect(get(imageFiles).map((f) => f.path)).toEqual(["/pics/a.jpg", "/pics/b.png", "/pics/c.heic"]);
+
+      // no-ops at the boundaries
+      moveImageFile("/pics/a.jpg", -1);
+      moveImageFile("/pics/c.heic", 1);
+      expect(get(imageFiles).map((f) => f.path)).toEqual(["/pics/a.jpg", "/pics/b.png", "/pics/c.heic"]);
+    });
+  });
+
+  describe("imagesToPdf", () => {
+    it("page size and margin default to a4/small", () => {
+      expect(get(pageSize)).toBe("a4");
+      expect(get(pageMargin)).toBe("small");
+    });
+
+    it("success calls the command with page options and maps the result", async () => {
+      addImageFiles(["/pics/a.jpg", "/pics/b.png"]);
+      pageSize.set("letter");
+      pageMargin.set("big");
+      mockInvoke.mockResolvedValueOnce({
+        output_path: "/out/a.pdf",
+        output_size: 4096,
+        page_count: 2,
+      });
+
+      await imagesToPdf("/out");
+
+      expect(mockInvoke).toHaveBeenCalledWith("images_to_pdf", {
+        paths: ["/pics/a.jpg", "/pics/b.png"],
+        outputDir: "/out",
+        pageSize: "letter",
+        margin: "big",
+      });
+      expect(get(imagesResult)).toEqual({ outputPath: "/out/a.pdf", outputSize: 4096, pageCount: 2 });
+      expect(get(isBuildingPdf)).toBe(false);
+      expect(get(imagesError)).toBeNull();
+    });
+
+    it("error path sets imagesError and leaves imagesResult null", async () => {
+      addImageFiles(["/pics/a.jpg"]);
+      mockInvoke.mockRejectedValueOnce("rotated.jpg: unsupported color type");
+
+      await imagesToPdf(null);
+
+      expect(get(imagesError)).toBe("rotated.jpg: unsupported color type");
+      expect(get(imagesResult)).toBeNull();
+      expect(get(isBuildingPdf)).toBe(false);
+    });
+
+    it("is a no-op with no images", async () => {
+      await imagesToPdf(null);
+      expect(mockInvoke).not.toHaveBeenCalled();
+    });
+
+    it("clearImages resets everything", () => {
+      addImageFiles(["/pics/a.jpg"]);
+      imagesResult.set({ outputPath: "/out/a.pdf", outputSize: 1, pageCount: 1 });
+      imagesError.set("boom");
+      isBuildingPdf.set(true);
+      clearImages();
+      expect(get(imageFiles)).toHaveLength(0);
+      expect(get(imagesResult)).toBeNull();
+      expect(get(imagesError)).toBeNull();
+      expect(get(isBuildingPdf)).toBe(false);
     });
   });
 });
