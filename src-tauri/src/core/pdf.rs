@@ -1,5 +1,10 @@
-use crate::core::image_io::{checked_size, write_preserving_timestamps};
-use lopdf::{dictionary, Dictionary, Document, Object, SaveOptions};
+use crate::core::image_io::{
+    checked_size, decode_limits, ext_lowercase, open_image, write_preserving_timestamps,
+    MAX_IMAGE_DIMENSION,
+};
+use image::metadata::Orientation;
+use image::{DynamicImage, ExtendedColorType, ImageDecoder, ImageFormat, ImageReader};
+use lopdf::{dictionary, Dictionary, Document, Object, SaveOptions, Stream};
 use rayon::prelude::*;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashSet};
@@ -348,6 +353,336 @@ pub fn split_pdf(
             Ok(outputs)
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PageSize {
+    Fit,
+    A4,
+    Letter,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PageMargin {
+    None,
+    Small,
+    Big,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ImagesToPdfOptions {
+    pub page_size: PageSize,
+    pub margin: PageMargin,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ImagesToPdfResult {
+    pub output_path: String,
+    pub output_size: u64,
+    pub page_count: usize,
+}
+
+/// Images are placed at this nominal print density: `Fit` pages take the
+/// image's size at 150 DPI, and A4/Letter never scale an image up past it.
+const FIT_DPI: f32 = 150.0;
+const IMAGES_TO_PDF_JPEG_QUALITY: f32 = 90.0;
+
+#[derive(Debug, Clone, Copy)]
+struct PageLayout {
+    page_w: f32,
+    page_h: f32,
+    img_x: f32,
+    img_y: f32,
+    img_w: f32,
+    img_h: f32,
+}
+
+fn margin_pt(margin: PageMargin) -> f32 {
+    match margin {
+        PageMargin::None => 0.0,
+        PageMargin::Small => 20.0,
+        PageMargin::Big => 40.0,
+    }
+}
+
+fn compute_page_layout(
+    px_w: u32,
+    px_h: u32,
+    page_size: PageSize,
+    margin: PageMargin,
+) -> PageLayout {
+    let natural_w = px_w as f32 * 72.0 / FIT_DPI;
+    let natural_h = px_h as f32 * 72.0 / FIT_DPI;
+
+    let (page_w, page_h) = match page_size {
+        PageSize::Fit => {
+            return PageLayout {
+                page_w: natural_w,
+                page_h: natural_h,
+                img_x: 0.0,
+                img_y: 0.0,
+                img_w: natural_w,
+                img_h: natural_h,
+            }
+        }
+        PageSize::A4 => (595.28f32, 841.89f32),
+        PageSize::Letter => (612.0f32, 792.0f32),
+    };
+    // Landscape image → landscape page.
+    let (page_w, page_h) = if px_w > px_h {
+        (page_h, page_w)
+    } else {
+        (page_w, page_h)
+    };
+
+    let m = margin_pt(margin);
+    let content_w = (page_w - 2.0 * m).max(1.0);
+    let content_h = (page_h - 2.0 * m).max(1.0);
+    let scale = (content_w / natural_w).min(content_h / natural_h).min(1.0);
+    let img_w = natural_w * scale;
+    let img_h = natural_h * scale;
+    PageLayout {
+        page_w,
+        page_h,
+        img_x: (page_w - img_w) / 2.0,
+        img_y: (page_h - img_h) / 2.0,
+        img_w,
+        img_h,
+    }
+}
+
+struct PdfPageImage {
+    bytes: Vec<u8>,
+    width: u32,
+    height: u32,
+    color_space: &'static str,
+    /// true → `bytes` are JPEG (DCTDecode); false → raw RGB, flate-compressed on embed.
+    is_jpeg: bool,
+}
+
+fn read_exif_orientation(path: &str) -> Orientation {
+    fn inner(path: &str) -> Option<Orientation> {
+        let file = std::fs::File::open(path).ok()?;
+        let mut reader = std::io::BufReader::new(file);
+        let exif = exif::Reader::new().read_from_container(&mut reader).ok()?;
+        let field = exif.get_field(exif::Tag::Orientation, exif::In::PRIMARY)?;
+        Orientation::from_exif(field.value.get_uint(0)? as u8)
+    }
+    inner(path).unwrap_or(Orientation::NoTransforms)
+}
+
+fn flatten_alpha_over_white(img: DynamicImage) -> image::RgbImage {
+    if !img.color().has_alpha() {
+        return img.into_rgb8();
+    }
+    let rgba = img.into_rgba8();
+    let (w, h) = rgba.dimensions();
+    let mut out = image::RgbImage::new(w, h);
+    for (dst, src) in out.pixels_mut().zip(rgba.pixels()) {
+        let a = src[3] as u32;
+        for c in 0..3 {
+            dst[c] = ((src[c] as u32 * a + 255 * (255 - a) + 127) / 255) as u8;
+        }
+    }
+    out
+}
+
+fn reencode_as_jpeg(img: DynamicImage) -> Result<PdfPageImage, Box<dyn Error>> {
+    let rgb = flatten_alpha_over_white(img);
+    let (w, h) = rgb.dimensions();
+    let bytes = crate::core::compression::encode_jpeg_bytes(
+        w as usize,
+        h as usize,
+        rgb.as_raw(),
+        IMAGES_TO_PDF_JPEG_QUALITY,
+    )?;
+    Ok(PdfPageImage {
+        bytes,
+        width: w,
+        height: h,
+        color_space: "DeviceRGB",
+        is_jpeg: true,
+    })
+}
+
+fn raw_rgb_page(img: DynamicImage) -> PdfPageImage {
+    let rgb = flatten_alpha_over_white(img);
+    let (w, h) = rgb.dimensions();
+    PdfPageImage {
+        bytes: rgb.into_raw(),
+        width: w,
+        height: h,
+        color_space: "DeviceRGB",
+        is_jpeg: false,
+    }
+}
+
+fn prepare_via_image_crate(path: &str) -> Result<PdfPageImage, Box<dyn Error>> {
+    let file = std::fs::File::open(path)?;
+    let mut reader = ImageReader::new(std::io::BufReader::new(file)).with_guessed_format()?;
+    reader.limits(decode_limits());
+    let format = reader.format();
+    let mut decoder = reader.into_decoder()?;
+    let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
+
+    // Zero-recompression fast path: an 8-bit RGB/gray JPEG that needs no
+    // rotation is embedded byte-for-byte (JPEG == DCTDecode). EXIF-rotated or
+    // CMYK JPEGs must go through decode: raw passthrough would render them
+    // sideways (the placement matrix never sees EXIF) or with inverted colors.
+    if format == Some(ImageFormat::Jpeg) && orientation == Orientation::NoTransforms {
+        let (w, h) = decoder.dimensions();
+        if w <= MAX_IMAGE_DIMENSION && h <= MAX_IMAGE_DIMENSION {
+            let color_space = match decoder.original_color_type() {
+                ExtendedColorType::Rgb8 => Some("DeviceRGB"),
+                ExtendedColorType::L8 => Some("DeviceGray"),
+                _ => None,
+            };
+            if let Some(color_space) = color_space {
+                return Ok(PdfPageImage {
+                    bytes: std::fs::read(path)?,
+                    width: w,
+                    height: h,
+                    color_space,
+                    is_jpeg: true,
+                });
+            }
+        }
+    }
+
+    let mut img = DynamicImage::from_decoder(decoder)?;
+    img.apply_orientation(orientation);
+
+    // Lossless sources stay lossless (raw RGB + Flate) so screenshots and
+    // text stay crisp; photo formats re-encode as JPEG.
+    match format {
+        Some(ImageFormat::Png | ImageFormat::Bmp | ImageFormat::Tiff | ImageFormat::Gif) => {
+            Ok(raw_rgb_page(img))
+        }
+        _ => reencode_as_jpeg(img),
+    }
+}
+
+fn prepare_page_image(path: &str) -> Result<PdfPageImage, Box<dyn Error>> {
+    match ext_lowercase(path).as_deref() {
+        Some("heic") | Some("heif") => {
+            let mut img = crate::core::heic::decode_heic(path)?;
+            // The native decoders return raw pixels; orientation lives in the
+            // container's EXIF and must be applied here.
+            img.apply_orientation(read_exif_orientation(path));
+            reencode_as_jpeg(img)
+        }
+        // jxl-oxide applies container orientation during render.
+        Some("jxl") => reencode_as_jpeg(open_image(path)?),
+        _ => prepare_via_image_crate(path),
+    }
+}
+
+pub fn images_to_pdf(
+    paths: &[String],
+    output_dir: Option<&str>,
+    opts: ImagesToPdfOptions,
+) -> Result<ImagesToPdfResult, Box<dyn Error>> {
+    if paths.is_empty() {
+        return Err("no input images provided".into());
+    }
+    for p in paths {
+        crate::core::paths::validate_input_path(p, false)?;
+        checked_size(p)?;
+    }
+
+    let mut document = Document::with_version("1.5");
+    let pages_id = document.new_object_id();
+    let mut kids: Vec<Object> = Vec::with_capacity(paths.len());
+
+    // Sequential on purpose: peak memory (decoded pixels) dominates, not CPU.
+    for path in paths {
+        let file_label = Path::new(path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(path.as_str());
+        let page_img = prepare_page_image(path).map_err(|e| format!("{file_label}: {e}"))?;
+        let layout =
+            compute_page_layout(page_img.width, page_img.height, opts.page_size, opts.margin);
+
+        let mut xobject = Stream::new(
+            dictionary! {
+                "Type" => "XObject",
+                "Subtype" => "Image",
+                "Width" => page_img.width as i64,
+                "Height" => page_img.height as i64,
+                "ColorSpace" => page_img.color_space,
+                "BitsPerComponent" => 8,
+            },
+            page_img.bytes,
+        );
+        if page_img.is_jpeg {
+            xobject.dict.set("Filter", "DCTDecode");
+        } else if let Err(e) = xobject.compress() {
+            // A raw RGB stream without a filter is still a valid PDF — just larger.
+            eprintln!("images_to_pdf: flate compression failed, embedding uncompressed: {e}");
+        }
+        let image_id = document.add_object(xobject);
+
+        let content = format!(
+            "q\n{:.2} 0 0 {:.2} {:.2} {:.2} cm\n/Im0 Do\nQ",
+            layout.img_w, layout.img_h, layout.img_x, layout.img_y
+        );
+        let content_id = document.add_object(Stream::new(dictionary! {}, content.into_bytes()));
+        let resources_id = document.add_object(dictionary! {
+            "XObject" => dictionary! { "Im0" => image_id },
+        });
+        let page_id = document.add_object(dictionary! {
+            "Type" => "Page",
+            "Parent" => pages_id,
+            "MediaBox" => vec![
+                0.into(),
+                0.into(),
+                Object::Real(layout.page_w),
+                Object::Real(layout.page_h),
+            ],
+            "Resources" => resources_id,
+            "Contents" => content_id,
+        });
+        kids.push(Object::Reference(page_id));
+    }
+
+    let page_count = kids.len();
+    document.objects.insert(
+        pages_id,
+        Object::Dictionary(dictionary! {
+            "Type" => "Pages",
+            "Kids" => kids,
+            "Count" => page_count as i64,
+        }),
+    );
+    let catalog_id = document.add_object(dictionary! {
+        "Type" => "Catalog",
+        "Pages" => pages_id,
+    });
+    document.trailer.set("Root", catalog_id);
+
+    let first_input = Path::new(&paths[0]);
+    let first_stem = first_input
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("images");
+    let fallback_dir = first_input.parent().unwrap_or(Path::new("."));
+    let dir = resolve_output_dir(output_dir, fallback_dir)?;
+    let mut reserved = HashSet::new();
+    let output = crate::core::paths::first_available_path(
+        &dir.join(format!("{first_stem}.pdf")),
+        &mut reserved,
+    );
+
+    let mut buffer = Vec::new();
+    document.save_to(&mut buffer)?;
+    std::fs::write(&output, &buffer)?;
+
+    Ok(ImagesToPdfResult {
+        output_path: output.to_string_lossy().into_owned(),
+        output_size: buffer.len() as u64,
+        page_count,
+    })
 }
 
 fn compress_pdf_images(doc: &mut Document) -> u32 {
@@ -853,5 +1188,238 @@ mod tests {
             outputs[0],
             dir.path().join("doc_pages_1-2.pdf").to_str().unwrap()
         );
+    }
+
+    // ---- images_to_pdf ----
+
+    fn write_jpeg(dir: &Path, name: &str, w: usize, h: usize) -> String {
+        let path = dir.join(name);
+        fs::write(&path, jpeg_bytes(w, h, 90.0)).unwrap();
+        path.to_str().unwrap().to_string()
+    }
+
+    fn gray_jpeg_bytes(width: usize, height: usize) -> Vec<u8> {
+        let pixels = vec![128u8; width * height];
+        let mut cinfo = mozjpeg::Compress::new(mozjpeg::ColorSpace::JCS_GRAYSCALE);
+        cinfo.set_size(width, height);
+        cinfo.set_quality(90.0);
+        let mut cinfo = cinfo.start_compress(Vec::new()).unwrap();
+        cinfo.write_scanlines(&pixels).unwrap();
+        cinfo.finish().unwrap()
+    }
+
+    fn default_i2p_opts() -> ImagesToPdfOptions {
+        ImagesToPdfOptions {
+            page_size: PageSize::A4,
+            margin: PageMargin::Small,
+        }
+    }
+
+    fn approx(a: f32, b: f32) -> bool {
+        (a - b).abs() < 0.05
+    }
+
+    fn page_media_box(doc: &Document, page_no: u32) -> Vec<f32> {
+        let pages = doc.get_pages();
+        let dict = doc.get_dictionary(pages[&page_no]).unwrap();
+        dict.get(b"MediaBox")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|o| o.as_float().unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn images_to_pdf_single_jpeg_landscape_a4() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = write_jpeg(dir.path(), "photo.jpg", 400, 300);
+        let result = images_to_pdf(&[input], None, default_i2p_opts()).unwrap();
+        assert_eq!(result.page_count, 1);
+        let doc = Document::load(&result.output_path).unwrap();
+        assert_eq!(doc.get_pages().len(), 1);
+        let mb = page_media_box(&doc, 1);
+        assert!(
+            approx(mb[2], 841.89) && approx(mb[3], 595.28),
+            "landscape A4 expected, got {mb:?}"
+        );
+    }
+
+    #[test]
+    fn images_to_pdf_clean_jpeg_is_byte_exact_passthrough() {
+        let dir = tempfile::tempdir().unwrap();
+        let jpeg = jpeg_bytes(320, 240, 90.0);
+        let input = dir.path().join("photo.jpg");
+        fs::write(&input, &jpeg).unwrap();
+        let result = images_to_pdf(
+            &[input.to_str().unwrap().to_string()],
+            None,
+            default_i2p_opts(),
+        )
+        .unwrap();
+        let doc = Document::load(&result.output_path).unwrap();
+        let page_id = *doc.get_pages().values().next().unwrap();
+        let images = doc.get_page_images(page_id).unwrap();
+        assert_eq!(images.len(), 1);
+        assert_eq!(
+            images[0].content, jpeg,
+            "expected zero-recompression passthrough"
+        );
+    }
+
+    #[test]
+    fn images_to_pdf_multiple_images_preserve_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = write_jpeg(dir.path(), "a.jpg", 100, 80);
+        let b = write_jpeg(dir.path(), "b.jpg", 200, 80);
+        let c = write_jpeg(dir.path(), "c.jpg", 300, 80);
+        let result = images_to_pdf(&[a, b, c], None, default_i2p_opts()).unwrap();
+        assert_eq!(result.page_count, 3);
+        let doc = Document::load(&result.output_path).unwrap();
+        let pages = doc.get_pages();
+        let widths: Vec<i64> = (1..=3u32)
+            .map(|n| doc.get_page_images(pages[&n]).unwrap()[0].width)
+            .collect();
+        assert_eq!(widths, vec![100, 200, 300]);
+    }
+
+    #[test]
+    fn images_to_pdf_png_alpha_flattens_without_smask() {
+        let dir = tempfile::tempdir().unwrap();
+        let png_path = dir.path().join("shot.png");
+        let img = image::RgbaImage::from_fn(64, 64, |x, _| {
+            if x < 32 {
+                image::Rgba([255, 0, 0, 128])
+            } else {
+                image::Rgba([0, 0, 255, 255])
+            }
+        });
+        img.save(&png_path).unwrap();
+        let result = images_to_pdf(
+            &[png_path.to_str().unwrap().to_string()],
+            None,
+            default_i2p_opts(),
+        )
+        .unwrap();
+        let doc = Document::load(&result.output_path).unwrap();
+        let page_id = *doc.get_pages().values().next().unwrap();
+        let images = doc.get_page_images(page_id).unwrap();
+        assert!(
+            images[0].origin_dict.get(b"SMask").is_err(),
+            "no SMask expected"
+        );
+        assert!(images[0]
+            .filters
+            .as_ref()
+            .unwrap()
+            .iter()
+            .any(|f| f == "FlateDecode"));
+        let stream = doc.objects.get(&images[0].id).unwrap().as_stream().unwrap();
+        let raw = stream.decompressed_content().unwrap();
+        assert_eq!(raw.len(), 64 * 64 * 3);
+        // Semi-transparent red over white → pink-ish, not dark red.
+        assert!(
+            raw[1] > 100,
+            "alpha should flatten over white, got G={}",
+            raw[1]
+        );
+    }
+
+    #[test]
+    fn images_to_pdf_exif_rotated_jpeg_lands_upright() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rotated.jpg");
+        fs::write(&path, jpeg_bytes(400, 300, 90.0)).unwrap();
+        let mut md = little_exif::metadata::Metadata::new();
+        md.set_tag(little_exif::exif_tag::ExifTag::Orientation(vec![6u16]));
+        md.write_to_file(&path).unwrap();
+
+        let result = images_to_pdf(
+            &[path.to_str().unwrap().to_string()],
+            None,
+            default_i2p_opts(),
+        )
+        .unwrap();
+        let doc = Document::load(&result.output_path).unwrap();
+        let page_id = *doc.get_pages().values().next().unwrap();
+        let images = doc.get_page_images(page_id).unwrap();
+        // Orientation 6 = Rotate90: 400x300 must land as 300x400.
+        assert_eq!((images[0].width, images[0].height), (300, 400));
+    }
+
+    #[test]
+    fn images_to_pdf_grayscale_jpeg_uses_devicegray() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("gray.jpg");
+        fs::write(&path, gray_jpeg_bytes(64, 64)).unwrap();
+        let result = images_to_pdf(
+            &[path.to_str().unwrap().to_string()],
+            None,
+            default_i2p_opts(),
+        )
+        .unwrap();
+        let doc = Document::load(&result.output_path).unwrap();
+        let page_id = *doc.get_pages().values().next().unwrap();
+        let images = doc.get_page_images(page_id).unwrap();
+        assert_eq!(images[0].color_space.as_deref(), Some("DeviceGray"));
+    }
+
+    #[test]
+    fn layout_fit_uses_150_dpi() {
+        let l = compute_page_layout(300, 150, PageSize::Fit, PageMargin::Big);
+        assert!(approx(l.page_w, 144.0) && approx(l.page_h, 72.0));
+        assert!(approx(l.img_w, 144.0) && approx(l.img_x, 0.0));
+    }
+
+    #[test]
+    fn layout_a4_scales_down_and_centers() {
+        let l = compute_page_layout(1000, 2000, PageSize::A4, PageMargin::Big);
+        assert!(approx(l.page_w, 595.28) && approx(l.page_h, 841.89));
+        // natural 480x960pt; content 515.28x761.89 → height-bound scale
+        assert!(approx(l.img_h, 761.89));
+        assert!(approx(l.img_y, 40.0));
+        assert!(approx(l.img_x, (595.28 - l.img_w) / 2.0));
+    }
+
+    #[test]
+    fn layout_small_image_never_upscales() {
+        let l = compute_page_layout(100, 100, PageSize::A4, PageMargin::None);
+        // Natural size at 150 DPI is 48pt — must not stretch to fill the page.
+        assert!(approx(l.img_w, 48.0) && approx(l.img_h, 48.0));
+    }
+
+    #[test]
+    fn layout_landscape_image_rotates_page() {
+        let l = compute_page_layout(2000, 1000, PageSize::Letter, PageMargin::None);
+        assert!(approx(l.page_w, 792.0) && approx(l.page_h, 612.0));
+    }
+
+    #[test]
+    fn images_to_pdf_empty_input_errors() {
+        assert!(images_to_pdf(&[], None, default_i2p_opts()).is_err());
+    }
+
+    #[test]
+    fn images_to_pdf_missing_input_errors() {
+        let result = images_to_pdf(
+            &["/nonexistent/x.jpg".to_string()],
+            None,
+            default_i2p_opts(),
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn images_to_pdf_no_clobber_when_output_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = write_jpeg(dir.path(), "photo.jpg", 64, 64);
+        fs::write(dir.path().join("photo.pdf"), b"existing").unwrap();
+        let result = images_to_pdf(&[input], None, default_i2p_opts()).unwrap();
+        assert_ne!(
+            result.output_path,
+            dir.path().join("photo.pdf").to_str().unwrap()
+        );
+        assert_eq!(fs::read(dir.path().join("photo.pdf")).unwrap(), b"existing");
     }
 }

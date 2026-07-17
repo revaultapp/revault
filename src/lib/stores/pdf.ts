@@ -153,6 +153,88 @@ export async function mergePdfs(outDir: string | null) {
   }
 }
 
+// --- Images → PDF: N ordered images -> 1 PDF (scan-to-PDF) ---
+
+export type PdfPageSize = "fit" | "a4" | "letter";
+export type PdfPageMargin = "none" | "small" | "big";
+
+export interface ImageToPdfFile {
+  path: string;
+  name: string;
+}
+
+export interface ImagesToPdfResultInfo {
+  outputPath: string;
+  outputSize: number;
+  pageCount: number;
+}
+
+export const imageFiles = writable<ImageToPdfFile[]>([]);
+export const isBuildingPdf = writable(false);
+export const imagesResult = writable<ImagesToPdfResultInfo | null>(null);
+export const imagesError = writable<string | null>(null);
+export const pageSize = persisted<PdfPageSize>("revault-pdf-i2p-pagesize", "a4");
+export const pageMargin = persisted<PdfPageMargin>("revault-pdf-i2p-margin", "small");
+
+export function addImageFiles(paths: string[]) {
+  imageFiles.update((curr) => {
+    const existing = new Set(curr.map((f) => f.path));
+    const newPaths = paths.filter((p) => {
+      if (existing.has(p)) return false;
+      existing.add(p);
+      return true;
+    });
+    return [
+      ...curr,
+      ...newPaths.map((p) => ({ path: p, name: p.split(/[\\/]/).pop() ?? p })),
+    ];
+  });
+}
+
+export function removeImageFile(path: string) {
+  imageFiles.update((curr) => curr.filter((f) => f.path !== path));
+}
+
+export function moveImageFile(path: string, direction: -1 | 1) {
+  imageFiles.update((curr) => {
+    const idx = curr.findIndex((f) => f.path === path);
+    const target = idx + direction;
+    if (idx === -1 || target < 0 || target >= curr.length) return curr;
+    const next = [...curr];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    return next;
+  });
+}
+
+export function clearImages() {
+  imageFiles.set([]);
+  imagesResult.set(null);
+  imagesError.set(null);
+  isBuildingPdf.set(false);
+}
+
+export async function imagesToPdf(outDir: string | null) {
+  const paths = get(imageFiles).map((f) => f.path);
+  if (paths.length < 1) return;
+  isBuildingPdf.set(true);
+  imagesError.set(null);
+  try {
+    const result = await invoke<{ output_path: string; output_size: number; page_count: number }>(
+      "images_to_pdf",
+      { paths, outputDir: outDir, pageSize: get(pageSize), margin: get(pageMargin) },
+    );
+    imagesResult.set({
+      outputPath: result.output_path,
+      outputSize: result.output_size,
+      pageCount: result.page_count,
+    });
+  } catch (e) {
+    imagesError.set(String(e));
+  } finally {
+    isBuildingPdf.set(false);
+  }
+}
+
 // --- Split: 1 PDF -> range extract or one file per page ---
 
 export type SplitKind = "range" | "each";
