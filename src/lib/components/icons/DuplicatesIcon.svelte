@@ -9,10 +9,11 @@
 </script>
 
 <!--
-  Duplicates — two stacked frames (the universal "copy" language; the v1
-  double-lens magnifier read as a blob at 18px). The front frame is the
-  duo layer: on activation it fills green, literally highlighting "the
-  duplicate" sitting on top of the original behind it.
+  Duplicates — two stacked PHOTOS (the plain two-frame "copy" of v2 read
+  as a generic clipboard action). The front photo is the duo layer; its
+  mountain is drawn after the rect so the stroke sits on top of the
+  accent fill when the item activates — the duplicate photo lights up
+  over the original peeking from behind.
   See icons/index.ts for the shared duo-fill mechanism.
 -->
 <svg
@@ -27,8 +28,9 @@
   class={className}
   aria-hidden="true"
 >
-  <path d="M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2" />
-  <rect class="icon-duo" x="8" y="8" width="14" height="14" rx="2" />
+  <path d="M18 4.5H7a2 2 0 0 0-2 2v11" />
+  <rect class="icon-duo" x="8.5" y="8" width="13" height="12" rx="2" />
+  <path d="m9.5 17 3.5-3.5a1.6 1.6 0 0 1 2.3 0l4.2 4.2" />
 </svg>
 
 <style>

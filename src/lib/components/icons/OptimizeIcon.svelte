@@ -9,9 +9,10 @@
 </script>
 
 <!--
-  Lightning bolt — one full-height polygon; the whole bolt is the duo
-  layer (stroked), so activation charges the entire glyph with accent
-  instead of revealing a fiddly inner core that mushed at 18px (v1).
+  Lightning bolt — one full-height shape with rounded elbows (the angular
+  polygon of v2 read rigid); the whole bolt is the duo layer (stroked),
+  so activation charges the entire glyph with accent instead of revealing
+  a fiddly inner core that mushed at 18px (v1).
   See icons/index.ts for the shared duo-fill mechanism.
 -->
 <svg
@@ -26,7 +27,10 @@
   class={className}
   aria-hidden="true"
 >
-  <path class="icon-duo" d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
+  <path
+    class="icon-duo"
+    d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"
+  />
 </svg>
 
 <style>

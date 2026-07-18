@@ -3,7 +3,7 @@
   import {
     DashboardIcon, OptimizeIcon, DuplicatesIcon,
     PrivacyIcon, VideoIcon, PdfIcon,
-    SettingsIcon, VaultIcon
+    SettingsIcon, SavedIcon
   } from "$lib/components/icons";
   import { Tween, Spring, prefersReducedMotion } from 'svelte/motion';
   import { tick } from 'svelte';
@@ -98,7 +98,7 @@
       {/each}
 
       <div class="saved-badge" class:just-updated={savingsJustUpdated}>
-        <VaultIcon size={16} strokeWidth={1.8} />
+        <SavedIcon size={16} strokeWidth={1.8} />
         <span>{t("sidebar.savedBadge", { amount: formatBytes(displayedBytes.current) })}</span>
       </div>
     </nav>

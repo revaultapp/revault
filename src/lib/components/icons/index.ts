@@ -17,5 +17,5 @@ export { default as DuplicatesIcon } from "./DuplicatesIcon.svelte";
 export { default as PrivacyIcon } from "./PrivacyIcon.svelte";
 export { default as VideoIcon } from "./VideoIcon.svelte";
 export { default as PdfIcon } from "./PdfIcon.svelte";
-export { default as VaultIcon } from "./VaultIcon.svelte";
+export { default as SavedIcon } from "./SavedIcon.svelte";
 export { default as SettingsIcon } from "./SettingsIcon.svelte";
