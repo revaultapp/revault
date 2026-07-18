@@ -252,6 +252,50 @@ pub fn build_strip_flags(privacy: PrivacyMode) -> Vec<&'static str> {
     }
 }
 
+/// Complete privacy-related output args for the stream-copy trim context.
+/// Pure — unit-testable without spawning ffmpeg (same reasoning as
+/// `audio_extract_plan`). Unlike compress, which maps only v+a, trim keeps
+/// ALL streams: when stripping we emit an explicit `-map 0` base so the
+/// negative `-map -0:d` from `build_strip_flags` is valid and subtitle/
+/// attachment streams survive while data streams (iPhone GPS/mebx tracks)
+/// drop. Off returns no args at all — ffmpeg default stream selection,
+/// byte-identical to the pre-privacy trim.
+fn trim_privacy_args(privacy: PrivacyMode, creation_time: Option<&str>) -> Vec<String> {
+    let mut args: Vec<String> = Vec::new();
+    match privacy {
+        PrivacyMode::Off => {}
+        PrivacyMode::GpsOnly => {
+            // Parity with compress GpsOnly: wipe only the location tags
+            // Apple/Android write, keep every other tag and the default maps.
+            args.extend(
+                ["-metadata", "location=", "-metadata", "location-eng="]
+                    .into_iter()
+                    .map(String::from),
+            );
+        }
+        PrivacyMode::Smart | PrivacyMode::Full => {
+            args.extend(
+                ["-map", "0", "-map_metadata", "-1"]
+                    .into_iter()
+                    .map(String::from),
+            );
+            // Smart re-injects sanitized creation_time after -map_metadata -1
+            // so chronological order survives in file managers (same policy
+            // as compress).
+            if matches!(privacy, PrivacyMode::Smart) {
+                if let Some(valid) = creation_time.and_then(sanitize_iso8601) {
+                    args.push("-metadata".into());
+                    args.push(format!("creation_time={}", valid));
+                }
+            }
+            // -map -0:d, -map_chapters -1, ±bitexact — the negative map is
+            // valid here because -map 0 above establishes the positive base.
+            args.extend(build_strip_flags(privacy).into_iter().map(String::from));
+        }
+    }
+    args
+}
+
 /// Validate ISO 8601 creation_time so we never re-inject a tainted string
 /// (quotes, semicolons, shell metacharacters) into the ffmpeg command line.
 fn sanitize_iso8601(s: &str) -> Option<&str> {
@@ -658,6 +702,7 @@ pub fn trim_video(
     input_path: &str,
     start_sec: f64,
     end_sec: Option<f64>,
+    privacy: PrivacyMode,
     output_dir: Option<&str>,
 ) -> Result<VideoTrimResult, String> {
     crate::core::paths::validate_input_path(input_path, false)?;
@@ -676,6 +721,7 @@ pub fn trim_video(
         .to_string();
 
     let (ss, duration) = trim_time_args(start_sec, end);
+    let privacy_args = trim_privacy_args(privacy, stats.creation_time.as_deref());
     let ffmpeg_bin = get_ffmpeg_path();
     let mut cmd = FfmpegCommand::new_with_path(ffmpeg_bin);
     // Fast/lossless trim: `-c copy` repackages the existing stream without
@@ -683,7 +729,9 @@ pub fn trim_video(
     // `start_sec` rather than the exact requested frame. A frame-accurate
     // cut would require re-encoding (drop `-c copy`, add e.g. `-c:v libx264
     // -crf 20 -c:a aac`) — deliberately not implemented here; this is the
-    // fast/lossless path only, matching what's needed today.
+    // fast/lossless path only, matching what's needed today. Privacy args
+    // are container-level (metadata/stream selection), so the copy stays
+    // lossless in every mode.
     cmd.arg("-ss")
         .arg(ss)
         .input(input_path)
@@ -691,12 +739,15 @@ pub fn trim_video(
         .arg("-t")
         .arg(duration)
         .arg("-c")
-        .arg("copy")
-        // Normalizes the output's first timestamp to zero. Without this, a
-        // copy-trim that lands mid-GOP can leave a non-zero starting PTS,
-        // which some players render as a black flash / AV desync at the
-        // start of playback.
-        .arg("-avoid_negative_ts")
+        .arg("copy");
+    for arg in &privacy_args {
+        cmd.arg(arg);
+    }
+    // Normalizes the output's first timestamp to zero. Without this, a
+    // copy-trim that lands mid-GOP can leave a non-zero starting PTS,
+    // which some players render as a black flash / AV desync at the
+    // start of playback.
+    cmd.arg("-avoid_negative_ts")
         .arg("make_zero")
         .output(&temp_output_str);
 
@@ -1604,6 +1655,71 @@ mod tests {
         assert!(flags.contains(&"-0:d"));
         assert!(flags.contains(&"-map_chapters"));
         assert!(flags.contains(&"+bitexact"));
+    }
+
+    #[test]
+    fn trim_privacy_off_adds_no_args() {
+        // Off must stay byte-identical to the pre-privacy trim command.
+        assert!(trim_privacy_args(PrivacyMode::Off, Some("2024-03-15T10:30:00Z")).is_empty());
+    }
+
+    #[test]
+    fn trim_privacy_gps_only_wipes_location_tags_only() {
+        let args = trim_privacy_args(PrivacyMode::GpsOnly, None);
+        let joined = args.join(" ");
+        assert!(joined.contains("-metadata location="));
+        assert!(joined.contains("-metadata location-eng="));
+        // Default stream mapping must be preserved: no -map / -map_metadata.
+        assert!(!joined.contains("-map_metadata"));
+        assert!(!args.iter().any(|a| a == "-map"));
+    }
+
+    #[test]
+    fn trim_privacy_full_maps_all_streams_and_strips() {
+        let args = trim_privacy_args(PrivacyMode::Full, Some("2024-03-15T10:30:00Z"));
+        let joined = args.join(" ");
+        assert!(joined.contains("-map 0"));
+        assert!(joined.contains("-map_metadata -1"));
+        assert!(joined.contains("-map -0:d"));
+        assert!(joined.contains("-map_chapters -1"));
+        assert!(joined.contains("-fflags +bitexact"));
+        assert!(joined.contains("-flags +bitexact"));
+        // Full never re-injects creation_time, even when one is available.
+        assert!(!joined.contains("creation_time="));
+    }
+
+    #[test]
+    fn trim_privacy_smart_reinjects_sanitized_creation_time() {
+        let args = trim_privacy_args(PrivacyMode::Smart, Some("2024-03-15T10:30:00.000000Z"));
+        assert!(args
+            .iter()
+            .any(|a| a == "creation_time=2024-03-15T10:30:00.000000Z"));
+        let joined = args.join(" ");
+        assert!(joined.contains("-map_metadata -1"));
+    }
+
+    #[test]
+    fn trim_privacy_smart_rejects_invalid_creation_time() {
+        let args = trim_privacy_args(PrivacyMode::Smart, Some("; rm -rf /"));
+        assert!(!args.iter().any(|a| a.starts_with("creation_time=")));
+        // The strip flags must still be present — only the re-injection is skipped.
+        assert!(args.join(" ").contains("-map_metadata -1"));
+    }
+
+    #[test]
+    fn trim_privacy_positive_map_precedes_negative() {
+        // ffmpeg requires the positive `-map 0` base before the negative
+        // `-map -0:d` subtraction — this ordering is load-bearing.
+        let args = trim_privacy_args(PrivacyMode::Full, None);
+        let pos = args
+            .windows(2)
+            .position(|w| w[0] == "-map" && w[1] == "0")
+            .expect("-map 0 present");
+        let neg = args
+            .windows(2)
+            .position(|w| w[0] == "-map" && w[1] == "-0:d")
+            .expect("-map -0:d present");
+        assert!(pos < neg);
     }
 
     #[test]

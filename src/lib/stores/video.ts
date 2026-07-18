@@ -544,6 +544,7 @@ export async function trimVideoFile(file: VideoFile): Promise<void> {
       input: file.path,
       startSec: settings.startSec,
       endSec: settings.endSec,
+      privacy: get(videoPrivacyMode),
       outputDir: get(resolvedVideoOutputDir),
     });
     trimResult.set(result);

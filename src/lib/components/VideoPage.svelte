@@ -719,6 +719,25 @@
               </p>
             </div>
 
+            <div class="control-group privacy-group">
+              <div class="privacy-control-row">
+                <div class="privacy-icon-label">
+                  <div class="privacy-icon" class:on={$videoPrivacyMode !== "off"} aria-hidden="true">
+                    <ShieldCheck size={16} />
+                  </div>
+                  <span class="label">{t("video.privacyLabel")}</span>
+                </div>
+                <SegmentedControl segments={privacySegments} bind:selected={$videoPrivacyMode} label={t("video.privacyModeAriaLabel")} />
+              </div>
+              {#key $videoPrivacyMode}
+                <p
+                  class="privacy-hint"
+                  in:fade={{ duration: rm ? 0 : 150, easing: cubicOut }}
+                  out:fade={{ duration: rm ? 0 : 100, easing: cubicOut }}
+                >{privacyTooltips[$videoPrivacyMode]}</p>
+              {/key}
+            </div>
+
           {:else if $videoMode === "audio"}
             <!-- Audio extraction controls -->
             <div class="control-group">

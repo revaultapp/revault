@@ -322,8 +322,37 @@ describe("video store", () => {
       input: "/test/video.mp4",
       startSec: 1,
       endSec: 4,
+      privacy: "smart",
       outputDir: null,
     });
+  });
+
+  it("trimVideoFile sends the privacy mode and the resolved Settings output dir", async () => {
+    mockInvoke.mockResolvedValueOnce({
+      input_path: "/test/video.mp4",
+      output_path: "/dest/video_trimmed.mp4",
+    });
+    const { defaultOutputDir } = await import("./settings");
+    defaultOutputDir.set("/dest");
+    const { trimSettings, trimVideoFile, videoPrivacyMode } = await import("./video");
+
+    videoPrivacyMode.set("full");
+    trimSettings.set({ startSec: 0, endSec: 2 });
+
+    await trimVideoFile({
+      path: "/test/video.mp4",
+      name: "video.mp4",
+      status: "idle" as const,
+      originalSize: 0,
+      progress: 0,
+      fps: 0,
+      speed: 0,
+    });
+
+    expect(mockInvoke).toHaveBeenCalledWith(
+      "trim_video",
+      expect.objectContaining({ privacy: "full", outputDir: "/dest" }),
+    );
   });
 
   it("trimVideoFile error path sets error state", async () => {
