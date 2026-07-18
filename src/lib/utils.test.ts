@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { get } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { listen } from "@tauri-apps/api/event";
 import {
   addUniqueByPath,
   formatBytes,
   moveByPath,
   persisted,
+  persistedWithGlobalDefault,
   removeByPath,
   runWithConcurrency,
   withListener,
@@ -117,6 +118,91 @@ describe("persisted", () => {
     first.set("b");
     const second = persisted("test_persisted_roundtrip", "z");
     expect(get(second)).toBe("b");
+  });
+
+  it("falls back to the initial value on corrupt (non-JSON) stored data instead of throwing", () => {
+    localStorage.setItem("test_persisted_corrupt", "{not json");
+    const store = persisted("test_persisted_corrupt", "safe");
+    expect(get(store)).toBe("safe");
+  });
+
+  it("falls back to the initial value when validate rejects the stored value", () => {
+    localStorage.setItem("test_persisted_stale", JSON.stringify("Medium"));
+    const isPreset = (v: unknown) => v === "Smallest" || v === "Balanced";
+    const store = persisted("test_persisted_stale", "Balanced", isPreset);
+    expect(get(store)).toBe("Balanced");
+  });
+
+  it("keeps the stored value when validate accepts it", () => {
+    localStorage.setItem("test_persisted_valid", JSON.stringify("Smallest"));
+    const isPreset = (v: unknown) => v === "Smallest" || v === "Balanced";
+    const store = persisted("test_persisted_valid", "Balanced", isPreset);
+    expect(get(store)).toBe("Smallest");
+  });
+});
+
+describe("persistedWithGlobalDefault", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("seeds from a non-null global default over an existing persisted value", () => {
+    localStorage.setItem("test_pwgd_seed", JSON.stringify("HighQuality"));
+    const global = writable<string | null>("Smallest");
+    const store = persistedWithGlobalDefault("test_pwgd_seed", "Balanced", global);
+    expect(get(store)).toBe("Smallest");
+  });
+
+  it("falls back to the persisted value when the global default is null", () => {
+    localStorage.setItem("test_pwgd_persisted", JSON.stringify("HighQuality"));
+    const global = writable<string | null>(null);
+    const store = persistedWithGlobalDefault("test_pwgd_persisted", "Balanced", global);
+    expect(get(store)).toBe("HighQuality");
+  });
+
+  it("falls back to the fallback when the global is null and nothing is persisted", () => {
+    const global = writable<string | null>(null);
+    const store = persistedWithGlobalDefault("test_pwgd_fallback", "Balanced", global);
+    expect(get(store)).toBe("Balanced");
+  });
+
+  it("propagates a live non-null global change to the store and persists it", () => {
+    const global = writable<string | null>(null);
+    const store = persistedWithGlobalDefault("test_pwgd_live", "Balanced", global);
+    global.set("HighQuality");
+    expect(get(store)).toBe("HighQuality");
+    expect(localStorage.getItem("test_pwgd_live")).toBe(JSON.stringify("HighQuality"));
+  });
+
+  it("treats a live null global change as a no-op (remember-last)", () => {
+    const global = writable<string | null>("Smallest");
+    const store = persistedWithGlobalDefault("test_pwgd_null_noop", "Balanced", global);
+    store.set("HighQuality");
+    global.set(null);
+    expect(get(store)).toBe("HighQuality");
+  });
+
+  it("persists post-seed writes normally and never writes back to the global", () => {
+    const global = writable<string | null>("Smallest");
+    const store = persistedWithGlobalDefault("test_pwgd_writeback", "Balanced", global);
+    store.set("HighQuality");
+    expect(localStorage.getItem("test_pwgd_writeback")).toBe(JSON.stringify("HighQuality"));
+    expect(get(global)).toBe("Smallest");
+  });
+
+  it("applies validate to the persisted fallback path under a null global", () => {
+    localStorage.setItem("test_pwgd_validate", JSON.stringify("Medium"));
+    const global = writable<string | null>(null);
+    const isPreset = (v: unknown) => v === "Smallest" || v === "Balanced" || v === "HighQuality";
+    const store = persistedWithGlobalDefault("test_pwgd_validate", "Balanced", global, isPreset);
+    expect(get(store)).toBe("Balanced");
+  });
+
+  it("falls back on corrupt persisted data under a null global instead of throwing", () => {
+    localStorage.setItem("test_pwgd_corrupt", "{not json");
+    const global = writable<string | null>(null);
+    const store = persistedWithGlobalDefault("test_pwgd_corrupt", "Balanced", global);
+    expect(get(store)).toBe("Balanced");
   });
 });
 

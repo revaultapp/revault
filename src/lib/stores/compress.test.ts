@@ -179,5 +179,17 @@ describe("compress store", () => {
       qualityPreset.set("HighQuality");
       expect(localStorage.getItem("compress_quality_preset")).toBe(JSON.stringify("HighQuality"));
     });
+
+    it("applies a Settings change made after init immediately, and remember-last never overrides", async () => {
+      const { defaultImagePreset } = await import("./settings");
+      const { qualityPreset } = await import("./compress");
+      expect(get(qualityPreset)).toBe("Balanced");
+
+      defaultImagePreset.set("Smallest");
+      expect(get(qualityPreset)).toBe("Smallest");
+
+      defaultImagePreset.set(null);
+      expect(get(qualityPreset)).toBe("Smallest");
+    });
   });
 });

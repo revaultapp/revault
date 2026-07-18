@@ -59,5 +59,15 @@ describe("settings store", () => {
       defaultImagePreset.set(null);
       expect(localStorage.getItem("settings-default-image-preset")).toBe("null");
     });
+
+    it("rehydrate stale enum values (e.g. a renamed preset variant) as null", async () => {
+      localStorage.setItem("settings-default-image-preset", JSON.stringify("Medium"));
+      localStorage.setItem("settings-default-video-preset", JSON.stringify("Ultra"));
+      localStorage.setItem("settings-default-video-privacy", JSON.stringify("all"));
+      const { defaultImagePreset, defaultVideoPreset, defaultVideoPrivacy } = await import("./settings");
+      expect(get(defaultImagePreset)).toBeNull();
+      expect(get(defaultVideoPreset)).toBeNull();
+      expect(get(defaultVideoPrivacy)).toBeNull();
+    });
   });
 });

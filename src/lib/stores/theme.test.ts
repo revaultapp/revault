@@ -94,4 +94,28 @@ describe("theme store", () => {
     // Still light — the change listener was detached on leaving system mode.
     expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
   });
+
+  it('falls back to "dark" when localStorage holds a value outside the Theme union', async () => {
+    localStorage.setItem("theme", "banana");
+    const { theme } = await import("./theme");
+    expect(get(theme)).toBe("dark");
+  });
+
+  it("never leaks OS listeners across rapid system↔explicit transitions", async () => {
+    const { mql } = mockMatchMedia(false);
+    const { theme } = await import("./theme");
+    theme.set("system");
+    theme.set("light");
+    theme.set("system");
+    theme.set("dark");
+
+    // Every attach was matched by a detach: we ended outside system mode.
+    expect(mql.addEventListener).toHaveBeenCalledTimes(2);
+    expect(mql.removeEventListener).toHaveBeenCalledTimes(2);
+
+    theme.set("system");
+    // Back in system mode: exactly one listener currently attached.
+    expect(mql.addEventListener).toHaveBeenCalledTimes(3);
+    expect(mql.removeEventListener).toHaveBeenCalledTimes(2);
+  });
 });

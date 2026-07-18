@@ -535,5 +535,22 @@ describe("video store", () => {
       videoPreset.set("HighQuality");
       expect(localStorage.getItem("video_preset")).toBe(JSON.stringify("HighQuality"));
     });
+
+    it("applies Settings changes made after init immediately, and remember-last never overrides", async () => {
+      const { defaultVideoPreset, defaultVideoPrivacy } = await import("./settings");
+      const { videoPreset, videoPrivacyMode } = await import("./video");
+      expect(get(videoPreset)).toBe("Balanced");
+      expect(get(videoPrivacyMode)).toBe("smart");
+
+      defaultVideoPreset.set("HighQuality");
+      defaultVideoPrivacy.set("full");
+      expect(get(videoPreset)).toBe("HighQuality");
+      expect(get(videoPrivacyMode)).toBe("full");
+
+      defaultVideoPreset.set(null);
+      defaultVideoPrivacy.set(null);
+      expect(get(videoPreset)).toBe("HighQuality");
+      expect(get(videoPrivacyMode)).toBe("full");
+    });
   });
 });

@@ -4,9 +4,13 @@ export type Theme = "light" | "dark" | "system";
 
 const stored = typeof localStorage !== "undefined" ? localStorage.getItem("theme") : null;
 
+const isTheme = (v: string | null): v is Theme =>
+  v === "light" || v === "dark" || v === "system";
+
 // Default stays "dark" regardless of "system" support — deliberate: zero
-// behavior change for existing users, "system" is opt-in only.
-export const theme = writable<Theme>((stored as Theme) ?? "dark");
+// behavior change for existing users, "system" is opt-in only. Membership
+// check (not a cast) so a stale/corrupted stored value falls back to dark.
+export const theme = writable<Theme>(isTheme(stored) ? stored : "dark");
 
 function prefersDark(): boolean {
   return typeof matchMedia !== "undefined" && matchMedia("(prefers-color-scheme: dark)").matches;

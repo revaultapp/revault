@@ -5,7 +5,13 @@ import { activity } from "./activity";
 import { savings } from "./savings";
 import { history } from "./history";
 import { persisted, persistedWithGlobalDefault, withListener } from "$lib/utils";
-import { defaultOutputDir, defaultVideoPreset, defaultVideoPrivacy } from "./settings";
+import {
+  defaultOutputDir,
+  defaultVideoPreset,
+  defaultVideoPrivacy,
+  isVideoPreset,
+  isPrivacyMode,
+} from "./settings";
 
 // ── FFmpeg availability ───────────────────────────────────────────────────────
 
@@ -110,13 +116,15 @@ export interface VideoCompressionResult {
 // ── Stores ─────────────────────────────────────────────────────────────────────
 
 export const videoFiles = writable<VideoFile[]>([]);
-// Global defaults (Settings → Defaults) seed these stores on init only; once
-// created, changes made on the Video page are respected and persisted as the
-// new last-used value, same as before.
+// Global defaults (Settings → Defaults) seed these stores at init and track
+// them live: picking a value in Settings applies here immediately. Changes
+// made on the Video page still persist as the new last-used value, and
+// "remember last use" (null) never overrides them.
 export const videoPreset = persistedWithGlobalDefault<VideoPreset>(
   "video_preset",
   "Balanced",
-  get(defaultVideoPreset),
+  defaultVideoPreset,
+  isVideoPreset,
 );
 export const videoOutputDir = persisted<string | null>("video_output_dir", null);
 export const resolvedVideoOutputDir = derived(
@@ -126,7 +134,8 @@ export const resolvedVideoOutputDir = derived(
 export const videoPrivacyMode = persistedWithGlobalDefault<PrivacyMode>(
   "video_privacy_mode",
   "smart",
-  get(defaultVideoPrivacy),
+  defaultVideoPrivacy,
+  isPrivacyMode,
 );
 export const isCompressing = writable(false);
 

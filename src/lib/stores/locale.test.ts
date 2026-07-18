@@ -72,6 +72,23 @@ describe("locale store", () => {
     }
   });
 
+  it("falls back through navigator.language to en when the stored locale is unknown", async () => {
+    // Stored "zz" is not a registered locale — the full chain is
+    // stored → navigator.language → en, so with jsdom's en-US it lands on en...
+    localStorage.setItem("revault:locale", "zz");
+    const mod = await import("./locale.svelte");
+    expect(mod.getLocale()).toBe("en");
+
+    // ...and with a French navigator it lands on fr, proving the middle hop.
+    localStorage.clear();
+    vi.resetModules();
+    localStorage.setItem("revault:locale", "zz");
+    vi.stubGlobal("navigator", { ...navigator, language: "fr-FR" });
+    const mod2 = await import("./locale.svelte");
+    expect(mod2.getLocale()).toBe("fr");
+    vi.unstubAllGlobals();
+  });
+
   it("detects de and pt (incl. pt-BR) from navigator.language", async () => {
     for (const [lang, expected] of [
       ["de-DE", "de"],

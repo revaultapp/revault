@@ -1,5 +1,5 @@
-import { writable } from "svelte/store";
-import type { Writable } from "svelte/store";
+import { get, writable } from "svelte/store";
+import type { Readable, Writable } from "svelte/store";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 
@@ -13,27 +13,69 @@ function persistedStore<T>(key: string, value: T): Writable<T> {
   return store;
 }
 
-export function persisted<T>(key: string, initial: T): Writable<T> {
+function readPersisted<T>(key: string, fallback: T, validate?: (v: unknown) => boolean): T {
   const stored =
     typeof localStorage !== "undefined" ? localStorage.getItem(key) : null;
-  return persistedStore<T>(key, stored !== null ? (JSON.parse(stored) as T) : initial);
+  if (stored === null) return fallback;
+  try {
+    const parsed: unknown = JSON.parse(stored);
+    return validate === undefined || validate(parsed) ? (parsed as T) : fallback;
+  } catch {
+    // Corrupt localStorage must never blank-screen the app: persisted() runs
+    // at module eval, before any error boundary could exist.
+    return fallback;
+  }
 }
 
 /**
- * Like `persisted`, but a global default (e.g. from Settings) wins over the
- * last-used value at store-creation time. If `globalDefault` is non-null, it
- * seeds the store directly (ignoring whatever was last persisted under
- * `key`). If it's null, this behaves exactly like `persisted` — falling back
- * to the last-used value, or `fallback`. Either way, once created, the store
- * persists further changes to `key` as normal, so the global default only
- * ever affects initialization, never live values.
+ * `validate` rejects stale persisted values (e.g. an enum variant that no
+ * longer exists after a refactor) so they fall back to `initial` instead of
+ * reaching the IPC boundary and dying as a serde error.
+ */
+export function persisted<T>(
+  key: string,
+  initial: T,
+  validate?: (v: unknown) => boolean,
+): Writable<T> {
+  return persistedStore<T>(key, readPersisted(key, initial, validate));
+}
+
+/**
+ * Like `persisted`, but a global default (e.g. from Settings) both seeds the
+ * store and tracks it live: whenever `globalDefault` emits a non-null value,
+ * the store is set to it immediately — no app restart. Null (= "remember
+ * last use") never touches the store: at init it falls back to the persisted
+ * value or `fallback`, and later null emissions are no-ops. Tool-page writes
+ * persist to `key` as normal and never write back to the global.
+ *
+ * Assumes `globalDefault` hydrates synchronously at module eval (true for
+ * localStorage-backed stores) — the skip-first below relies on nothing
+ * changing between get() and subscribe(). The subscription is deliberately
+ * never torn down: both sides are module-level singletons that live for the
+ * app's lifetime, so there is no teardown point. Don't add bookkeeping.
  */
 export function persistedWithGlobalDefault<T>(
   key: string,
   fallback: T,
-  globalDefault: T | null,
+  globalDefault: Readable<T | null>,
+  validate?: (v: unknown) => boolean,
 ): Writable<T> {
-  return globalDefault !== null ? persistedStore<T>(key, globalDefault) : persisted<T>(key, fallback);
+  const initialGlobal = get(globalDefault);
+  const store = persistedStore<T>(
+    key,
+    initialGlobal !== null ? initialGlobal : readPersisted(key, fallback, validate),
+  );
+  // subscribe() fires synchronously with the current value, which duplicates
+  // the get() above — skip it to avoid a redundant set/localStorage rewrite.
+  let first = true;
+  globalDefault.subscribe((v) => {
+    if (first) {
+      first = false;
+      return;
+    }
+    if (v !== null && get(store) !== v) store.set(v);
+  });
+  return store;
 }
 
 export async function browseOutputDir(): Promise<string | null> {
