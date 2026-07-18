@@ -163,6 +163,47 @@ describe("video store", () => {
     }));
   });
 
+  it("exportGif composes the output path from the Settings default folder", async () => {
+    mockInvoke.mockResolvedValueOnce({
+      output_path: "/dest/video_gif.gif",
+      size_bytes: 1_000_000,
+      duration_sec: 3.0,
+      width: 480,
+      height: 270,
+      fps: 15,
+    });
+    const { defaultOutputDir } = await import("./settings");
+    defaultOutputDir.set("/dest");
+    const { exportGif } = await import("./video");
+
+    await exportGif({
+      path: "/test/video.mp4",
+      name: "video.mp4",
+      status: "idle" as const,
+      originalSize: 0,
+      progress: 0,
+      fps: 0,
+      speed: 0,
+    });
+
+    // videoOutputDir is null, so the resolved Settings default must drive
+    // the client-built GIF path — not the input's parent directory.
+    expect(mockInvoke).toHaveBeenCalledWith(
+      "export_gif",
+      expect.objectContaining({ outputPath: "/dest/video_gif.gif" }),
+    );
+  });
+
+  it("per-tool video output dir never writes back to the Settings default", async () => {
+    const { defaultOutputDir } = await import("./settings");
+    const { videoOutputDir } = await import("./video");
+    videoOutputDir.set("/tool");
+    expect(get(defaultOutputDir)).toBeNull();
+    defaultOutputDir.set("/global");
+    defaultOutputDir.set(null);
+    expect(get(videoOutputDir)).toBe("/tool");
+  });
+
   it("exportGif error path sets error state", async () => {
     mockInvoke.mockRejectedValueOnce(new Error("gifski not found"));
     const { gifState, gifOutputPath, gifError, exportGif } = await import("./video");

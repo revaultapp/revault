@@ -21,6 +21,7 @@ import {
   moveMergeFile,
   clearMerge,
   mergePdfs,
+  processPdfs,
   splitFile,
   isSplitting,
   splitResults,
@@ -182,6 +183,25 @@ describe("pdf store", () => {
       outputDir.set(null);
       defaultOutputDir.set(null);
       expect(get(resolvedOutputDir)).toBeNull();
+    });
+  });
+
+  describe("cross-screen output-dir contract", () => {
+    it("processPdfs forwards the resolved dir into the invoke payload", async () => {
+      mockInvoke.mockResolvedValueOnce([]);
+      await processPdfs("/dest", false, false, false);
+      expect(mockInvoke).toHaveBeenCalledWith(
+        "process_pdfs",
+        expect.objectContaining({ outputDir: "/dest" }),
+      );
+    });
+
+    it("per-tool outputDir never writes back to the Settings default", () => {
+      outputDir.set("/tool");
+      expect(get(defaultOutputDir)).toBeNull();
+      defaultOutputDir.set("/global");
+      defaultOutputDir.set(null);
+      expect(get(outputDir)).toBe("/tool");
     });
   });
 

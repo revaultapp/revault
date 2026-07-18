@@ -43,6 +43,16 @@ describe("privacy store", () => {
     expect(get(summary)).toEqual({ scanned: 2, stripped: 1, failed: 1 });
   });
 
+  it("per-tool outputDir never writes back to the Settings default", async () => {
+    const { defaultOutputDir } = await import("./settings");
+    const { outputDir } = await import("./privacy");
+    outputDir.set("/tool");
+    expect(get(defaultOutputDir)).toBeNull();
+    defaultOutputDir.set("/global");
+    defaultOutputDir.set(null);
+    expect(get(outputDir)).toBe("/tool");
+  });
+
   it("persists outputDir", async () => {
     const { outputDir } = await import("./privacy");
 

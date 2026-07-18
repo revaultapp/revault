@@ -123,5 +123,15 @@ describe("convert store", () => {
       store.outputDir.set("/custom/output");
       expect(get(store.resolvedOutputDir)).toBe("/custom/output");
     });
+
+    it("per-tool outputDir never writes back to the Settings default", async () => {
+      const { defaultOutputDir } = await import("./settings");
+      defaultOutputDir.set(null);
+      store.outputDir.set("/tool");
+      expect(get(defaultOutputDir)).toBeNull();
+      defaultOutputDir.set("/global");
+      defaultOutputDir.set(null);
+      expect(get(store.outputDir)).toBe("/tool");
+    });
   });
 });

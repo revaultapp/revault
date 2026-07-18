@@ -191,5 +191,15 @@ describe("compress store", () => {
       defaultImagePreset.set(null);
       expect(get(qualityPreset)).toBe("Smallest");
     });
+
+    it("per-tool output dir never writes back to the Settings default", async () => {
+      const { defaultOutputDir } = await import("./settings");
+      const { outputDir } = await import("./compress");
+      outputDir.set("/tool");
+      expect(get(defaultOutputDir)).toBeNull();
+      defaultOutputDir.set("/global");
+      defaultOutputDir.set(null);
+      expect(get(outputDir)).toBe("/tool");
+    });
   });
 });

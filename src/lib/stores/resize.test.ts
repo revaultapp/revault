@@ -82,3 +82,24 @@ describe("resize store — upscale warning", () => {
     expect(get(upscaleWarning)).toBe(false);
   });
 });
+
+describe("resize store — cross-screen output-dir contract", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    mockInvoke.mockReset();
+    localStorage.clear();
+  });
+
+  // Note: the quality preset has no resize-store wiring on purpose — the page
+  // shares compress's qualityPreset store (like ConvertPage), covered in
+  // compress.test.ts.
+  it("per-tool outputDir never writes back to the Settings default", async () => {
+    const { defaultOutputDir } = await import("./settings");
+    const { outputDir } = await import("./resize");
+    outputDir.set("/tool");
+    expect(get(defaultOutputDir)).toBeNull();
+    defaultOutputDir.set("/global");
+    defaultOutputDir.set(null);
+    expect(get(outputDir)).toBe("/tool");
+  });
+});
