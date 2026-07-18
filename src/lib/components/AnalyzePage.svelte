@@ -3,7 +3,7 @@
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
-  import { fade, slide, scale } from "svelte/transition";
+  import { slide, scale } from "svelte/transition";
   import { flip } from "svelte/animate";
   import { cubicOut } from "svelte/easing";
   import { prefersReducedMotion } from "svelte/motion";
@@ -27,13 +27,13 @@
     modeSelection = $scanMode;
   });
 
-  let modeDescription = $derived(
-    modeSelection === "similar" ? t("analyze.modeDescSimilar") : t("analyze.modeDescExact")
-  );
-
-  let modeDescriptionDetail = $derived(
-    modeSelection === "similar" ? t("analyze.modeDescSimilarDetail") : t("analyze.modeDescExactDetail")
-  );
+  // Both mode blurbs stay mounted and cross-fade in place (see .mode-copy-stack).
+  // Keeping both lets the grid reserve the taller copy's height, so switching
+  // Exact/Similar never reflows the card or nudges the CTA.
+  let exactDescription = $derived(t("analyze.modeDescExact"));
+  let exactDescriptionDetail = $derived(t("analyze.modeDescExactDetail"));
+  let similarDescription = $derived(t("analyze.modeDescSimilar"));
+  let similarDescriptionDetail = $derived(t("analyze.modeDescSimilarDetail"));
 
   const rm = $derived(prefersReducedMotion.current);
 
@@ -235,16 +235,16 @@
       </div>
 
       <SegmentedControl segments={modeSegments} bind:selected={modeSelection} onselect={handleModeSelect} label={t("analyze.matchModeAriaLabel")} />
-      {#key modeSelection}
-        <div
-          class="mode-copy"
-          in:fade={{ duration: rm ? 0 : 150, easing: cubicOut }}
-          out:fade={{ duration: rm ? 0 : 100, easing: cubicOut }}
-        >
-          <p class="mode-description">{modeDescription}</p>
-          <p class="mode-detail">{modeDescriptionDetail}</p>
+      <div class="mode-copy-stack">
+        <div class="mode-copy" class:is-active={modeSelection === "exact"} aria-hidden={modeSelection !== "exact"}>
+          <p class="mode-description">{exactDescription}</p>
+          <p class="mode-detail">{exactDescriptionDetail}</p>
         </div>
-      {/key}
+        <div class="mode-copy" class:is-active={modeSelection === "similar"} aria-hidden={modeSelection !== "similar"}>
+          <p class="mode-description">{similarDescription}</p>
+          <p class="mode-detail">{similarDescriptionDetail}</p>
+        </div>
+      </div>
       <Button onclick={browseFolders} aria-label={t("analyze.chooseFoldersAriaLabel")}>
         <FolderOpen size={16} />
         {t("analyze.chooseFolders")}
@@ -511,13 +511,35 @@
     color: var(--text-muted);
   }
 
+  /* Both mode blurbs share a single grid cell, so the block is always as tall
+     as the taller copy and the CTA below never shifts when the mode changes.
+     The swap is then a pure in-place cross-fade instead of a reflow. */
+  .mode-copy-stack {
+    display: grid;
+    justify-items: center;
+  }
+
   /* El detalle del método va como texto visible: el (i) con title nativo
      no renderiza tooltip en WKWebView (macOS), así que nunca se veía. */
   .mode-copy {
+    grid-area: 1 / 1;
+    align-self: start;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 4px;
+    opacity: 0;
+    pointer-events: none;
+    /* Leaving copy fades out fast; the entering copy (below) waits a beat and
+       fades in slower — exit-faster-than-enter keeps the two texts from
+       muddying each other mid-swap. Reduced-motion is zeroed globally. */
+    transition: opacity var(--duration-fast) var(--ease-out);
+  }
+
+  .mode-copy.is-active {
+    opacity: 1;
+    pointer-events: auto;
+    transition: opacity var(--duration-normal) var(--ease-out) 80ms;
   }
 
   .mode-detail {
