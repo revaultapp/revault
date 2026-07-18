@@ -149,7 +149,8 @@
     flex-direction: column;
     align-items: center;
     gap: 12px;
-    padding: 64px 80px;
+    min-width: min(480px, 100%);
+    padding: 88px 112px;
     border-radius: 16px;
     color: var(--text-muted);
     transition:
