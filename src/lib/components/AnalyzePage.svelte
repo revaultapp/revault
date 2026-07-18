@@ -429,13 +429,13 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 16px;
-    padding: 64px 48px;
+    gap: 14px;
+    padding: 44px 56px;
     background: var(--bg-card);
     border: 2px dashed var(--border);
     border-radius: var(--radius-xl);
     text-align: center;
-    max-width: 400px;
+    max-width: 480px;
     transition:
       transform var(--duration-normal) var(--ease-out),
       box-shadow var(--duration-normal) var(--ease-out),

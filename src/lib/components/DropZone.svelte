@@ -148,9 +148,14 @@
     display: flex;
     flex-direction: column;
     align-items: center;
+    /* Fixed footprint so every page's drop zone is identical regardless of
+       how many format tags or title lines it carries — the box is sized by
+       width + min-height, and the content is vertically centred inside it. */
+    justify-content: center;
     gap: 12px;
-    min-width: min(480px, 100%);
-    padding: 88px 112px;
+    width: min(600px, 100%);
+    min-height: 320px;
+    padding: 40px 48px;
     border-radius: 16px;
     color: var(--text-muted);
     transition:
