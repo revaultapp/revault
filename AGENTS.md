@@ -91,10 +91,10 @@ Current sidebar pages:
 ## Feature Status
 
 - Image compression: mature. JPEG via mozjpeg, PNG via oxipng, WebP, AVIF, screenshots warnings, output-folder support.
-- Convert/resize: implemented, with default output folder fallback and anti-upscale UX for resize.
+- Convert/resize: implemented, with default output folder fallback and anti-upscale UX for resize. Optimize, Convert, and Resize share one `qualityPreset` store (compress-owned); resize maps the preset per-format in Rust (`resolve_encode_params`, values pinned to `compression.rs`).
 - Duplicate analysis: exact SHA mode plus Similar pHash mode for near duplicates.
 - Privacy: image metadata scan/strip UI, selective GPS/device/date/author stripping.
-- Video: FFmpeg sidecar, presets, cancellation, size prediction, privacy modes `off | smart | gps_only | full`, trim to start/end range (lossless stream-copy).
+- Video: FFmpeg sidecar, presets, cancellation, size prediction, privacy modes `off | smart | gps_only | full` (applied to both compress and trim — trim stays a lossless stream-copy; privacy args are container-level via `trim_privacy_args`), trim to start/end range.
 - GIF export: implemented via gifski sidecar from the Video flow.
 - PDF Tools: metadata stripping, stream compression with embedded image re-encoding, and merge/split (combine PDFs, extract page ranges).
 - Dashboard: implemented with savings, storage analysis, quick actions, and recent activity.
@@ -115,11 +115,11 @@ Source of truth is `src/app.css`.
 
 ## Testing Baseline
 
-Current test suite (verified 2026-07-19, settings fix package: live global defaults + persisted-store hardening + Settings a11y pass):
+Current test suite (verified 2026-07-19, cross-screen coherence package: trim privacy, resize quality preset, document lang, output-dir contract tests):
 
-- Rust: 238 unit tests via `cd src-tauri && cargo test` (+1 `#[ignore]` real-render test, run in CI on ubuntu and locally with `REVAULT_PDFIUM_PATH` set).
-- Frontend: 217 Vitest tests via `pnpm test`.
-- Total: 455 passing tests.
+- Rust: 247 unit tests via `cd src-tauri && cargo test` (+1 `#[ignore]` real-render test, run in CI on ubuntu and locally with `REVAULT_PDFIUM_PATH` set).
+- Frontend: 228 Vitest tests via `pnpm test`.
+- Total: 475 passing tests.
 
 Always verify counts after changing tests by running the commands above; this section should be updated when tests are added or removed.
 
