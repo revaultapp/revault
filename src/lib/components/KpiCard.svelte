@@ -80,7 +80,7 @@
   .kpi-label {
     font-size: 12px;
     font-weight: 500;
-    color: var(--text-muted);
+    color: var(--chart-tick);
     letter-spacing: -0.01em;
     overflow: hidden;
     text-overflow: ellipsis;

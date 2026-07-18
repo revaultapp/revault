@@ -52,5 +52,9 @@
     flex: 1;
     padding: 28px;
     overflow-y: auto;
+    /* Defense-in-depth: no child (chart cards, tables, etc.) should ever be
+       able to push horizontal scroll onto the shell — it must stay contained
+       and scroll internally instead of escaping this area. */
+    overflow-x: hidden;
   }
 </style>

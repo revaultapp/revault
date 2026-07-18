@@ -41,7 +41,12 @@
     const margin = 10;
     const wouldOverflowRight = x + margin + w > parentW;
     flipped = wouldOverflowRight;
-    clampedLeft = wouldOverflowRight ? Math.max(0, x - margin - w) : x + margin;
+    // Both branches clamp into [0, parentW - w] — the flipped branch used to
+    // only floor at 0, so a stale (mid-resize) measured width could still
+    // push the tooltip past the right edge.
+    clampedLeft = wouldOverflowRight
+      ? Math.max(0, Math.min(x - margin - w, parentW - w))
+      : Math.min(x + margin, Math.max(0, parentW - w));
     clampedTop = Math.min(Math.max(0, y - h / 2), Math.max(0, parentH - h));
   });
 </script>
@@ -129,7 +134,7 @@
     min-width: 0;
     overflow: hidden;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--chart-tick);
     text-overflow: ellipsis;
     white-space: nowrap;
   }

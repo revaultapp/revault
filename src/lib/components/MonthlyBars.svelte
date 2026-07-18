@@ -25,6 +25,11 @@
     emptyHint?: string;
     emptyCta?: string;
     onCta?: () => void;
+    /** "chart" (default) renders the plot with its sr-only data table;
+        "table" renders only a visible version of that same table — the
+        visible table becomes the accessible content, so the sr-only
+        duplicate is omitted. */
+    view?: "chart" | "table";
   }
 
   let {
@@ -39,6 +44,7 @@
     emptyHint,
     emptyCta,
     onCta,
+    view = "chart",
   }: Props = $props();
 
   const uid = $props.id();
@@ -108,6 +114,26 @@
       {#if emptyCta && onCta}
         <button class="empty-cta" onclick={onCta}>{emptyCta}</button>
       {/if}
+    </div>
+  {:else if view === "table"}
+    <div class="table-scroll">
+      <table class="data-table">
+        <caption class="visually-hidden">{tableCaption}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{t("dashboard.tableColMonth")}</th>
+            <th scope="col" class="col-num">{t("dashboard.tableColValue")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each series as s (s.key)}
+            <tr>
+              <td>{monthLabel(s.date)} {s.date.getFullYear()}</td>
+              <td class="col-num">{formatValue(s.total)}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
     </div>
   {:else}
     <div class="plot-wrap">
@@ -217,6 +243,44 @@
     min-height: 0;
   }
 
+  .table-scroll {
+    flex: 1;
+    min-height: 0;
+    max-height: 100%;
+    overflow-y: auto;
+    overflow-x: auto;
+  }
+
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .data-table th {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--chart-tick);
+    text-align: left;
+  }
+
+  .data-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .data-table .col-num {
+    text-align: right;
+  }
+
+  .data-table td.col-num {
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
   .plot {
     position: absolute;
     inset: 0;
@@ -319,7 +383,7 @@
   .empty-hint {
     max-width: 240px;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--chart-tick);
     line-height: 1.4;
   }
 

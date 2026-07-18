@@ -8,7 +8,8 @@
     Share2,
     Download,
     Search,
-    ArrowUpRight,
+    ChartColumn,
+    Table2,
     FolderOpen,
   } from "lucide-svelte";
   import KpiCard from "./KpiCard.svelte";
@@ -50,6 +51,16 @@
   }
 
   const monthlyGrandTotal = $derived($monthlySeries.reduce((acc, m) => acc + m.total, 0));
+
+  // Mirrors MonthlyBars'/CategoryLines' internal `allZero` (every month's
+  // total, i.e. img+vid+pdf, is 0) — monthlySeries totals are always >= 0,
+  // so a positive grand total implies at least one non-zero month in both.
+  const hasHistoryData = $derived(monthlyGrandTotal > 0);
+
+  // Corner toggle state for each chart card's chart<->table view.
+  let monthlyTable = $state(false);
+  let categoryTable = $state(false);
+  let donutTable = $state(false);
 
   const categoryLinesShares = $derived(
     $categoryShares.map((share) => ({
@@ -97,12 +108,34 @@
 
   const donutTotalBytes = $derived(donutData.reduce((acc, s) => acc + s.bytes, 0));
 
-  const donutFacts = $derived([
-    { value: formatBytes($savings.totalSavedBytes), label: t("dashboard.donutFactFreed") },
-    { value: String($savings.filesProcessed), label: t("dashboard.donutFactFiles") },
-    { value: String($protectedTotal), label: t("dashboard.donutFactNoMetadata") },
-    { value: String($savings.heicCount), label: t("dashboard.donutFactHeic") },
-  ]);
+  // The donut card is scoped to the LAST SCAN only — its facts come from the
+  // scan itself. App-lifetime totals (saved bytes, files optimized, protected)
+  // already live in the KPI row above; repeating them here made the card read
+  // as self-contradictory (e.g. "145 MB freed" next to a 448 KB scan total).
+  const donutFacts = $derived.by(() => {
+    if (donutData.length === 0) return [];
+    const files = donutData.reduce((acc, s) => acc + s.count, 0);
+    const top = donutData.reduce((a, b) => (b.bytes > a.bytes ? b : a));
+    const topPct = donutTotalBytes > 0 ? Math.round((top.bytes / donutTotalBytes) * 100) : 0;
+    return [
+      { value: String(files), label: t("dashboard.donutFactScanFiles") },
+      { value: String(donutData.length), label: t("dashboard.donutFactScanTypes") },
+      { value: top.label, label: t("dashboard.donutFactScanTop", { pct: topPct }) },
+    ];
+  });
+
+  const lastScanDate = $derived.by(() => {
+    const ts = $history.lastScan?.ts;
+    if (!ts) return null;
+    return new Intl.DateTimeFormat(getLocale(), { day: "numeric", month: "short" }).format(new Date(ts));
+  });
+
+  // Folder is only known for scans run this session — LastScan doesn't persist it.
+  const lastScanFolder = $derived(
+    $storage.scanState === "done" && $storage.folderPath
+      ? ($storage.folderPath.split(/[\\/]/).pop() ?? null)
+      : null
+  );
 
   function goToOptimize() {
     activePage.set("optimize");
@@ -162,9 +195,21 @@
     <section class="chart-card">
       <div class="card-head">
         <span class="card-title">{t("dashboard.chartMonthlyTitle")}</span>
-        <button class="card-corner" type="button" tabindex="-1" aria-hidden="true">
-          <ArrowUpRight size={14} />
-        </button>
+        {#if hasHistoryData}
+          <button
+            class="card-corner"
+            type="button"
+            aria-pressed={monthlyTable}
+            aria-label={t("dashboard.cardTableToggle", { chart: t("dashboard.chartMonthlyTitle") })}
+            onclick={() => (monthlyTable = !monthlyTable)}
+          >
+            {#if monthlyTable}
+              <ChartColumn size={14} />
+            {:else}
+              <Table2 size={14} />
+            {/if}
+          </button>
+        {/if}
       </div>
       <div class="card-body">
         <MonthlyBars
@@ -179,6 +224,7 @@
           emptyHint={t("dashboard.emptyHistoryHint")}
           emptyCta={t("dashboard.emptyHistoryCta")}
           onCta={goToOptimize}
+          view={monthlyTable ? "table" : "chart"}
         />
       </div>
     </section>
@@ -188,9 +234,21 @@
     <section class="chart-card">
       <div class="card-head">
         <span class="card-title">{t("dashboard.chartCategoryTitle")}</span>
-        <button class="card-corner" type="button" tabindex="-1" aria-hidden="true">
-          <ArrowUpRight size={14} />
-        </button>
+        {#if hasHistoryData}
+          <button
+            class="card-corner"
+            type="button"
+            aria-pressed={categoryTable}
+            aria-label={t("dashboard.cardTableToggle", { chart: t("dashboard.chartCategoryTitle") })}
+            onclick={() => (categoryTable = !categoryTable)}
+          >
+            {#if categoryTable}
+              <ChartColumn size={14} />
+            {:else}
+              <Table2 size={14} />
+            {/if}
+          </button>
+        {/if}
       </div>
       <div class="card-body">
         <CategoryLines
@@ -204,16 +262,34 @@
           emptyHint={t("dashboard.emptyHistoryHint")}
           emptyCta={t("dashboard.emptyHistoryCta")}
           onCta={goToOptimize}
+          view={categoryTable ? "table" : "chart"}
         />
       </div>
     </section>
 
     <section class="chart-card">
       <div class="card-head">
-        <span class="card-title">{t("dashboard.chartDonutTitle")}</span>
-        <button class="card-corner" type="button" tabindex="-1" aria-hidden="true">
-          <ArrowUpRight size={14} />
-        </button>
+        <span class="card-title">
+          {t("dashboard.chartLastScanTitle")}
+          {#if hasDonutData && lastScanDate}
+            <span class="card-title-ctx">· {#if lastScanFolder}{lastScanFolder} · {/if}{lastScanDate}</span>
+          {/if}
+        </span>
+        {#if hasDonutData}
+          <button
+            class="card-corner"
+            type="button"
+            aria-pressed={donutTable}
+            aria-label={t("dashboard.cardTableToggle", { chart: t("dashboard.chartLastScanTitle") })}
+            onclick={() => (donutTable = !donutTable)}
+          >
+            {#if donutTable}
+              <ChartColumn size={14} />
+            {:else}
+              <Table2 size={14} />
+            {/if}
+          </button>
+        {/if}
       </div>
       <div class="card-body">
         {#if $storage.scanState === "scanning"}
@@ -234,11 +310,12 @@
           <StorageDonut
             segments={donutData}
             totalLabel={formatBytes(donutTotalBytes)}
-            centerSub={t("dashboard.totalStorage")}
+            centerSub={t("dashboard.donutCenterScanned")}
             facts={donutFacts}
             formatValue={formatBytes}
             ariaSummary={t("dashboard.chartDonutAria", { total: formatBytes(donutTotalBytes) })}
             tableCaption={t("dashboard.tableCaptionDonut")}
+            view={donutTable ? "table" : "chart"}
           />
         {:else}
           <div class="donut-status">
@@ -315,13 +392,19 @@
     transition: background-color var(--duration-normal) var(--ease-out), color var(--duration-normal) var(--ease-out);
   }
 
-  .icon-btn:hover {
+  .icon-btn:hover:not(:disabled) {
     background: var(--navy-bg);
     color: var(--text-primary);
   }
 
-  .icon-btn:active {
+  .icon-btn:active:not(:disabled) {
     transform: scale(0.96);
+  }
+
+  .icon-btn:disabled,
+  .range-pill:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   :global(button.scan-cta) {
@@ -382,6 +465,12 @@
     letter-spacing: 0.02em;
   }
 
+  /* Scan context (folder · date) appended to the last-scan card title. Same
+     --chart-tick color as the title (AA at this size); weight alone demotes it. */
+  .card-title-ctx {
+    font-weight: 400;
+  }
+
   .card-corner {
     display: flex;
     align-items: center;
@@ -390,7 +479,7 @@
     height: 26px;
     flex-shrink: 0;
     border-radius: var(--radius-sm);
-    color: var(--text-muted);
+    color: var(--chart-tick);
     transition: background-color var(--duration-normal) var(--ease-out), color var(--duration-normal) var(--ease-out);
   }
 
@@ -433,7 +522,7 @@
   .donut-status span {
     max-width: 220px;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--chart-tick);
   }
 
   .status-icon {

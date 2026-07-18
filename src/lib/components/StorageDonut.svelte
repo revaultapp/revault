@@ -22,9 +22,23 @@
     formatValue: (n: number) => string;
     ariaSummary: string;
     tableCaption: string;
+    /** "chart" (default) renders the facts/ring/legend grid with its sr-only
+        data table; "table" replaces the whole grid with a visible version of
+        that same table — the visible table becomes the accessible content,
+        so the sr-only duplicate is omitted. */
+    view?: "chart" | "table";
   }
 
-  let { segments, totalLabel, centerSub, facts, formatValue, ariaSummary, tableCaption }: Props = $props();
+  let {
+    segments,
+    totalLabel,
+    centerSub,
+    facts,
+    formatValue,
+    ariaSummary,
+    tableCaption,
+    view = "chart",
+  }: Props = $props();
 
   const CHART_COLORS = [
     "var(--chart-1)",
@@ -62,123 +76,197 @@
   );
 </script>
 
-<div class="storage-donut">
-  <div class="facts-col">
-    {#each facts as fact (fact.label)}
-      <div class="fact">
-        <span class="fact-value">{fact.value}</span>
-        <span class="fact-label">{fact.label}</span>
-      </div>
-    {/each}
-  </div>
-
-  <div class="ring-wrap" bind:this={containerEl} role="img" aria-label={ariaSummary}>
-    <svg class="ring-svg" viewBox="0 0 {SIZE} {SIZE}" aria-hidden="true">
-      <g transform="rotate(-90 {CENTER} {CENTER})">
-        {#each rings as ring, i (segments[i]?.label ?? i)}
-          <circle
-            cx={CENTER}
-            cy={CENTER}
-            r={R}
-            fill="none"
-            stroke={CHART_COLORS[i % CHART_COLORS.length]}
-            stroke-width={STROKE}
-            stroke-linecap={ring.butt ? "butt" : "round"}
-            stroke-dasharray={ring.dasharray}
-            stroke-dashoffset={ring.dashoffset}
-            class="donut-seg"
-            class:active={hoverIndex === i}
-            style="transform-origin: {CENTER}px {CENTER}px"
-            onmouseenter={() => (hoverIndex = i)}
-            onmouseleave={() => (hoverIndex = null)}
-            role="presentation"
-          />
-        {/each}
-      </g>
-    </svg>
-
-    <div class="ring-center">
-      <span class="ring-total">{totalLabel}</span>
-      <span class="ring-sub">{centerSub}</span>
+<div class="storage-donut" class:table-mode={view === "table"}>
+  {#if view === "table"}
+    <div class="table-scroll">
+      <table class="data-table">
+        <caption class="visually-hidden">{tableCaption}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{t("dashboard.tableColType")}</th>
+            <th scope="col" class="col-num">{t("dashboard.tableColSize")}</th>
+            <th scope="col" class="col-num">{t("dashboard.tableColFiles")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each segments as seg (seg.label)}
+            <tr>
+              <td>{seg.label}</td>
+              <td class="col-num">{formatValue(seg.bytes)}</td>
+              <td class="col-num">{seg.count}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  {:else}
+    <div class="facts-col">
+      {#each facts as fact (fact.label)}
+        <div class="fact">
+          <span class="fact-value">{fact.value}</span>
+          <span class="fact-label">{fact.label}</span>
+        </div>
+      {/each}
     </div>
 
-    <ChartTooltip
-      visible={hoverIndex !== null}
-      x={CENTER}
-      y={CENTER}
-      title={active?.label ?? ""}
-      sub="{activePct.toFixed(0)}%"
-      rows={tooltipRows}
-    />
-  </div>
+    <div class="ring-wrap" bind:this={containerEl} role="img" aria-label={ariaSummary}>
+      <svg class="ring-svg" viewBox="0 0 {SIZE} {SIZE}" aria-hidden="true">
+        <g transform="rotate(-90 {CENTER} {CENTER})">
+          {#each rings as ring, i (segments[i]?.label ?? i)}
+            <circle
+              cx={CENTER}
+              cy={CENTER}
+              r={R}
+              fill="none"
+              stroke={CHART_COLORS[i % CHART_COLORS.length]}
+              stroke-width={STROKE}
+              stroke-linecap={ring.butt ? "butt" : "round"}
+              stroke-dasharray={ring.dasharray}
+              stroke-dashoffset={ring.dashoffset}
+              class="donut-seg"
+              class:active={hoverIndex === i}
+              style="transform-origin: {CENTER}px {CENTER}px"
+              onmouseenter={() => (hoverIndex = i)}
+              onmouseleave={() => (hoverIndex = null)}
+              role="presentation"
+            />
+          {/each}
+        </g>
+      </svg>
 
-  <div class="legend-col">
-    {#each segments as seg, i (seg.label)}
-      <button
-        type="button"
-        class="legend-row"
-        onmouseenter={() => (hoverIndex = i)}
-        onfocus={() => (hoverIndex = i)}
-        onmouseleave={() => (hoverIndex = null)}
-        onblur={() => (hoverIndex = null)}
-        aria-label="{seg.label} — {formatValue(seg.bytes)} · {total > 0 ? ((seg.bytes / total) * 100).toFixed(0) : 0}%"
-      >
-        <span class="tick" style="background: {CHART_COLORS[i % CHART_COLORS.length]}"></span>
-        <span class="legend-name">{seg.label}</span>
-        <span class="legend-value">{formatValue(seg.bytes)}</span>
-      </button>
-    {/each}
-  </div>
+      <div class="ring-center">
+        <span class="ring-total">{totalLabel}</span>
+        <span class="ring-sub">{centerSub}</span>
+      </div>
 
-  <table class="visually-hidden">
-    <caption>{tableCaption}</caption>
-    <thead>
-      <tr><th scope="col">{t("dashboard.tableColType")}</th><th scope="col">{t("dashboard.tableColSize")}</th><th scope="col">{t("dashboard.tableColFiles")}</th></tr>
-    </thead>
-    <tbody>
-      {#each segments as seg (seg.label)}
-        <tr>
-          <td>{seg.label}</td>
-          <td>{formatValue(seg.bytes)}</td>
-          <td>{seg.count}</td>
-        </tr>
+      <ChartTooltip
+        visible={hoverIndex !== null}
+        x={CENTER}
+        y={CENTER}
+        title={active?.label ?? ""}
+        sub="{activePct.toFixed(0)}%"
+        rows={tooltipRows}
+      />
+    </div>
+
+    <div class="legend-col">
+      {#each segments as seg, i (seg.label)}
+        <button
+          type="button"
+          class="legend-row"
+          onmouseenter={() => (hoverIndex = i)}
+          onfocus={() => (hoverIndex = i)}
+          onmouseleave={() => (hoverIndex = null)}
+          onblur={() => (hoverIndex = null)}
+          aria-label="{seg.label} — {formatValue(seg.bytes)} · {total > 0 ? ((seg.bytes / total) * 100).toFixed(0) : 0}%"
+        >
+          <span class="tick" style="background: {CHART_COLORS[i % CHART_COLORS.length]}"></span>
+          <span class="legend-name">{seg.label}</span>
+          <span class="legend-value">{formatValue(seg.bytes)}</span>
+        </button>
       {/each}
-    </tbody>
-  </table>
+    </div>
+
+    <table class="visually-hidden">
+      <caption>{tableCaption}</caption>
+      <thead>
+        <tr><th scope="col">{t("dashboard.tableColType")}</th><th scope="col">{t("dashboard.tableColSize")}</th><th scope="col">{t("dashboard.tableColFiles")}</th></tr>
+      </thead>
+      <tbody>
+        {#each segments as seg (seg.label)}
+          <tr>
+            <td>{seg.label}</td>
+            <td>{formatValue(seg.bytes)}</td>
+            <td>{seg.count}</td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+  {/if}
 </div>
 
 <style>
   .storage-donut {
     display: grid;
-    grid-template-columns: minmax(84px, 1fr) 170px minmax(96px, 1fr);
+    grid-template-columns: minmax(0, 1fr) 170px minmax(0, 1fr);
     align-items: center;
     gap: 16px;
     height: 100%;
+  }
+
+  /* Table mode replaces the 3-column grid with a single scrolling table. */
+  .storage-donut.table-mode {
+    display: block;
+  }
+
+  .table-scroll {
+    height: 100%;
+    max-height: 100%;
+    overflow-y: auto;
+    overflow-x: auto;
+  }
+
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .data-table th {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--chart-tick);
+    text-align: left;
+  }
+
+  .data-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .data-table .col-num {
+    text-align: right;
+  }
+
+  .data-table td.col-num {
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
   }
 
   .facts-col {
     display: flex;
     flex-direction: column;
     gap: 12px;
+    min-width: 0;
   }
 
   .fact {
     display: flex;
     flex-direction: column;
     gap: 1px;
+    min-width: 0;
   }
 
   .fact-value {
+    overflow: hidden;
     font-size: 15px;
     font-weight: 700;
     color: var(--text-primary);
     letter-spacing: -0.01em;
     font-variant-numeric: tabular-nums;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .fact-label {
+    overflow: hidden;
     font-size: 11px;
     color: var(--chart-tick);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .ring-wrap {
@@ -269,12 +357,20 @@
   }
 
   .legend-value {
-    flex-shrink: 0;
+    /* Was flex-shrink: 0 with no overflow guard — at narrow widths it could
+       push past the legend column's track since nothing clipped it. Letting
+       it shrink with the same ellipsis treatment as .legend-name keeps it
+       inside the track instead of spilling. */
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
     margin-left: auto;
     font-size: 11px;
     font-weight: 600;
     color: var(--text-primary);
     font-variant-numeric: tabular-nums;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .visually-hidden {
