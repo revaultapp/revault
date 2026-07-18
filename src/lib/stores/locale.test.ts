@@ -63,12 +63,37 @@ describe("locale store", () => {
     expect(mod.getLocale()).toBe("en");
   });
 
-  it("en/es/fr dictionaries expose the exact same set of dot-path keys", async () => {
+  it("every dictionary exposes the exact same set of dot-path keys as en", async () => {
     const { dictionaries } = await import("$lib/i18n");
     const enKeys = new Set(collectKeys(dictionaries.en));
-    const esKeys = new Set(collectKeys(dictionaries.es));
-    const frKeys = new Set(collectKeys(dictionaries.fr));
-    expect(esKeys).toEqual(enKeys);
-    expect(frKeys).toEqual(enKeys);
+    for (const locale of Object.keys(dictionaries) as (keyof typeof dictionaries)[]) {
+      if (locale === "en") continue;
+      expect(new Set(collectKeys(dictionaries[locale])), `locale ${locale}`).toEqual(enKeys);
+    }
+  });
+
+  it("detects de and pt (incl. pt-BR) from navigator.language", async () => {
+    for (const [lang, expected] of [
+      ["de-DE", "de"],
+      ["pt-BR", "pt"],
+      ["pt-PT", "pt"],
+    ] as const) {
+      localStorage.clear();
+      vi.resetModules();
+      vi.stubGlobal("navigator", { ...navigator, language: lang });
+      const mod = await import("./locale.svelte");
+      expect(mod.getLocale(), `navigator.language ${lang}`).toBe(expected);
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("t() resolves keys in the new de and pt locales", async () => {
+    const mod = await import("./locale.svelte");
+    mod.setLocale("de");
+    expect(mod.t("settings.languageGerman")).toBe("Deutsch");
+    expect(mod.t("common.outputLabel")).not.toBe("common.outputLabel");
+    mod.setLocale("pt");
+    expect(mod.t("settings.languagePortuguese")).toBe("Português (Brasil)");
+    expect(mod.t("common.outputLabel")).not.toBe("common.outputLabel");
   });
 });

@@ -4,8 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { activity } from "./activity";
 import { savings } from "./savings";
 import { history } from "./history";
-import { persisted, withListener } from "$lib/utils";
-import { defaultOutputDir } from "./settings";
+import { persisted, persistedWithGlobalDefault, withListener } from "$lib/utils";
+import { defaultOutputDir, defaultVideoPreset, defaultVideoPrivacy } from "./settings";
 
 // ── FFmpeg availability ───────────────────────────────────────────────────────
 
@@ -110,13 +110,24 @@ export interface VideoCompressionResult {
 // ── Stores ─────────────────────────────────────────────────────────────────────
 
 export const videoFiles = writable<VideoFile[]>([]);
-export const videoPreset = persisted<VideoPreset>("video_preset", "Balanced");
+// Global defaults (Settings → Defaults) seed these stores on init only; once
+// created, changes made on the Video page are respected and persisted as the
+// new last-used value, same as before.
+export const videoPreset = persistedWithGlobalDefault<VideoPreset>(
+  "video_preset",
+  "Balanced",
+  get(defaultVideoPreset),
+);
 export const videoOutputDir = persisted<string | null>("video_output_dir", null);
 export const resolvedVideoOutputDir = derived(
   [videoOutputDir, defaultOutputDir],
   ([$out, $def]) => $out ?? $def,
 );
-export const videoPrivacyMode = persisted<PrivacyMode>("video_privacy_mode", "smart");
+export const videoPrivacyMode = persistedWithGlobalDefault<PrivacyMode>(
+  "video_privacy_mode",
+  "smart",
+  get(defaultVideoPrivacy),
+);
 export const isCompressing = writable(false);
 
 export const videoPreviews = writable<Map<string, VideoPreviewState>>(new Map());

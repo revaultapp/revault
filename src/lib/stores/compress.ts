@@ -1,8 +1,8 @@
-import { writable, derived } from "svelte/store";
+import { writable, derived, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { BaseFile } from "$lib/types";
-import { persisted } from "$lib/utils";
-import { defaultOutputDir } from "./settings";
+import { persisted, persistedWithGlobalDefault } from "$lib/utils";
+import { defaultOutputDir, defaultImagePreset } from "./settings";
 
 export type FileStatus = "pending" | "compressing" | "done" | "error";
 export type OutputFormat = "Jpeg" | "Png" | "Webp" | "Avif";
@@ -39,7 +39,14 @@ export interface SavingsEstimate {
 }
 
 export const files = writable<CompressFile[]>([]);
-export const qualityPreset = persisted<QualityPreset>("compress_quality_preset", "Balanced");
+// Global default (Settings → Defaults) seeds this store on init only; once
+// created, changes made on the Optimize page are respected and persisted as
+// the new last-used value, same as before.
+export const qualityPreset = persistedWithGlobalDefault<QualityPreset>(
+  "compress_quality_preset",
+  "Balanced",
+  get(defaultImagePreset),
+);
 export const format = persisted<OutputFormat | null>("compress_format", null);
 export const outputDir = persisted<string | null>("compress-output-dir", null);
 export const resolvedOutputDir = derived(

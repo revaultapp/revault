@@ -147,4 +147,37 @@ describe("compress store", () => {
       expect(result).toBeNull();
     });
   });
+
+  describe("qualityPreset global default semantics", () => {
+    beforeEach(() => {
+      vi.resetModules();
+      localStorage.clear();
+    });
+
+    it("uses the global default from Settings when set", async () => {
+      const { defaultImagePreset } = await import("./settings");
+      defaultImagePreset.set("Smallest");
+      const { qualityPreset } = await import("./compress");
+      expect(get(qualityPreset)).toBe("Smallest");
+    });
+
+    it("falls back to the last-used persisted value when the global default is null", async () => {
+      localStorage.setItem("compress_quality_preset", JSON.stringify("HighQuality"));
+      const { qualityPreset } = await import("./compress");
+      expect(get(qualityPreset)).toBe("HighQuality");
+    });
+
+    it("falls back to Balanced when neither the global default nor a last-used value exist", async () => {
+      const { qualityPreset } = await import("./compress");
+      expect(get(qualityPreset)).toBe("Balanced");
+    });
+
+    it("still persists user changes made after init from a global default", async () => {
+      const { defaultImagePreset } = await import("./settings");
+      defaultImagePreset.set("Smallest");
+      const { qualityPreset } = await import("./compress");
+      qualityPreset.set("HighQuality");
+      expect(localStorage.getItem("compress_quality_preset")).toBe(JSON.stringify("HighQuality"));
+    });
+  });
 });

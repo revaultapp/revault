@@ -113,11 +113,11 @@ Source of truth is `src/app.css`.
 
 ## Testing Baseline
 
-Current test suite (verified 2026-07-18, post-blitz cleanup):
+Current test suite (verified 2026-07-18, settings pack + de/pt locales):
 
 - Rust: 238 unit tests via `cd src-tauri && cargo test` (+1 `#[ignore]` real-render test, run in CI on ubuntu and locally with `REVAULT_PDFIUM_PATH` set).
-- Frontend: 180 Vitest tests via `pnpm test`.
-- Total: 418 passing tests.
+- Frontend: 200 Vitest tests via `pnpm test`.
+- Total: 438 passing tests.
 
 Always verify counts after changing tests by running the commands above; this section should be updated when tests are added or removed.
 

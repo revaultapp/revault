@@ -5,11 +5,16 @@ const STORAGE_KEY = "revault:locale";
 
 function detectLocale(): Locale {
   const stored = typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-  if (stored === "en" || stored === "es" || stored === "fr") return stored;
+  if (stored !== null && stored in dictionaries) return stored as Locale;
 
+  // "pt" deliberately catches both pt-BR and pt-PT: the dictionary is written
+  // in pt-BR, which Portuguese users read without friction (and Brazil is the
+  // overwhelming majority of the lusophone audience).
   const nav = typeof navigator !== "undefined" ? navigator.language : "";
   if (nav.startsWith("es")) return "es";
   if (nav.startsWith("fr")) return "fr";
+  if (nav.startsWith("de")) return "de";
+  if (nav.startsWith("pt")) return "pt";
   return "en";
 }
 

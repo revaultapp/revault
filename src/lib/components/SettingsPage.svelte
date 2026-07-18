@@ -1,10 +1,15 @@
 <script lang="ts">
-  import { Sun, Moon, FolderOpen, RotateCcw } from "lucide-svelte";
+  import { Sun, Moon, Monitor, FolderOpen, RotateCcw, ShieldCheck } from "lucide-svelte";
   import { theme } from "$lib/stores/theme";
-  import { defaultOutputDir } from "$lib/stores/settings";
+  import { defaultOutputDir, defaultImagePreset, defaultVideoPreset, defaultVideoPrivacy } from "$lib/stores/settings";
+  import type { QualityPreset } from "$lib/stores/compress";
+  import type { VideoPreset, PrivacyMode } from "$lib/stores/video";
   import { browseOutputDir } from "$lib/utils";
   import { getLocale, setLocale, t } from "$lib/stores/locale.svelte";
+  import type { Locale } from "$lib/i18n";
   import SegmentedControl from "./SegmentedControl.svelte";
+
+  const REMEMBER = "remember";
 
   async function pickOutputDir() {
     const dir = await browseOutputDir();
@@ -19,10 +24,46 @@
     { id: "en", label: t("settings.languageEnglish") },
     { id: "es", label: t("settings.languageSpanish") },
     { id: "fr", label: t("settings.languageFrench") },
+    { id: "de", label: t("settings.languageGerman") },
+    { id: "pt", label: t("settings.languagePortuguese") },
   ] as const);
 
   function selectLanguage(id: string) {
-    setLocale(id as "en" | "es" | "fr");
+    setLocale(id as Locale);
+  }
+
+  let imagePresetSegments = $derived([
+    { id: REMEMBER, label: t("settings.defaultRememberLast") },
+    { id: "Smallest", label: t("common.qualitySmallest") },
+    { id: "Balanced", label: t("common.qualityBalanced") },
+    { id: "HighQuality", label: t("common.qualityHighQuality") },
+  ] as const);
+
+  let videoPresetSegments = $derived([
+    { id: REMEMBER, label: t("settings.defaultRememberLast") },
+    { id: "Smallest", label: t("video.presetSmallest") },
+    { id: "Balanced", label: t("video.presetBalanced") },
+    { id: "HighQuality", label: t("video.presetHighQuality") },
+  ] as const);
+
+  let videoPrivacySegments = $derived([
+    { id: REMEMBER, label: t("settings.defaultRememberLast") },
+    { id: "off", label: t("video.privacyOff") },
+    { id: "smart", label: t("video.privacySmart") },
+    { id: "gps_only", label: t("video.privacyGpsOnly") },
+    { id: "full", label: t("video.privacyFull") },
+  ] as const);
+
+  function selectImagePreset(id: string) {
+    defaultImagePreset.set(id === REMEMBER ? null : (id as QualityPreset));
+  }
+
+  function selectVideoPreset(id: string) {
+    defaultVideoPreset.set(id === REMEMBER ? null : (id as VideoPreset));
+  }
+
+  function selectVideoPrivacy(id: string) {
+    defaultVideoPrivacy.set(id === REMEMBER ? null : (id as PrivacyMode));
   }
 </script>
 
@@ -48,6 +89,10 @@
         <button class="seg" class:active={$theme === 'dark'} onclick={() => theme.set('dark')}>
           <Moon size={14} strokeWidth={2} />
           <span>{t("settings.themeDark")}</span>
+        </button>
+        <button class="seg" class:active={$theme === 'system'} onclick={() => theme.set('system')}>
+          <Monitor size={14} strokeWidth={2} />
+          <span>{t("settings.themeSystem")}</span>
         </button>
       </div>
     </div>
@@ -81,6 +126,48 @@
     </div>
   </section>
 
+  <!-- Defaults -->
+  <section class="section">
+    <div class="section-header">
+      <h2>{t("settings.defaultsTitle")}</h2>
+      <p>{t("settings.defaultsDesc")}</p>
+    </div>
+    <hr />
+    <div class="row wrap">
+      <div class="label">
+        <span class="name">{t("settings.defaultImagePresetLabel")}</span>
+      </div>
+      <SegmentedControl
+        segments={imagePresetSegments}
+        selected={$defaultImagePreset ?? REMEMBER}
+        onselect={selectImagePreset}
+        label={t("settings.defaultImagePresetLabel")}
+      />
+    </div>
+    <div class="row wrap">
+      <div class="label">
+        <span class="name">{t("settings.defaultVideoPresetLabel")}</span>
+      </div>
+      <SegmentedControl
+        segments={videoPresetSegments}
+        selected={$defaultVideoPreset ?? REMEMBER}
+        onselect={selectVideoPreset}
+        label={t("settings.defaultVideoPresetLabel")}
+      />
+    </div>
+    <div class="row wrap">
+      <div class="label">
+        <span class="name">{t("settings.defaultVideoPrivacyLabel")}</span>
+      </div>
+      <SegmentedControl
+        segments={videoPrivacySegments}
+        selected={$defaultVideoPrivacy ?? REMEMBER}
+        onselect={selectVideoPrivacy}
+        label={t("settings.defaultVideoPrivacyLabel")}
+      />
+    </div>
+  </section>
+
   <!-- About -->
   <section class="section">
     <div class="section-header">
@@ -88,9 +175,16 @@
       <p>{t("settings.aboutDesc")}</p>
     </div>
     <hr />
+    <div class="privacy-badge">
+      <ShieldCheck size={18} strokeWidth={2} />
+      <div class="privacy-badge-text">
+        <span class="privacy-badge-title">{t("settings.privacyBadgeTitle")}</span>
+        <span class="privacy-badge-desc">{t("settings.privacyBadgeDesc")}</span>
+      </div>
+    </div>
     <div class="row small">
       <span class="name">{t("settings.versionLabel")}</span>
-      <span class="version-val">0.1.0</span>
+      <span class="version-val">{__APP_VERSION__}</span>
     </div>
   </section>
 </div>
@@ -145,6 +239,14 @@
     height: 36px;
   }
 
+  .row.wrap {
+    height: auto;
+    min-height: 48px;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 4px 0;
+  }
+
   .label {
     display: flex;
     flex-direction: column;
@@ -191,6 +293,40 @@
     font-size: 13px;
     font-weight: 500;
     color: var(--text-muted);
+  }
+
+  .privacy-badge {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 14px 16px;
+    border-radius: var(--radius-md);
+    background: var(--accent-subtle);
+    border: 1px solid var(--accent-glow);
+    color: var(--accent-text);
+  }
+
+  .privacy-badge :global(svg) {
+    flex-shrink: 0;
+    margin-top: 1px;
+    color: var(--accent);
+  }
+
+  .privacy-badge-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .privacy-badge-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent-text);
+  }
+
+  .privacy-badge-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
   }
 
   .output-controls {

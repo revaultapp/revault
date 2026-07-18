@@ -32,4 +32,32 @@ describe("settings store", () => {
     const { defaultOutputDir } = await import("./settings");
     expect(get(defaultOutputDir)).toBe("/Users/mike/Documents");
   });
+
+  describe("global processing defaults", () => {
+    it("defaultImagePreset, defaultVideoPreset, defaultVideoPrivacy all default to null", async () => {
+      const { defaultImagePreset, defaultVideoPreset, defaultVideoPrivacy } = await import("./settings");
+      expect(get(defaultImagePreset)).toBeNull();
+      expect(get(defaultVideoPreset)).toBeNull();
+      expect(get(defaultVideoPrivacy)).toBeNull();
+    });
+
+    it("persist their values to localStorage on change", async () => {
+      const { defaultImagePreset, defaultVideoPreset, defaultVideoPrivacy } = await import("./settings");
+      defaultImagePreset.set("Smallest");
+      defaultVideoPreset.set("HighQuality");
+      defaultVideoPrivacy.set("full");
+      expect(localStorage.getItem("settings-default-image-preset")).toBe(JSON.stringify("Smallest"));
+      expect(localStorage.getItem("settings-default-video-preset")).toBe(JSON.stringify("HighQuality"));
+      expect(localStorage.getItem("settings-default-video-privacy")).toBe(JSON.stringify("full"));
+    });
+
+    it("rehydrate from localStorage on reimport, including back to null", async () => {
+      localStorage.setItem("settings-default-image-preset", JSON.stringify("Balanced"));
+      const { defaultImagePreset } = await import("./settings");
+      expect(get(defaultImagePreset)).toBe("Balanced");
+
+      defaultImagePreset.set(null);
+      expect(localStorage.getItem("settings-default-image-preset")).toBe("null");
+    });
+  });
 });

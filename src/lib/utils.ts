@@ -3,16 +3,37 @@ import type { Writable } from "svelte/store";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 
-export function persisted<T>(key: string, initial: T): Writable<T> {
-  const stored =
-    typeof localStorage !== "undefined" ? localStorage.getItem(key) : null;
-  const store = writable<T>(stored !== null ? (JSON.parse(stored) as T) : initial);
+function persistedStore<T>(key: string, value: T): Writable<T> {
+  const store = writable<T>(value);
   store.subscribe((v) => {
     if (typeof localStorage !== "undefined") {
       localStorage.setItem(key, JSON.stringify(v));
     }
   });
   return store;
+}
+
+export function persisted<T>(key: string, initial: T): Writable<T> {
+  const stored =
+    typeof localStorage !== "undefined" ? localStorage.getItem(key) : null;
+  return persistedStore<T>(key, stored !== null ? (JSON.parse(stored) as T) : initial);
+}
+
+/**
+ * Like `persisted`, but a global default (e.g. from Settings) wins over the
+ * last-used value at store-creation time. If `globalDefault` is non-null, it
+ * seeds the store directly (ignoring whatever was last persisted under
+ * `key`). If it's null, this behaves exactly like `persisted` — falling back
+ * to the last-used value, or `fallback`. Either way, once created, the store
+ * persists further changes to `key` as normal, so the global default only
+ * ever affects initialization, never live values.
+ */
+export function persistedWithGlobalDefault<T>(
+  key: string,
+  fallback: T,
+  globalDefault: T | null,
+): Writable<T> {
+  return globalDefault !== null ? persistedStore<T>(key, globalDefault) : persisted<T>(key, fallback);
 }
 
 export async function browseOutputDir(): Promise<string | null> {

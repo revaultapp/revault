@@ -495,4 +495,45 @@ describe("video store", () => {
       expect(get(resolvedVideoOutputDir)).toBeNull();
     });
   });
+
+  describe("videoPreset / videoPrivacyMode global default semantics", () => {
+    it("videoPreset uses the global default from Settings when set", async () => {
+      const { defaultVideoPreset } = await import("./settings");
+      defaultVideoPreset.set("Smallest");
+      const { videoPreset } = await import("./video");
+      expect(get(videoPreset)).toBe("Smallest");
+    });
+
+    it("videoPreset falls back to the last-used persisted value when the global default is null", async () => {
+      localStorage.setItem("video_preset", JSON.stringify("HighQuality"));
+      const { videoPreset } = await import("./video");
+      expect(get(videoPreset)).toBe("HighQuality");
+    });
+
+    it("videoPreset falls back to Balanced when neither the global default nor a last-used value exist", async () => {
+      const { videoPreset } = await import("./video");
+      expect(get(videoPreset)).toBe("Balanced");
+    });
+
+    it("videoPrivacyMode uses the global default from Settings when set", async () => {
+      const { defaultVideoPrivacy } = await import("./settings");
+      defaultVideoPrivacy.set("full");
+      const { videoPrivacyMode } = await import("./video");
+      expect(get(videoPrivacyMode)).toBe("full");
+    });
+
+    it("videoPrivacyMode falls back to the last-used persisted value when the global default is null", async () => {
+      localStorage.setItem("video_privacy_mode", JSON.stringify("gps_only"));
+      const { videoPrivacyMode } = await import("./video");
+      expect(get(videoPrivacyMode)).toBe("gps_only");
+    });
+
+    it("still persists user changes made after init from a global default", async () => {
+      const { defaultVideoPreset } = await import("./settings");
+      defaultVideoPreset.set("Smallest");
+      const { videoPreset } = await import("./video");
+      videoPreset.set("HighQuality");
+      expect(localStorage.getItem("video_preset")).toBe(JSON.stringify("HighQuality"));
+    });
+  });
 });
