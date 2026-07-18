@@ -1,9 +1,10 @@
 <script lang="ts">
+  import type { Component } from "svelte";
   import {
-    Compass, Zap, ScanSearch,
-    Shield, Film, FileText,
-    Settings, Database
-  } from "lucide-svelte";
+    DashboardIcon, OptimizeIcon, DuplicatesIcon,
+    PrivacyIcon, VideoIcon, PdfIcon,
+    SettingsIcon, VaultIcon
+  } from "$lib/components/icons";
   import { Tween, Spring, prefersReducedMotion } from 'svelte/motion';
   import { tick } from 'svelte';
   import { activePage } from "$lib/stores/nav";
@@ -11,14 +12,15 @@
   import { formatBytes } from "$lib/utils";
   import { t } from "$lib/stores/locale.svelte";
 
-  type NavItem = { icon: typeof Compass; id: string; label: string };
+  type IconComponent = Component<{ size?: number; strokeWidth?: number; class?: string }>;
+  type NavItem = { icon: IconComponent; id: string; label: string };
   let navItems: NavItem[] = $derived([
-    { icon: Compass, id: "dashboard", label: t("sidebar.navDashboard") },
-    { icon: Zap, id: "optimize", label: t("sidebar.navOptimize") },
-    { icon: ScanSearch, id: "duplicates", label: t("sidebar.navDuplicates") },
-    { icon: Shield, id: "privacy", label: t("sidebar.navPrivacy") },
-    { icon: Film, id: "video", label: t("sidebar.navVideo") },
-    { icon: FileText, id: "pdf", label: t("sidebar.navPdf") },
+    { icon: DashboardIcon, id: "dashboard", label: t("sidebar.navDashboard") },
+    { icon: OptimizeIcon, id: "optimize", label: t("sidebar.navOptimize") },
+    { icon: DuplicatesIcon, id: "duplicates", label: t("sidebar.navDuplicates") },
+    { icon: PrivacyIcon, id: "privacy", label: t("sidebar.navPrivacy") },
+    { icon: VideoIcon, id: "video", label: t("sidebar.navVideo") },
+    { icon: PdfIcon, id: "pdf", label: t("sidebar.navPdf") },
   ]);
 
   // Savings counter animation
@@ -96,7 +98,7 @@
       {/each}
 
       <div class="saved-badge" class:just-updated={savingsJustUpdated}>
-        <Database size={16} strokeWidth={1.8} />
+        <VaultIcon size={16} strokeWidth={1.8} />
         <span>{t("sidebar.savedBadge", { amount: formatBytes(displayedBytes.current) })}</span>
       </div>
     </nav>
@@ -114,7 +116,7 @@
         onclick={() => activePage.set('settings')}
         bind:this={navRefs['settings']}
       >
-        <Settings size={18} strokeWidth={1.8} />
+        <SettingsIcon size={18} strokeWidth={1.8} />
         <span>{t("sidebar.navSettings")}</span>
       </button>
     </nav>
@@ -210,6 +212,9 @@
   .nav-item:hover {
     background: var(--chrome-hover-bg);
     color: var(--chrome-text-muted);
+    /* Faint accent hint on the icon's duo layer — a preview of the fill it
+       gets on activation. Read by icons/*.svelte via `.icon-duo`. */
+    --icon-duo: color-mix(in oklch, var(--accent) 12%, transparent);
   }
 
   .nav-item:hover span {
@@ -224,6 +229,9 @@
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
     color: var(--accent);
     border-radius: 10px;
+    /* Full accent tint, kept well under 100% so the duo fill doesn't blur
+       into the now-accent-colored primary stroke sitting on top of it. */
+    --icon-duo: color-mix(in oklch, var(--accent) 32%, transparent);
   }
 
   .nav-item.active span {
@@ -263,6 +271,10 @@
     letter-spacing: -0.01em;
     margin: 4px 0;
     transition: box-shadow 300ms var(--ease-out);
+    /* Not a nav-item, so there's no hover/active toggle to drive this —
+       the vault dial stays permanently tinted, matching the badge's
+       always-on accent state. */
+    --icon-duo: color-mix(in oklch, var(--accent) 30%, transparent);
   }
 
   .saved-badge :global(svg) {

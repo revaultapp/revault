@@ -13,7 +13,7 @@ Core positioning: open source, local-only processing, cross-platform desktop, no
 - Backend: Rust. Business logic belongs in Rust, not TypeScript.
 - Package manager: `pnpm` only.
 - Font: Plus Jakarta Sans.
-- Icons: `lucide-svelte`.
+- Icons: `lucide-svelte` — except the sidebar, which uses the custom duotone set in `src/lib/components/icons/` (primary stroke layer + `--icon-duo` fill layer that `Sidebar.svelte` tints on hover/active/badge; design rules in `icons/index.ts`).
 
 ## Commands
 
