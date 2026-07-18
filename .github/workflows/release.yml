@@ -132,6 +132,21 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
+      # Fetches the pinned pdfium dylib into src-tauri/resources/pdfium/ so
+      # tauri-action bundles it. The target is derived from the matrix leg
+      # (auto-detect is wrong for the x86_64 cross-build on an arm64 runner).
+      - name: Fetch pdfium library
+        shell: bash
+        run: |
+          case "${{ matrix.platform }}-${{ matrix.args }}" in
+            *x86_64-apple-darwin*)  TARGET=mac-x64 ;;
+            *aarch64-apple-darwin*) TARGET=mac-arm64 ;;
+            ubuntu*)                TARGET=linux-x64 ;;
+            windows*)               TARGET=win-x64 ;;
+            *) echo "unknown matrix leg: ${{ matrix.platform }} ${{ matrix.args }}"; exit 1 ;;
+          esac
+          bash scripts/fetch-pdfium.sh "$TARGET"
+
       - name: Install cargo-nextest
         uses: taiki-e/install-action@cargo-nextest
 

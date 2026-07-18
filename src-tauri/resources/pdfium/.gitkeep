@@ -1,0 +1,9 @@
+# This directory holds the bundled pdfium dynamic library for the PDF → Images
+# feature. The library itself is gitignored and fetched by scripts/fetch-pdfium.sh
+# (run it once per clone; release CI runs it automatically before bundling).
+#
+# This placeholder keeps the directory present in a fresh checkout so that
+# tauri-build's bundle.resources existence check (which runs on every
+# cargo build/check/clippy/test, not just `tauri build`) passes without the
+# binary. Without it, all Rust compilation fails with:
+#   resource path `resources/pdfium` doesn't exist

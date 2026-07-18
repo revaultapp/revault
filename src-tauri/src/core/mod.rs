@@ -5,6 +5,7 @@ pub mod heic;
 pub mod image_io;
 pub mod paths;
 pub mod pdf;
+pub mod pdf_render;
 pub mod privacy;
 pub mod resize;
 pub mod scanner;

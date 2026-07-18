@@ -33,3 +33,8 @@ pencil-wireframe-prompts.md
 /static
 specs_images
 specs_video
+# pdfium dynamic library — fetched by scripts/fetch-pdfium.sh, bundled at build time.
+# The directory itself is tracked (via .gitkeep) so tauri-build's bundle.resources
+# existence check passes on a fresh checkout; only the fetched binary/licenses are ignored.
+src-tauri/resources/pdfium/*
+!src-tauri/resources/pdfium/.gitkeep

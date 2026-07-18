@@ -105,6 +105,42 @@ https://ffmpeg.org/legal.html
 
 ---
 
+## Bundled Native Libraries
+
+These are dynamically-loaded shared libraries (`.dylib`/`.so`/`.dll`) shipped as
+raw assets inside the installer and loaded at runtime — neither invoked via
+subprocess (unlike the sidecars above) nor statically compiled into the ReVault
+binary (unlike the Rust crates below).
+
+### PDFium
+
+| Field       | Value |
+|-------------|-------|
+| Upstream    | https://pdfium.googlesource.com/pdfium/ (Google) |
+| Binaries    | https://github.com/bblanchon/pdfium-binaries (release `chromium/7947`) |
+| License     | **BSD-3-Clause** (PDFium core) / **Apache-2.0** |
+| Integration | Bundled dynamic library, loaded at runtime via the `pdfium-render` crate for the "PDF → Images" feature |
+
+#### How PDFium is distributed with ReVault
+
+The pre-built pdfium shared library is fetched by `scripts/fetch-pdfium.sh` (which
+verifies a pinned SHA-256 over the archive bytes before extraction) and bundled
+into the installer as a Tauri resource (`src-tauri/resources/pdfium/`). It is
+**not** downloaded at end-user runtime — it ships inside the app and is signed
+alongside it. The library is loaded on demand through `Pdfium::bind_to_library`.
+
+#### Bundled third-party notices
+
+The pdfium binary statically incorporates several third-party libraries. Their
+license notices ship alongside the library in
+`src-tauri/resources/pdfium/licenses/` (bundled into the app) and cover:
+FreeType, ICU, HarfBuzz (via ICU), libjpeg-turbo, OpenJPEG, libpng, libtiff,
+lcms, zlib, Abseil, AGG 2.3, fast_float, simdutf, and llvm-libc — all under
+permissive (BSD/MIT/zlib/FTL-style) licenses. The complete texts are in that
+directory and are distributed verbatim with every build.
+
+---
+
 ## Rust Crate Dependencies
 
 All Rust crates compiled into the ReVault binary use permissive or file-level
@@ -120,6 +156,7 @@ Notable crates with non-MIT licenses (all compatible):
 | Crate | License | Notes |
 |-------|---------|-------|
 | `mozjpeg` | zlib/libjpeg | JPEG compression |
+| `pdfium-render` | MIT/Apache-2.0 | High-level wrapper that loads the bundled PDFium library (see Bundled Native Libraries above) |
 | `oxipng` | MIT | PNG optimization |
 | `ravif` | MIT/Apache-2.0 | AVIF encoding |
 | `rayon` | MIT/Apache-2.0 | CPU parallelism |

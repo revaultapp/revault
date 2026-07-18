@@ -1,5 +1,8 @@
 import { writable, derived, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { activity } from "./activity";
+import { savings } from "./savings";
 import type { BaseFile } from "$lib/types";
 import { persisted } from "$lib/utils";
 import { defaultOutputDir } from "./settings";
@@ -285,6 +288,97 @@ export async function splitPdf(
     splitError.set(String(e));
   } finally {
     isSplitting.set(false);
+  }
+}
+
+// --- PDF → Images: 1 PDF -> N rasterized page images ---
+
+export type PdfPagesMode = "all" | "range";
+export type PdfRasterFormat = "jpg" | "png";
+export type PdfRasterDpi = 150 | 300;
+
+export interface PdfToImagesFile {
+  path: string;
+  name: string;
+}
+
+export const p2iFile = writable<PdfToImagesFile | null>(null);
+export const isRasterizing = writable(false);
+export const p2iResults = writable<string[]>([]);
+export const p2iError = writable<string | null>(null);
+export const p2iProgress = writable<{ current: number; total: number } | null>(null);
+export const p2iFormat = persisted<PdfRasterFormat>("revault-pdf-p2i-format", "jpg");
+export const p2iDpi = persisted<PdfRasterDpi>("revault-pdf-p2i-dpi", 150);
+
+export function setP2iFile(path: string) {
+  p2iFile.set({ path, name: path.split(/[\\/]/).pop() ?? path });
+  p2iResults.set([]);
+  p2iError.set(null);
+  p2iProgress.set(null);
+}
+
+export function clearP2i() {
+  p2iFile.set(null);
+  p2iResults.set([]);
+  p2iError.set(null);
+  p2iProgress.set(null);
+  isRasterizing.set(false);
+}
+
+export async function pdfToImages(
+  pagesMode: PdfPagesMode,
+  start: number | undefined,
+  end: number | undefined,
+  outDir: string | null,
+) {
+  const input = get(p2iFile);
+  if (!input) return;
+  isRasterizing.set(true);
+  p2iError.set(null);
+  p2iResults.set([]);
+  p2iProgress.set(null);
+
+  // Declared outside try so it's cleaned up even if listen() itself rejects.
+  let unlisten: (() => void) | null = null;
+  try {
+    unlisten = await listen<{ current: number; total: number }>(
+      "pdf-rasterize-progress",
+      (event) => {
+        p2iProgress.set(event.payload);
+      },
+    );
+    const paths = await invoke<string[]>("pdf_to_images", {
+      input: input.path,
+      pagesMode,
+      start,
+      end,
+      dpi: get(p2iDpi),
+      format: get(p2iFormat),
+      outputDir: outDir,
+    });
+    p2iResults.set(paths);
+    // Rasterizing is additive (the source PDF is kept), so no byte-level
+    // savings are recorded — only the operation count, matching audio extract.
+    activity.add({ type: "convert", fileCount: paths.length, savedBytes: 0 });
+    savings.incrementOps(1);
+  } catch (e) {
+    const msg = String(e);
+    if (msg.includes("cancelled")) {
+      p2iProgress.set(null);
+    } else {
+      p2iError.set(msg);
+    }
+  } finally {
+    isRasterizing.set(false);
+    unlisten?.();
+  }
+}
+
+export async function cancelPdfToImages() {
+  try {
+    await invoke("cancel_pdf_to_images");
+  } catch {
+    // best-effort cancel — the process may have already finished
   }
 }
 
