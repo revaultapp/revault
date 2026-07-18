@@ -40,8 +40,6 @@ pub struct RasterizeProgress {
     pub total: u32,
 }
 
-const RASTER_JPEG_QUALITY: f32 = 90.0;
-
 fn ext_for(format: RasterFormat) -> &'static str {
     match format {
         RasterFormat::Jpg => "jpg",
@@ -183,6 +181,13 @@ fn handle_request(
         }
     };
 
+    // Early check so a cancel issued while the request sat in the actor's
+    // queue skips validation/probing entirely (symmetry with compress_video
+    // and extract_audio's up-front checks).
+    if req.cancelled.load(Ordering::SeqCst) {
+        return Err("cancelled".to_string());
+    }
+
     crate::core::paths::validate_input_path(&req.input, false)?;
     checked_size(&req.input).map_err(|e| e.to_string())?;
 
@@ -197,68 +202,83 @@ fn handle_request(
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("page");
-    let dir = match req.output_dir.as_deref() {
-        Some(d) => crate::core::paths::validate_output_dir(d)?,
-        None => input_path.parent().unwrap_or(Path::new(".")).to_path_buf(),
-    };
+    let dir = crate::core::paths::resolve_output_dir(
+        req.output_dir.as_deref(),
+        input_path.parent().unwrap_or(Path::new(".")),
+    )?;
     let ext = ext_for(req.opts.format);
 
     let total = end - start + 1;
     let mut reserved = HashSet::new();
     let mut outputs: Vec<PathBuf> = Vec::with_capacity(total as usize);
 
-    for (i, n) in (start..=end).enumerate() {
-        if req.cancelled.load(Ordering::SeqCst) {
-            // No half-finished batches: remove everything already written.
-            for p in &outputs {
-                let _ = std::fs::remove_file(p);
+    // The whole per-page loop funnels through one Result so that ANY exit —
+    // cancellation OR a mid-batch failure (malformed page, encode error,
+    // write error) — removes everything already written. "No half-finished
+    // batches" must hold on the error paths too, or a failure on page 7 of 10
+    // strands 6 orphaned files the frontend never learns about.
+    let render_result: Result<(), String> = (|| {
+        for (i, n) in (start..=end).enumerate() {
+            if req.cancelled.load(Ordering::SeqCst) {
+                return Err("cancelled".to_string());
             }
-            return Err("cancelled".to_string());
+
+            let page = doc
+                .pages()
+                .get((n - 1) as i32)
+                .map_err(|e| format!("Cannot read page {n}: {e:?}"))?;
+            let scale = raster_scale(page.width().value, page.height().value, req.opts.dpi);
+            let px_w = ((page.width().value * scale).round() as i32).max(1);
+            let config = PdfRenderConfig::new().set_target_width(px_w);
+
+            let bitmap = page
+                .render_with_config(&config)
+                .map_err(|e| format!("Failed to render page {n}: {e:?}"))?;
+            let rgb = bitmap
+                .as_image()
+                .map_err(|e| format!("Failed to render page {n}: {e:?}"))?
+                .to_rgb8();
+
+            let bytes = match req.opts.format {
+                RasterFormat::Jpg => crate::core::compression::encode_jpeg_bytes(
+                    rgb.width() as usize,
+                    rgb.height() as usize,
+                    rgb.as_raw(),
+                    crate::core::pdf::PDF_JPEG_QUALITY,
+                )
+                .map_err(|e| format!("Failed to encode page {n}: {e}"))?,
+                RasterFormat::Png => {
+                    // Plain image-crate PNG encode, deliberately NOT the
+                    // oxipng/zopfli pipeline the Optimize feature uses: zopfli
+                    // is slow by design and a job may span hundreds of pages —
+                    // per-page zopfli would turn a quick export into minutes.
+                    let mut buf = Vec::new();
+                    image::DynamicImage::ImageRgb8(rgb)
+                        .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+                        .map_err(|e| format!("Failed to encode page {n}: {e}"))?;
+                    buf
+                }
+            };
+
+            let out = crate::core::paths::first_available_path(
+                &dir.join(format!("{stem}_page_{n}.{ext}")),
+                &mut reserved,
+            );
+            std::fs::write(&out, &bytes).map_err(|e| format!("Failed to write page {n}: {e}"))?;
+            outputs.push(out);
+            (req.progress)(RasterizeProgress {
+                current: (i as u32) + 1,
+                total,
+            });
         }
+        Ok(())
+    })();
 
-        let page = doc
-            .pages()
-            .get((n - 1) as i32)
-            .map_err(|e| format!("Cannot read page {n}: {e:?}"))?;
-        let scale = raster_scale(page.width().value, page.height().value, req.opts.dpi);
-        let px_w = ((page.width().value * scale).round() as i32).max(1);
-        let config = PdfRenderConfig::new().set_target_width(px_w);
-
-        let bitmap = page
-            .render_with_config(&config)
-            .map_err(|e| format!("Failed to render page {n}: {e:?}"))?;
-        let rgb = bitmap
-            .as_image()
-            .map_err(|e| format!("Failed to render page {n}: {e:?}"))?
-            .to_rgb8();
-
-        let bytes = match req.opts.format {
-            RasterFormat::Jpg => crate::core::compression::encode_jpeg_bytes(
-                rgb.width() as usize,
-                rgb.height() as usize,
-                rgb.as_raw(),
-                RASTER_JPEG_QUALITY,
-            )
-            .map_err(|e| format!("Failed to encode page {n}: {e}"))?,
-            RasterFormat::Png => {
-                let mut buf = Vec::new();
-                image::DynamicImage::ImageRgb8(rgb)
-                    .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
-                    .map_err(|e| format!("Failed to encode page {n}: {e}"))?;
-                buf
-            }
-        };
-
-        let out = crate::core::paths::first_available_path(
-            &dir.join(format!("{stem}_page_{n}.{ext}")),
-            &mut reserved,
-        );
-        std::fs::write(&out, &bytes).map_err(|e| format!("Failed to write page {n}: {e}"))?;
-        outputs.push(out);
-        (req.progress)(RasterizeProgress {
-            current: (i as u32) + 1,
-            total,
-        });
+    if let Err(e) = render_result {
+        for p in &outputs {
+            let _ = std::fs::remove_file(p);
+        }
+        return Err(e);
     }
 
     Ok(outputs

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/stores/locale.svelte";
   import { untrack } from "svelte";
   import { LineChart } from "lucide-svelte";
   import { smoothPath, niceMax } from "$lib/charts";
@@ -85,6 +86,10 @@
     activeIndex = i;
   }
 
+  function reset() {
+    activeIndex = series.length - 1;
+  }
+
   const tooltipTitle = $derived(active ? `${monthLabel(active.date)} ${active.date.getFullYear()}` : "");
   const tooltipRows = $derived(
     KINDS.map((kind) => ({
@@ -164,6 +169,8 @@
               class="hover-col"
               onmouseenter={() => setActive(i)}
               onfocus={() => setActive(i)}
+              onmouseleave={reset}
+              onblur={reset}
               aria-label="{monthLabel(s.date)} {s.date.getFullYear()}"
             ></button>
           {/each}
@@ -183,7 +190,7 @@
       <caption>{tableCaption}</caption>
       <thead>
         <tr>
-          <th scope="col">Month</th>
+          <th scope="col">{t("dashboard.tableColMonth")}</th>
           {#each shares as share (share.kind)}<th scope="col">{share.label}</th>{/each}
         </tr>
       </thead>

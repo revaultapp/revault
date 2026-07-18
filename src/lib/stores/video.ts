@@ -1,11 +1,10 @@
 import { writable, derived, get } from "svelte/store";
 import type { Readable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { activity } from "./activity";
 import { savings } from "./savings";
 import { history } from "./history";
-import { persisted } from "$lib/utils";
+import { persisted, withListener } from "$lib/utils";
 import { defaultOutputDir } from "./settings";
 
 // ── FFmpeg availability ───────────────────────────────────────────────────────
@@ -39,21 +38,18 @@ export async function downloadFfmpeg(): Promise<void> {
   ffmpegStatus.set("downloading");
   ffmpegDownloadProgress.set({ downloaded: 0, total: 0, percent: 0 });
 
-  const unlisten = await listen<FfmpegDownloadProgress>(
-    "ffmpeg-download-progress",
-    (event) => {
-      ffmpegDownloadProgress.set(event.payload);
-    }
-  );
-
   try {
-    await invoke("download_ffmpeg");
+    await withListener<void, FfmpegDownloadProgress>(
+      "ffmpeg-download-progress",
+      (p) => ffmpegDownloadProgress.set(p),
+      async () => {
+        await invoke("download_ffmpeg");
+      },
+    );
     ffmpegStatus.set("ready");
   } catch (err) {
     ffmpegStatus.set("needs_download");
     throw err;
-  } finally {
-    unlisten();
   }
 }
 
@@ -244,31 +240,30 @@ export async function compressVideoFile(
     )
   );
 
-  // NOTE: This listener relies on compression being sequential (one file at a time).
-  // If parallelism is ever added, each file needs its own typed event channel to
-  // avoid all listeners firing for every event.
-  const unlisten = await listen<VideoProgress>(
-    "video-compress-progress",
-    (event) => {
-      const p = event.payload;
-      if (p.input_path !== file.path) return;
-      videoFiles.update((all) =>
-        all.map((f) =>
-          f.path === p.input_path
-            ? { ...f, progress: p.percent, fps: p.fps, speed: p.speed }
-            : f
-        )
-      );
-    }
-  );
-
   try {
-    const result = await invoke<VideoCompressionResult>("compress_video", {
-      input: file.path,
-      preset,
-      outputDir: outputDir ?? null,
-      privacy: get(videoPrivacyMode),
-    });
+    // NOTE: This listener relies on compression being sequential (one file at
+    // a time). If parallelism is ever added, each file needs its own typed
+    // event channel to avoid all listeners firing for every event.
+    const result = await withListener<VideoCompressionResult, VideoProgress>(
+      "video-compress-progress",
+      (p) => {
+        if (p.input_path !== file.path) return;
+        videoFiles.update((all) =>
+          all.map((f) =>
+            f.path === p.input_path
+              ? { ...f, progress: p.percent, fps: p.fps, speed: p.speed }
+              : f
+          )
+        );
+      },
+      () =>
+        invoke<VideoCompressionResult>("compress_video", {
+          input: file.path,
+          preset,
+          outputDir: outputDir ?? null,
+          privacy: get(videoPrivacyMode),
+        }),
+    );
 
     const isWarning = result.error?.includes("Output was larger") ?? false;
     const succeeded = !result.error || isWarning;
@@ -317,8 +312,6 @@ export async function compressVideoFile(
           : f
       )
     );
-  } finally {
-    unlisten();
   }
 }
 
@@ -382,21 +375,19 @@ export async function checkGifski(): Promise<void> {
 
 export async function downloadGifski(): Promise<void> {
   gifDownloadProgress.set({ done: 0, total: 0 });
-  const unlisten = await listen<{ bytes_done: number; bytes_total: number }>(
-    "gifski-download-progress",
-    (event) => {
-      gifDownloadProgress.set({ done: event.payload.bytes_done, total: event.payload.bytes_total });
-    }
-  );
   try {
-    await invoke("download_gifski");
+    await withListener<void, { bytes_done: number; bytes_total: number }>(
+      "gifski-download-progress",
+      (p) => gifDownloadProgress.set({ done: p.bytes_done, total: p.bytes_total }),
+      async () => {
+        await invoke("download_gifski");
+      },
+    );
     gifDownloadProgress.set(null);
     await checkGifski();
   } catch (err) {
     gifDownloadProgress.set(null);
     throw err;
-  } finally {
-    unlisten();
   }
 }
 
@@ -447,35 +438,35 @@ export async function exportGif(file: VideoFile): Promise<void> {
   gifProgress.set(0);
   gifPhase.set("encoding");
 
-  const unlisten = await listen<{ percent: number; phase: string }>(
-    "gif-export-progress",
-    (event) => {
-      const { percent, phase } = event.payload;
-      gifProgress.set(Math.round(percent));
-      if (phase === "complete" || phase === "encoding") {
-        gifPhase.set(phase);
-      }
-    }
-  );
-
   try {
-    const result = await invoke<GifResult>("export_gif", {
-      inputPath,
-      outputPath,
-      options: {
-        start_sec: settings.startSec,
-        end_sec: clampedEnd,
-        fps: settings.fps,
-        width: settings.width,
-        quality: settings.quality,
+    const result = await withListener<GifResult, { percent: number; phase: string }>(
+      "gif-export-progress",
+      ({ percent, phase }) => {
+        gifProgress.set(Math.round(percent));
+        if (phase === "complete" || phase === "encoding") {
+          gifPhase.set(phase);
+        }
       },
-    });
+      () =>
+        invoke<GifResult>("export_gif", {
+          inputPath,
+          outputPath,
+          options: {
+            start_sec: settings.startSec,
+            end_sec: clampedEnd,
+            fps: settings.fps,
+            width: settings.width,
+            quality: settings.quality,
+          },
+        }),
+    );
     gifProgress.set(100);
     gifPhase.set("complete");
     gifResult.set(result);
     gifOutputPath.set(result.output_path);
     gifState.set("done");
     activity.add({ type: "gif", fileCount: 1, savedBytes: 0 });
+    savings.incrementOps(1);
   } catch (e) {
     const msg = String(e);
     if (msg.includes("cancelled")) {
@@ -486,8 +477,6 @@ export async function exportGif(file: VideoFile): Promise<void> {
       gifState.set("error");
       gifError.set(msg);
     }
-  } finally {
-    unlisten();
   }
 }
 
@@ -541,14 +530,12 @@ export async function trimVideoFile(file: VideoFile): Promise<void> {
     trimOutputPath.set(result.output_path);
     trimState.set("done");
     activity.add({ type: "video", fileCount: 1, savedBytes: 0 });
+    savings.incrementOps(1);
   } catch (e) {
-    const msg = String(e);
-    if (msg.includes("cancelled")) {
-      trimState.set("idle");
-    } else {
-      trimState.set("error");
-      trimError.set(msg);
-    }
+    // No cancelled-branch: trim has no cancel command (lossless stream copy
+    // is near-instant), so any rejection here is a genuine error.
+    trimState.set("error");
+    trimError.set(String(e));
   }
 }
 
@@ -584,19 +571,21 @@ export async function extractAudioFile(file: VideoFile): Promise<void> {
   audioResult.set(null);
   audioProgress.set(0);
 
-  const unlisten = await listen<VideoProgress>("audio-extract-progress", (event) => {
-    const p = event.payload;
-    if (p.input_path !== file.path) return;
-    audioProgress.set(Math.round(p.percent));
-  });
-
   try {
-    const result = await invoke<AudioExtractResult>("extract_audio", {
-      input: file.path,
-      outputDir: get(resolvedVideoOutputDir),
-      format: settings.format,
-      bitrateKbps: settings.bitrateKbps,
-    });
+    const result = await withListener<AudioExtractResult, VideoProgress>(
+      "audio-extract-progress",
+      (p) => {
+        if (p.input_path !== file.path) return;
+        audioProgress.set(Math.round(p.percent));
+      },
+      () =>
+        invoke<AudioExtractResult>("extract_audio", {
+          input: file.path,
+          outputDir: get(resolvedVideoOutputDir),
+          format: settings.format,
+          bitrateKbps: settings.bitrateKbps,
+        }),
+    );
     audioProgress.set(100);
     audioResult.set(result);
     audioState.set("done");
@@ -614,8 +603,6 @@ export async function extractAudioFile(file: VideoFile): Promise<void> {
       audioState.set("error");
       audioError.set(msg);
     }
-  } finally {
-    unlisten();
   }
 }
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/stores/locale.svelte";
   import { untrack } from "svelte";
   import { TrendingUp } from "lucide-svelte";
   import { niceMax } from "$lib/charts";
@@ -187,7 +188,7 @@
     <table class="visually-hidden">
       <caption>{tableCaption}</caption>
       <thead>
-        <tr><th scope="col">Month</th><th scope="col">Value</th></tr>
+        <tr><th scope="col">{t("dashboard.tableColMonth")}</th><th scope="col">{t("dashboard.tableColValue")}</th></tr>
       </thead>
       <tbody>
         {#each series as s (s.key)}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/stores/locale.svelte";
   import { donutSegments } from "$lib/charts";
   import ChartTooltip from "./ChartTooltip.svelte";
 
@@ -120,6 +121,7 @@
         onfocus={() => (hoverIndex = i)}
         onmouseleave={() => (hoverIndex = null)}
         onblur={() => (hoverIndex = null)}
+        aria-label="{seg.label} — {formatValue(seg.bytes)} · {total > 0 ? ((seg.bytes / total) * 100).toFixed(0) : 0}%"
       >
         <span class="tick" style="background: {CHART_COLORS[i % CHART_COLORS.length]}"></span>
         <span class="legend-name">{seg.label}</span>
@@ -131,7 +133,7 @@
   <table class="visually-hidden">
     <caption>{tableCaption}</caption>
     <thead>
-      <tr><th scope="col">Type</th><th scope="col">Size</th><th scope="col">Files</th></tr>
+      <tr><th scope="col">{t("dashboard.tableColType")}</th><th scope="col">{t("dashboard.tableColSize")}</th><th scope="col">{t("dashboard.tableColFiles")}</th></tr>
     </thead>
     <tbody>
       {#each segments as seg (seg.label)}

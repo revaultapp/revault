@@ -1,14 +1,13 @@
+use crate::core::cancel::CancelSlot;
 use crate::core::video;
 use serde::Serialize;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 
-static ACTIVE_CANCEL: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
-// Separate flag from ACTIVE_CANCEL on purpose: that one doubles as the
+static ACTIVE_CANCEL: CancelSlot = CancelSlot::new();
+// Separate slot from ACTIVE_CANCEL on purpose: that one doubles as the
 // "compression already running" re-entrancy guard, and an audio extraction
 // must not block a video compression (or vice versa).
-static AUDIO_CANCEL: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
+static AUDIO_CANCEL: CancelSlot = CancelSlot::new();
 
 #[tauri::command]
 pub async fn compress_video(
@@ -18,14 +17,7 @@ pub async fn compress_video(
     output_dir: Option<String>,
     privacy: video::PrivacyMode,
 ) -> Result<video::VideoCompressionResult, String> {
-    let cancel_flag = Arc::new(AtomicBool::new(false));
-    {
-        let mut active = ACTIVE_CANCEL.lock().map_err(|e| e.to_string())?;
-        if active.is_some() {
-            return Err("video compression already running".to_string());
-        }
-        *active = Some(cancel_flag.clone());
-    }
+    let cancel_flag = ACTIVE_CANCEL.start("video compression already running")?;
     let cancel_for_worker = cancel_flag.clone();
 
     let join_result = tauri::async_runtime::spawn_blocking(move || {
@@ -42,14 +34,7 @@ pub async fn compress_video(
     })
     .await;
 
-    let mut active = ACTIVE_CANCEL.lock().map_err(|e| e.to_string())?;
-    if active
-        .as_ref()
-        .map(|flag| Arc::ptr_eq(flag, &cancel_flag))
-        .unwrap_or(false)
-    {
-        *active = None;
-    }
+    ACTIVE_CANCEL.finish(&cancel_flag)?;
     join_result.map_err(|e| e.to_string())?
 }
 
@@ -94,14 +79,7 @@ pub async fn extract_audio(
         "mp3" => video::AudioExtractFormat::Mp3,
         other => return Err(format!("unknown audio format: {other}")),
     };
-    let cancel_flag = Arc::new(AtomicBool::new(false));
-    {
-        let mut active = AUDIO_CANCEL.lock().map_err(|e| e.to_string())?;
-        if active.is_some() {
-            return Err("audio extraction already running".to_string());
-        }
-        *active = Some(cancel_flag.clone());
-    }
+    let cancel_flag = AUDIO_CANCEL.start("audio extraction already running")?;
     let cancel_for_worker = cancel_flag.clone();
 
     let join_result = tauri::async_runtime::spawn_blocking(move || {
@@ -120,31 +98,18 @@ pub async fn extract_audio(
     })
     .await;
 
-    let mut active = AUDIO_CANCEL.lock().map_err(|e| e.to_string())?;
-    if active
-        .as_ref()
-        .map(|flag| Arc::ptr_eq(flag, &cancel_flag))
-        .unwrap_or(false)
-    {
-        *active = None;
-    }
+    AUDIO_CANCEL.finish(&cancel_flag)?;
     join_result.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
 pub async fn cancel_audio_extract() -> Result<(), String> {
-    if let Some(flag) = AUDIO_CANCEL.lock().map_err(|e| e.to_string())?.as_ref() {
-        flag.store(true, Ordering::SeqCst);
-    }
-    Ok(())
+    AUDIO_CANCEL.cancel()
 }
 
 #[tauri::command]
 pub async fn cancel_video_compress() -> Result<(), String> {
-    if let Some(flag) = ACTIVE_CANCEL.lock().map_err(|e| e.to_string())?.as_ref() {
-        flag.store(true, Ordering::SeqCst);
-    }
-    Ok(())
+    ACTIVE_CANCEL.cancel()
 }
 
 #[tauri::command]

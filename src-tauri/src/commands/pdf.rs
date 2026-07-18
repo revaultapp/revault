@@ -1,12 +1,11 @@
+use crate::core::cancel::CancelSlot;
 use crate::core::pdf;
 use crate::core::pdf_render;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 use tauri::path::BaseDirectory;
 use tauri::{Emitter, Manager};
 
-static PDF_RENDER_CANCEL: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
+static PDF_RENDER_CANCEL: CancelSlot = CancelSlot::new();
 
 #[tauri::command]
 pub async fn reveal_pdf_output(path: String) -> Result<(), String> {
@@ -127,14 +126,7 @@ pub async fn pdf_to_images(
             .map_err(|e| e.to_string())?,
     };
 
-    let cancel_flag = Arc::new(AtomicBool::new(false));
-    {
-        let mut active = PDF_RENDER_CANCEL.lock().map_err(|e| e.to_string())?;
-        if active.is_some() {
-            return Err("PDF conversion already running".to_string());
-        }
-        *active = Some(cancel_flag.clone());
-    }
+    let cancel_flag = PDF_RENDER_CANCEL.start("PDF conversion already running")?;
     let cancel_for_worker = cancel_flag.clone();
     let app_for_emit = app.clone();
 
@@ -152,27 +144,13 @@ pub async fn pdf_to_images(
     })
     .await;
 
-    let mut active = PDF_RENDER_CANCEL.lock().map_err(|e| e.to_string())?;
-    if active
-        .as_ref()
-        .map(|flag| Arc::ptr_eq(flag, &cancel_flag))
-        .unwrap_or(false)
-    {
-        *active = None;
-    }
+    PDF_RENDER_CANCEL.finish(&cancel_flag)?;
     join_result.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
 pub async fn cancel_pdf_to_images() -> Result<(), String> {
-    if let Some(flag) = PDF_RENDER_CANCEL
-        .lock()
-        .map_err(|e| e.to_string())?
-        .as_ref()
-    {
-        flag.store(true, Ordering::SeqCst);
-    }
-    Ok(())
+    PDF_RENDER_CANCEL.cancel()
 }
 
 #[tauri::command]

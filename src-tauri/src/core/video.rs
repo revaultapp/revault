@@ -569,6 +569,8 @@ pub fn compress_video(
         }
         Ok(())
     })();
+    // Always reap the child — success, error, or cancel-kill — to avoid
+    // zombie ffmpeg processes (the PR #71 bug class).
     let _ = child.wait();
 
     if let Err(e) = encode_result {
@@ -751,13 +753,13 @@ pub struct AudioExtractResult {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AudioProbe {
-    pub has_audio: bool,
-    pub codec_name: Option<String>,
+struct AudioProbe {
+    has_audio: bool,
+    codec_name: Option<String>,
     /// Absolute stream index + codec of a cover-art video stream
     /// (disposition.attached_pic == 1), if the container carries one.
-    pub attached_pic_index: Option<u64>,
-    pub attached_pic_codec: Option<String>,
+    attached_pic_index: Option<u64>,
+    attached_pic_codec: Option<String>,
 }
 
 fn parse_audio_probe_from_json(json: &serde_json::Value) -> AudioProbe {
@@ -795,7 +797,7 @@ fn parse_audio_probe_from_json(json: &serde_json::Value) -> AudioProbe {
     }
 }
 
-pub fn probe_audio_stream(path: &str) -> Result<AudioProbe, String> {
+fn probe_audio_stream(path: &str) -> Result<AudioProbe, String> {
     let probe_bin = ffprobe_path();
     let output = std::process::Command::new(&probe_bin)
         .args([

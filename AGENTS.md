@@ -34,7 +34,7 @@ cd src-tauri && cargo clippy --workspace -- -D warnings
 cd src-tauri && cargo audit
 ```
 
-For local review, also run the stricter command when touching Rust tests:
+CI runs the same strict clippy (`--all-targets --all-features`) as the local review command below, so test-target lints fail the PR, not just the local run:
 
 ```bash
 cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings
@@ -47,6 +47,8 @@ cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings
 - Frontend stores/components handle UI state and orchestration only.
 - File path validation must go through `core::paths` before filesystem operations.
 - Output paths must avoid clobbering existing files.
+- Error types in `core/` follow a deliberate split: simple in-process encode/decode ops return `Box<dyn Error>` (wrapping heterogeneous library errors); cancellable job/progress-callback ops (`video`, `gif`, `pdf_render`) return `String` (errors are already-formatted human messages, and the IPC boundary normalizes to `String` anyway). Match the family you're extending.
+- Design-system exception: the Dashboard scan CTA intentionally uses the `--chart-hero-a/b` gradient to tie it to the chart's hero bar (contrast pre-validated in `app.css`). It is the only permitted gradient button; don't replicate it elsewhere or "fix" it back to flat.
 
 ## Current Modules
 
@@ -111,11 +113,11 @@ Source of truth is `src/app.css`.
 
 ## Testing Baseline
 
-Current test suite (verified 2026-07-17, PDF → Images):
+Current test suite (verified 2026-07-18, post-blitz cleanup):
 
-- Rust: 233 unit tests via `cd src-tauri && cargo test` (+1 `#[ignore]` real-render test, run locally with `REVAULT_PDFIUM_PATH` set).
-- Frontend: 173 Vitest tests via `pnpm test`.
-- Total: 406 passing tests.
+- Rust: 238 unit tests via `cd src-tauri && cargo test` (+1 `#[ignore]` real-render test, run in CI on ubuntu and locally with `REVAULT_PDFIUM_PATH` set).
+- Frontend: 180 Vitest tests via `pnpm test`.
+- Total: 418 passing tests.
 
 Always verify counts after changing tests by running the commands above; this section should be updated when tests are added or removed.
 

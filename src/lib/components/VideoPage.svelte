@@ -191,7 +191,11 @@
   $effect(() => {
     const settings = $gifSettings;
     if ($videoMode === "gif" && $videoFiles.length > 0 && settings) {
-      refreshGifSizeEstimate();
+      // Debounced like the compression-preview trigger below: the range/quality
+      // sliders call gifSettings.update() on every drag tick, and each estimate
+      // is a Tauri invoke — without the delay we'd spam IPC mid-drag.
+      const timer = setTimeout(() => refreshGifSizeEstimate(), 300);
+      return () => clearTimeout(timer);
     }
   });
 
@@ -877,14 +881,14 @@
 
     <!-- GIF encoding progress -->
     {#if $videoMode === "gif" && $gifState === "generating"}
-      <div class="gif-progress-block" role="status" aria-live="polite" aria-label={t("video.exportingGifAriaLabel")}>
+      <div class="gif-progress-block">
         <div class="gif-progress-header">
           <span class="gif-progress-label">
             {$gifPhase === "complete" ? t("video.finalizingLabel") : t("video.encodingGifLabel")}
           </span>
           <span class="gif-progress-pct">{$gifProgress}%</span>
         </div>
-        <div class="gif-enc-track" role="progressbar" aria-valuenow={$gifProgress} aria-valuemin={0} aria-valuemax={100}>
+        <div class="gif-enc-track" role="progressbar" aria-label={t("video.exportingGifAriaLabel")} aria-valuenow={$gifProgress} aria-valuemin={0} aria-valuemax={100}>
           <div class="gif-enc-fill" style="transform: scaleX({$gifProgress / 100})"></div>
         </div>
       </div>
@@ -941,12 +945,12 @@
 
     <!-- Audio extraction progress -->
     {#if $videoMode === "audio" && $audioState === "extracting"}
-      <div class="gif-progress-block" role="status" aria-live="polite" aria-label={t("video.extractingAudioAriaLabel")}>
+      <div class="gif-progress-block">
         <div class="gif-progress-header">
           <span class="gif-progress-label">{t("video.extractingAudioLabel")}</span>
           <span class="gif-progress-pct">{$audioProgress}%</span>
         </div>
-        <div class="gif-enc-track" role="progressbar" aria-valuenow={$audioProgress} aria-valuemin={0} aria-valuemax={100}>
+        <div class="gif-enc-track" role="progressbar" aria-label={t("video.extractingAudioAriaLabel")} aria-valuenow={$audioProgress} aria-valuemin={0} aria-valuemax={100}>
           <div class="gif-enc-fill" style="transform: scaleX({$audioProgress / 100})"></div>
         </div>
       </div>
@@ -1449,7 +1453,9 @@
   }
 
   .lossless-badge :global(svg) {
-    color: var(--accent);
+    /* --accent-text, not --accent: the raw green is 1.71:1 against this
+       badge's tinted light-mode background (WCAG 1.4.11 needs 3:1). */
+    color: var(--accent-text);
     flex-shrink: 0;
   }
 

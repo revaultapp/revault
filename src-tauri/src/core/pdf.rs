@@ -2,6 +2,7 @@ use crate::core::image_io::{
     checked_size, decode_limits, ext_lowercase, open_image, write_preserving_timestamps,
     MAX_IMAGE_DIMENSION,
 };
+use crate::core::paths::resolve_output_dir;
 use image::metadata::Orientation;
 use image::{DynamicImage, ExtendedColorType, ImageDecoder, ImageFormat, ImageReader};
 use lopdf::{dictionary, Dictionary, Document, Object, SaveOptions, Stream};
@@ -155,13 +156,6 @@ pub struct MergeResult {
 pub enum SplitMode {
     Range { start: u32, end: u32 },
     EachPage,
-}
-
-fn resolve_output_dir(output_dir: Option<&str>, fallback: &Path) -> Result<PathBuf, String> {
-    match output_dir {
-        Some(d) => crate::core::paths::validate_output_dir(d),
-        None => Ok(fallback.to_path_buf()),
-    }
 }
 
 // Page objects can inherit MediaBox from an ancestor Pages node instead of
@@ -385,7 +379,10 @@ pub struct ImagesToPdfResult {
 /// Images are placed at this nominal print density: `Fit` pages take the
 /// image's size at 150 DPI, and A4/Letter never scale an image up past it.
 const FIT_DPI: f32 = 150.0;
-const IMAGES_TO_PDF_JPEG_QUALITY: f32 = 90.0;
+/// JPEG quality for photo re-encodes in both PDF directions (images→PDF here,
+/// PDF→images in `pdf_render.rs`) — single source of truth so the two features
+/// can't drift apart again.
+pub(crate) const PDF_JPEG_QUALITY: f32 = 90.0;
 
 #[derive(Debug, Clone, Copy)]
 struct PageLayout {
@@ -494,7 +491,7 @@ fn reencode_as_jpeg(img: DynamicImage) -> Result<PdfPageImage, Box<dyn Error>> {
         w as usize,
         h as usize,
         rgb.as_raw(),
-        IMAGES_TO_PDF_JPEG_QUALITY,
+        PDF_JPEG_QUALITY,
     )?;
     Ok(PdfPageImage {
         bytes,
@@ -670,7 +667,10 @@ pub fn images_to_pdf(
     let dir = resolve_output_dir(output_dir, fallback_dir)?;
     let mut reserved = HashSet::new();
     let output = crate::core::paths::first_available_path(
-        &dir.join(format!("{first_stem}.pdf")),
+        // `_scan` suffix: every output-producing op here carries a marker
+        // (_merged, _pages_N, _audio, _page_N…); a bare `photo.pdf` next to
+        // `photo.jpg` doesn't read as "ReVault made this".
+        &dir.join(format!("{first_stem}_scan.pdf")),
         &mut reserved,
     );
 
@@ -1411,15 +1411,30 @@ mod tests {
     }
 
     #[test]
+    fn images_to_pdf_output_carries_scan_suffix() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = write_jpeg(dir.path(), "photo.jpg", 64, 64);
+        let result = images_to_pdf(&[input], None, default_i2p_opts()).unwrap();
+        assert!(
+            result.output_path.ends_with("photo_scan.pdf"),
+            "got: {}",
+            result.output_path
+        );
+    }
+
+    #[test]
     fn images_to_pdf_no_clobber_when_output_exists() {
         let dir = tempfile::tempdir().unwrap();
         let input = write_jpeg(dir.path(), "photo.jpg", 64, 64);
-        fs::write(dir.path().join("photo.pdf"), b"existing").unwrap();
+        fs::write(dir.path().join("photo_scan.pdf"), b"existing").unwrap();
         let result = images_to_pdf(&[input], None, default_i2p_opts()).unwrap();
         assert_ne!(
             result.output_path,
-            dir.path().join("photo.pdf").to_str().unwrap()
+            dir.path().join("photo_scan.pdf").to_str().unwrap()
         );
-        assert_eq!(fs::read(dir.path().join("photo.pdf")).unwrap(), b"existing");
+        assert_eq!(
+            fs::read(dir.path().join("photo_scan.pdf")).unwrap(),
+            b"existing"
+        );
     }
 }
