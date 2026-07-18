@@ -18,6 +18,10 @@ Core positioning: open source, local-only processing, cross-platform desktop, no
 ## Commands
 
 ```bash
+# One-time per clone: fetch the bundled pdfium dylib for PDF → Images.
+# resources/pdfium/ is gitignored; tauri dev/build need it present to bundle.
+./scripts/fetch-pdfium.sh
+
 pnpm dev
 pnpm tauri dev
 pnpm build
@@ -107,11 +111,11 @@ Source of truth is `src/app.css`.
 
 ## Testing Baseline
 
-Current test suite (verified 2026-07-17, audio extraction):
+Current test suite (verified 2026-07-17, PDF → Images):
 
-- Rust: 223 unit tests via `cd src-tauri && cargo test`.
-- Frontend: 166 Vitest tests via `pnpm test`.
-- Total: 389 passing tests.
+- Rust: 233 unit tests via `cd src-tauri && cargo test` (+1 `#[ignore]` real-render test, run locally with `REVAULT_PDFIUM_PATH` set).
+- Frontend: 173 Vitest tests via `pnpm test`.
+- Total: 406 passing tests.
 
 Always verify counts after changing tests by running the commands above; this section should be updated when tests are added or removed.
 

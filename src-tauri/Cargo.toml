@@ -49,6 +49,13 @@ flate2 = "1"
 tar = "0.4"
 zip = { version = "8", default-features = false, features = ["deflate"] }
 lopdf = "0.42"
+# pdfium-render: PDF rasterization via the bundled pdfium dylib (fetched by
+# scripts/fetch-pdfium.sh, shipped as a Tauri resource). default-features =
+# false deliberately drops `thread_safe` — its Send+Sync impl is unsound
+# (upstream issue #262); ALL Pdfium access is serialized through the
+# single-owner thread in core/pdf_render.rs instead. pdfium_7881 is the newest
+# stable binding ≤ the pinned chromium/7947 binary (the C API is additive).
+pdfium-render = { version = "0.9.3", default-features = false, features = ["pdfium_7881", "image_025", "image_api"] }
 
 # mozjpeg: enable SIMD (nasm_simd) on macOS/Linux; skip on Windows where nasm is unavailable
 [target.'cfg(not(target_os = "windows"))'.dependencies]

@@ -39,11 +39,24 @@ import {
   moveImageFile,
   clearImages,
   imagesToPdf,
+  p2iFile,
+  isRasterizing,
+  p2iResults,
+  p2iError,
+  p2iFormat,
+  p2iDpi,
+  setP2iFile,
+  clearP2i,
+  pdfToImages,
 } from "./pdf";
 import { defaultOutputDir } from "./settings";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn().mockResolvedValue(() => {}),
 }));
 
 const mockInvoke = invoke as ReturnType<typeof vi.fn>;
@@ -59,8 +72,11 @@ describe("pdf store", () => {
     clearMerge();
     clearSplit();
     clearImages();
+    clearP2i();
     pageSize.set("a4");
     pageMargin.set("small");
+    p2iFormat.set("jpg");
+    p2iDpi.set(150);
   });
 
   describe("addFiles", () => {
@@ -383,6 +399,80 @@ describe("pdf store", () => {
       expect(get(imagesResult)).toBeNull();
       expect(get(imagesError)).toBeNull();
       expect(get(isBuildingPdf)).toBe(false);
+    });
+  });
+
+  describe("pdfToImages", () => {
+    it("format and dpi default to jpg/150", () => {
+      expect(get(p2iFormat)).toBe("jpg");
+      expect(get(p2iDpi)).toBe(150);
+    });
+
+    it("setP2iFile stores the file and resets prior results/error", () => {
+      setP2iFile("/docs/report.pdf");
+      expect(get(p2iFile)).toEqual({ path: "/docs/report.pdf", name: "report.pdf" });
+      expect(get(p2iResults)).toEqual([]);
+      expect(get(p2iError)).toBeNull();
+    });
+
+    it("all-pages success calls the command with page/dpi/format and stores results", async () => {
+      setP2iFile("/docs/report.pdf");
+      p2iFormat.set("png");
+      p2iDpi.set(300);
+      mockInvoke.mockResolvedValueOnce(["/out/report_page_1.png", "/out/report_page_2.png"]);
+
+      await pdfToImages("all", undefined, undefined, "/out");
+
+      expect(mockInvoke).toHaveBeenCalledWith("pdf_to_images", {
+        input: "/docs/report.pdf",
+        pagesMode: "all",
+        start: undefined,
+        end: undefined,
+        dpi: 300,
+        format: "png",
+        outputDir: "/out",
+      });
+      expect(get(p2iResults)).toHaveLength(2);
+      expect(get(p2iError)).toBeNull();
+      expect(get(isRasterizing)).toBe(false);
+    });
+
+    it("range mode passes start/end", async () => {
+      setP2iFile("/docs/report.pdf");
+      mockInvoke.mockResolvedValueOnce(["/out/report_page_2.jpg"]);
+      await pdfToImages("range", 2, 4, null);
+      expect(mockInvoke).toHaveBeenCalledWith("pdf_to_images", {
+        input: "/docs/report.pdf",
+        pagesMode: "range",
+        start: 2,
+        end: 4,
+        dpi: 150,
+        format: "jpg",
+        outputDir: null,
+      });
+    });
+
+    it("error path sets p2iError", async () => {
+      setP2iFile("/docs/report.pdf");
+      mockInvoke.mockRejectedValueOnce("page range 3-9 out of bounds (document has 5 pages)");
+      await pdfToImages("range", 3, 9, null);
+      expect(get(p2iError)).toContain("out of bounds");
+      expect(get(p2iResults)).toEqual([]);
+      expect(get(isRasterizing)).toBe(false);
+    });
+
+    it("cancelled path leaves no error", async () => {
+      setP2iFile("/docs/report.pdf");
+      mockInvoke.mockRejectedValueOnce("cancelled");
+      await pdfToImages("all", undefined, undefined, null);
+      expect(get(p2iError)).toBeNull();
+      expect(get(p2iResults)).toEqual([]);
+      expect(get(isRasterizing)).toBe(false);
+    });
+
+    it("is a no-op when no file is set", async () => {
+      await pdfToImages("all", undefined, undefined, null);
+      expect(mockInvoke).not.toHaveBeenCalled();
     });
   });
 });

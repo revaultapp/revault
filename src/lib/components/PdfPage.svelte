@@ -5,7 +5,7 @@
   import {
     CircleCheck, CircleAlert, X, FolderOpen, Trash2,
     Minimize2, Combine, Scissors, ArrowUp, ArrowDown, FileText,
-    Images, Image as ImageIcon,
+    Images, Image as ImageIcon, FileImage,
   } from "lucide-svelte";
   import { fly } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
@@ -32,6 +32,9 @@
     addImageFiles, removeImageFile, moveImageFile, clearImages, imagesToPdf,
     splitFile, isSplitting, splitResults, splitError,
     setSplitFile, clearSplit, splitPdf, type SplitKind,
+    p2iFile, isRasterizing, p2iResults, p2iError, p2iProgress, p2iFormat, p2iDpi,
+    setP2iFile, clearP2i, pdfToImages, cancelPdfToImages,
+    type PdfPagesMode, type PdfRasterFormat, type PdfRasterDpi,
   } from "$lib/stores/pdf";
   import { t } from "$lib/stores/locale.svelte";
 
@@ -47,9 +50,10 @@
     { id: "merge", label: t("pdf.modeMerge"), icon: Combine },
     { id: "split", label: t("pdf.modeSplit"), icon: Scissors },
     { id: "imagesToPdf", label: t("pdf.modeImagesToPdf"), icon: Images },
+    { id: "pdfToImages", label: t("pdf.modePdfToImages"), icon: FileImage },
   ] as const);
 
-  let mode = $state<"optimize" | "merge" | "split" | "imagesToPdf">("optimize");
+  let mode = $state<"optimize" | "merge" | "split" | "imagesToPdf" | "pdfToImages">("optimize");
 
   const rm = $derived(prefersReducedMotion.current);
 
@@ -245,6 +249,58 @@
     if ($splitResults.length > 0) {
       activity.add({ type: "split", fileCount: $splitResults.length, savedBytes: 0 });
     }
+  }
+
+  // --- PDF → Images ---
+
+  let p2iPageModes = $derived([
+    { id: "all", label: t("pdf.p2iPagesAll") },
+    { id: "range", label: t("pdf.p2iPagesRange") },
+  ] as const);
+
+  let p2iFormatModes = $derived([
+    { id: "jpg", label: "JPG" },
+    { id: "png", label: "PNG" },
+  ] as const);
+
+  const p2iDpiOptions = [150, 300] as const;
+
+  let p2iPagesChoice = $state<PdfPagesMode>("all");
+  let p2iRangeStart = $state(1);
+  let p2iRangeEnd = $state(1);
+
+  let canRasterize = $derived(
+    p2iPagesChoice === "all" ||
+    (Number.isInteger(p2iRangeStart) && Number.isInteger(p2iRangeEnd) && p2iRangeStart >= 1 && p2iRangeEnd >= p2iRangeStart)
+  );
+
+  // Lazily fetch a thumbnail for each rasterized output image.
+  let p2iThumbs = $state<Record<string, string>>({});
+  const requestedP2iThumbs = new Set<string>();
+  $effect(() => {
+    for (const path of $p2iResults) {
+      if (requestedP2iThumbs.has(path)) continue;
+      requestedP2iThumbs.add(path);
+      invoke<string>("generate_thumbnail", { path })
+        .then((uri) => { p2iThumbs[path] = uri; })
+        .catch(() => {});
+    }
+  });
+
+  function handleP2iAdd(paths: string[]) {
+    const valid = paths.filter((p) => PDF_SUPPORTED_RE.test(p));
+    if (valid.length > 0) setP2iFile(valid[0]);
+  }
+
+  async function startRasterize() {
+    if (!$p2iFile || !canRasterize) return;
+    // Reset the per-mount thumbnail cache so a fresh run never shows stale
+    // thumbnails and the cache doesn't grow across "convert another" cycles.
+    p2iThumbs = {};
+    requestedP2iThumbs.clear();
+    const start = p2iPagesChoice === "range" ? p2iRangeStart : undefined;
+    const end = p2iPagesChoice === "range" ? p2iRangeEnd : undefined;
+    await pdfToImages(p2iPagesChoice, start, end, $resolvedOutputDir);
   }
 </script>
 
@@ -612,6 +668,133 @@
           </div>
         </div>
       {/if}
+    {:else if mode === "pdfToImages"}
+      {#if !$p2iFile}
+        <div class="mode-empty">
+          <DropZone
+            onfiles={handleP2iAdd}
+            dropTitle={t("pdf.dropTitlePdfToImages")}
+            formatTags={["PDF"]}
+            acceptedExtensions={PDF_SUPPORTED_RE}
+            filePickerName={t("pdf.filePickerName")}
+            filePickerExtensions={[...PDF_SUPPORTED_EXTENSIONS]}
+          />
+        </div>
+      {:else if $p2iResults.length > 0}
+        <div class="result-view">
+          <div class="result-card">
+            <CircleCheck size={28} color="var(--accent)" />
+            <span class="result-name">{$p2iResults.length === 1 ? t("pdf.imagesCreatedOne", { count: $p2iResults.length }) : t("pdf.imagesCreatedOther", { count: $p2iResults.length })}</span>
+            <div class="split-output-list">
+              {#each $p2iResults as path (path)}
+                <div class="split-output-row">
+                  {#if p2iThumbs[path]}
+                    <img class="i2p-thumb" src={p2iThumbs[path]} alt="" />
+                  {:else}
+                    <div class="i2p-thumb i2p-thumb-placeholder"><ImageIcon size={16} /></div>
+                  {/if}
+                  <span class="split-output-name">{path.split(/[\\/]/).pop()}</span>
+                  <button class="btn-icon reveal-btn" aria-label={t("pdf.revealNamedAriaLabel", { name: path.split(/[\\/]/).pop() ?? "" })} onclick={() => revealPdfOutput(path)}>
+                    <FolderOpen size={14} />
+                  </button>
+                </div>
+              {/each}
+            </div>
+            <div class="result-actions">
+              <button class="btn-ghost" onclick={clearP2i}>{t("pdf.p2iAnotherAction")}</button>
+            </div>
+          </div>
+        </div>
+      {:else}
+        <div class="tool-view">
+          <div class="header">
+            <div class="header-left">
+              <h2>{$p2iFile.name}</h2>
+              <span class="sub">{t("pdf.p2iHint")}</span>
+            </div>
+            <div class="header-actions">
+              <button class="btn-ghost danger" onclick={clearP2i}>
+                <Trash2 size={14} />
+                {t("pdf.clearAction")}
+              </button>
+            </div>
+          </div>
+
+          {#if $p2iError}
+            <div class="error-card" role="alert">
+              <CircleAlert size={14} />
+              <span>{$p2iError}</span>
+            </div>
+          {/if}
+
+          {#if $isRasterizing && $p2iProgress}
+            <div class="p2i-progress" role="status" aria-live="polite">
+              <div class="p2i-progress-header">
+                <span>{t("pdf.p2iProgressLabel", { current: $p2iProgress.current, total: $p2iProgress.total })}</span>
+                <span class="p2i-progress-pct">{Math.round(($p2iProgress.current / Math.max(1, $p2iProgress.total)) * 100)}%</span>
+              </div>
+              <div class="p2i-progress-track" role="progressbar" aria-valuenow={$p2iProgress.current} aria-valuemin={0} aria-valuemax={$p2iProgress.total}>
+                <div class="p2i-progress-fill" style="transform: scaleX({$p2iProgress.current / Math.max(1, $p2iProgress.total)})"></div>
+              </div>
+            </div>
+          {/if}
+
+          <div class="controls">
+            <div class="control-group">
+              <span class="label">{t("pdf.p2iPagesLabel")}</span>
+              <SegmentedControl segments={p2iPageModes} bind:selected={p2iPagesChoice} label={t("pdf.p2iPagesAriaLabel")} />
+            </div>
+
+            {#if p2iPagesChoice === "range"}
+              <div class="control-group">
+                <span class="label">{t("pdf.fromPageLabel")}</span>
+                <input type="number" min="1" step="1" class="page-input" bind:value={p2iRangeStart} aria-label={t("pdf.startPageAriaLabel")} />
+              </div>
+              <div class="control-group">
+                <span class="label">{t("pdf.toPageLabel")}</span>
+                <input type="number" min="1" step="1" class="page-input" bind:value={p2iRangeEnd} aria-label={t("pdf.endPageAriaLabel")} />
+              </div>
+            {/if}
+
+            <div class="control-group">
+              <span class="label">{t("pdf.p2iFormatLabel")}</span>
+              <SegmentedControl segments={p2iFormatModes} bind:selected={$p2iFormat} label={t("pdf.p2iFormatLabel")} />
+            </div>
+
+            <div class="control-group">
+              <span class="label">{t("pdf.p2iDpiLabel")}</span>
+              <div class="pill-row">
+                {#each p2iDpiOptions as dpi}
+                  <button
+                    class="dpi-pill"
+                    class:active={$p2iDpi === dpi}
+                    aria-pressed={$p2iDpi === dpi}
+                    onclick={() => p2iDpi.set(dpi as PdfRasterDpi)}
+                  >{dpi}</button>
+                {/each}
+              </div>
+            </div>
+
+            <div class="control-group">
+              <span class="label">{t("common.outputLabel")}</span>
+              <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
+                <FolderOpen size={14} />
+                {$outputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
+              </button>
+            </div>
+
+            {#if $isRasterizing}
+              <Button class="action-btn" onclick={cancelPdfToImages}>
+                {t("pdf.p2iCancel")}
+              </Button>
+            {:else}
+              <Button class="action-btn" disabled={!canRasterize} onclick={startRasterize}>
+                {t("pdf.p2iAction")}
+              </Button>
+            {/if}
+          </div>
+        </div>
+      {/if}
     {/if}
   </div>
 </div>
@@ -841,6 +1024,77 @@
     justify-content: center;
     color: var(--text-muted);
     border: 1px solid var(--border);
+  }
+
+  /* --- PDF → Images: DPI pills + rasterize progress --- */
+
+  .pill-row {
+    display: flex;
+    gap: 4px;
+  }
+
+  .dpi-pill {
+    padding: 5px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+
+  .dpi-pill:hover { background: var(--navy-bg); }
+
+  .dpi-pill.active {
+    background: var(--accent);
+    color: var(--text-on-accent);
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+
+  .p2i-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+
+  .p2i-progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .p2i-progress-pct {
+    font-weight: 600;
+    color: var(--accent-text);
+  }
+
+  .p2i-progress-track {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--bg-main);
+    overflow: hidden;
+  }
+
+  .p2i-progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 3px;
+    transform-origin: left;
+    transition: transform 0.2s var(--ease-out);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dpi-pill, .p2i-progress-fill { transition: none; }
   }
 
   /* --- Controls row (Merge / Split) --- */

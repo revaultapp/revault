@@ -64,6 +64,8 @@ pub fn run() {
             commands::pdf::merge_pdfs,
             commands::pdf::split_pdf,
             commands::pdf::images_to_pdf,
+            commands::pdf::pdf_to_images,
+            commands::pdf::cancel_pdf_to_images,
             commands::pdf::reveal_pdf_output,
             commands::video::reveal_video_output,
         ])
