@@ -105,7 +105,7 @@ export const en = {
     formatAuto: "Auto (smallest)",
     formatTooltip: "Choose the output format. Auto selects the format that produces the smallest file.",
     pngLosslessHint: "PNG is lossless — quality preset doesn't affect output",
-    outputTooltip: "Folder where compressed images are saved. Defaults to the same folder as the original.",
+    outputTooltip: "Folder where compressed images are saved. Uses the default folder from Settings if one is set, otherwise the original's folder.",
     stripLocationLabel: "Strip Location",
     stripLocationHint: "Remove location data from photos",
     gpsRemovedOne: "GPS removed from {count} file",
@@ -132,7 +132,7 @@ export const en = {
     actionButtonAll: "Convert All",
     formatTooltip:
       "Choose the output image format. JPEG is best for photos, PNG for graphics, WebP/AVIF for modern compression.",
-    outputTooltip: "Where to save converted files. Defaults to the same folder as the source images.",
+    outputTooltip: "Where to save converted files. Uses the default folder from Settings if one is set, otherwise the source images' folder.",
     stripGpsLabel: "Strip GPS",
     stripGpsTooltip:
       "Removes GPS coordinates and other location metadata from converted images to protect your privacy.",
@@ -391,7 +391,6 @@ export const en = {
     sizeLabel: "Size",
     qualityLabel: "Quality",
     folderLabel: "Folder",
-    sameAsInput: "Same as input",
     finalizingLabel: "Finalizing…",
     encodingGifLabel: "Encoding GIF…",
     exportingGifAriaLabel: "Exporting GIF",

@@ -108,7 +108,7 @@ export const es: Dictionary = {
     formatTooltip: "Elige el formato de salida. Auto selecciona el formato que produce el archivo más pequeño.",
     pngLosslessHint: "PNG no tiene pérdida — el preset de calidad no afecta al resultado",
     outputTooltip:
-      "Carpeta donde se guardan las imágenes comprimidas. Por defecto, la misma carpeta que el original.",
+      "Carpeta donde se guardan las imágenes comprimidas. Usa la carpeta predeterminada de Ajustes si está definida; si no, la carpeta del original.",
     stripLocationLabel: "Eliminar ubicación",
     stripLocationHint: "Elimina los datos de ubicación de las fotos",
     gpsRemovedOne: "GPS eliminado de {count} archivo",
@@ -135,7 +135,7 @@ export const es: Dictionary = {
     actionButtonAll: "Convertir todo",
     formatTooltip:
       "Elige el formato de imagen de salida. JPEG es ideal para fotos, PNG para gráficos, WebP/AVIF para compresión moderna.",
-    outputTooltip: "Dónde guardar los archivos convertidos. Por defecto, la misma carpeta que las imágenes de origen.",
+    outputTooltip: "Dónde guardar los archivos convertidos. Usa la carpeta predeterminada de Ajustes si está definida; si no, la carpeta de las imágenes de origen.",
     stripGpsLabel: "Eliminar GPS",
     stripGpsTooltip:
       "Elimina las coordenadas GPS y otros metadatos de ubicación de las imágenes convertidas para proteger tu privacidad.",
@@ -395,7 +395,6 @@ export const es: Dictionary = {
     sizeLabel: "Tamaño",
     qualityLabel: "Calidad",
     folderLabel: "Carpeta",
-    sameAsInput: "Misma que el origen",
     finalizingLabel: "Finalizando…",
     encodingGifLabel: "Codificando GIF…",
     exportingGifAriaLabel: "Exportando GIF",

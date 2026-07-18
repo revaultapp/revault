@@ -873,7 +873,7 @@
               <span class="label">{t("video.folderLabel")}</span>
               <button class="btn-ghost output-btn" onclick={browseOutputDir}>
                 <FolderOpen size={14} />
-                {$resolvedVideoOutputDir?.split(/[\\/]/).pop() ?? t("video.sameAsInput")}
+                {$resolvedVideoOutputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
               </button>
             </div>
           {/if}
