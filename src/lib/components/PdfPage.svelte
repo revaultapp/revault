@@ -383,7 +383,7 @@
           <span class="label">{t("common.outputLabel")}</span>
           <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
             <FolderOpen size={14} />
-            {$outputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
+            {$resolvedOutputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
           </button>
         </div>
       </ToolShell>
@@ -470,7 +470,7 @@
               <span class="label">{t("common.outputLabel")}</span>
               <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
                 <FolderOpen size={14} />
-                {$outputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
+                {$resolvedOutputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
               </button>
             </div>
             <Button class="action-btn" loading={$isMerging} disabled={$mergeFiles.length < 2} onclick={startMerge}>
@@ -570,7 +570,7 @@
               <span class="label">{t("common.outputLabel")}</span>
               <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
                 <FolderOpen size={14} />
-                {$outputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
+                {$resolvedOutputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
               </button>
             </div>
             <Button class="action-btn" loading={$isBuildingPdf} disabled={$imageFiles.length < 1} onclick={startImagesToPdf}>
@@ -658,7 +658,7 @@
               <span class="label">{t("common.outputLabel")}</span>
               <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
                 <FolderOpen size={14} />
-                {$outputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
+                {$resolvedOutputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
               </button>
             </div>
 
@@ -782,7 +782,7 @@
               <span class="label">{t("common.outputLabel")}</span>
               <button class="btn-ghost output-btn" onclick={handleBrowseOutputDir}>
                 <FolderOpen size={14} />
-                {$outputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
+                {$resolvedOutputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}
               </button>
             </div>
 
