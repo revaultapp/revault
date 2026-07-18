@@ -163,7 +163,7 @@ pub fn target_triple() -> Result<&'static str, String> {
         ("macos", "x86_64") => Ok("x86_64-apple-darwin"),
         ("linux", "x86_64") => Ok("x86_64-unknown-linux-gnu"),
         ("windows", "x86_64") => Ok("x86_64-pc-windows-msvc"),
-        _ => Err("Esta plataforma no está soportada para exportar GIFs".to_string()),
+        _ => Err("This platform is not supported for GIF export".to_string()),
     }
 }
 
@@ -201,19 +201,19 @@ pub fn gifski_installed_version(binary: &Path) -> Result<String, String> {
     let out = std::process::Command::new(binary)
         .arg("--version")
         .output()
-        .map_err(|e| format!("No se pudo ejecutar gifski: {}", e))?;
+        .map_err(|e| format!("Could not run gifski: {}", e))?;
     if !out.status.success() {
-        return Err("La instalación ha fallado".to_string());
+        return Err("The installation failed".to_string());
     }
     let stdout = String::from_utf8_lossy(&out.stdout);
     // Expect stdout like "gifski 1.34.0\n"
     let first = stdout.lines().next().unwrap_or("").trim();
     let version = first
         .strip_prefix("gifski ")
-        .ok_or_else(|| "La instalación ha fallado".to_string())?
+        .ok_or_else(|| "The installation failed".to_string())?
         .trim();
     if version.is_empty() {
-        return Err("La instalación ha fallado".to_string());
+        return Err("The installation failed".to_string());
     }
     Ok(version.to_string())
 }
@@ -237,13 +237,13 @@ fn extract_tar_gz(archive_bytes: &[u8], dest_dir: &Path) -> Result<PathBuf, Stri
     let license_out = dest_dir.join("gifski-LICENSE.txt");
     for entry in archive
         .entries()
-        .map_err(|e| format!("La descarga se corrompió, inténtalo otra vez ({})", e))?
+        .map_err(|e| format!("The download was corrupted — please try again ({})", e))?
     {
         let mut entry =
-            entry.map_err(|e| format!("La descarga se corrompió, inténtalo otra vez ({})", e))?;
+            entry.map_err(|e| format!("The download was corrupted — please try again ({})", e))?;
         let path = entry
             .path()
-            .map_err(|e| format!("La descarga se corrompió, inténtalo otra vez ({})", e))?
+            .map_err(|e| format!("The download was corrupted — please try again ({})", e))?
             .into_owned();
         let name = path
             .file_name()
@@ -251,33 +251,33 @@ fn extract_tar_gz(archive_bytes: &[u8], dest_dir: &Path) -> Result<PathBuf, Stri
             .unwrap_or_default();
         if name == "gifski" {
             let mut f = std::fs::File::create(&unverified)
-                .map_err(|e| format!("No se pudo escribir el binario: {}", e))?;
+                .map_err(|e| format!("Could not write the binary: {}", e))?;
             std::io::copy(&mut entry, &mut f)
-                .map_err(|e| format!("La descarga se corrompió, inténtalo otra vez ({})", e))?;
+                .map_err(|e| format!("The download was corrupted — please try again ({})", e))?;
             binary_out = Some(unverified.clone());
         } else if name.eq_ignore_ascii_case("LICENSE")
             || name.eq_ignore_ascii_case("LICENSE.txt")
             || name.eq_ignore_ascii_case("LICENSE.md")
         {
             let mut f = std::fs::File::create(&license_out)
-                .map_err(|e| format!("No se pudo escribir la licencia: {}", e))?;
+                .map_err(|e| format!("Could not write the license file: {}", e))?;
             let _ = std::io::copy(&mut entry, &mut f);
         }
     }
-    binary_out.ok_or_else(|| "La descarga se corrompió, inténtalo otra vez".to_string())
+    binary_out.ok_or_else(|| "The download was corrupted — please try again".to_string())
 }
 
 fn extract_zip(archive_bytes: &[u8], dest_dir: &Path) -> Result<PathBuf, String> {
     let reader = std::io::Cursor::new(archive_bytes);
     let mut archive = zip::ZipArchive::new(reader)
-        .map_err(|e| format!("La descarga se corrompió, inténtalo otra vez ({})", e))?;
+        .map_err(|e| format!("The download was corrupted — please try again ({})", e))?;
     let unverified = dest_dir.join(format!("{}.unverified", gifski_filename()));
     let license_out = dest_dir.join("gifski-LICENSE.txt");
     let mut binary_out: Option<PathBuf> = None;
     for i in 0..archive.len() {
         let mut entry = archive
             .by_index(i)
-            .map_err(|e| format!("La descarga se corrompió, inténtalo otra vez ({})", e))?;
+            .map_err(|e| format!("The download was corrupted — please try again ({})", e))?;
         let enclosed = match entry.enclosed_name() {
             Some(p) => p.to_path_buf(),
             None => continue,
@@ -288,20 +288,20 @@ fn extract_zip(archive_bytes: &[u8], dest_dir: &Path) -> Result<PathBuf, String>
             .unwrap_or_default();
         if name == "gifski.exe" {
             let mut f = std::fs::File::create(&unverified)
-                .map_err(|e| format!("No se pudo escribir el binario: {}", e))?;
+                .map_err(|e| format!("Could not write the binary: {}", e))?;
             std::io::copy(&mut entry, &mut f)
-                .map_err(|e| format!("La descarga se corrompió, inténtalo otra vez ({})", e))?;
+                .map_err(|e| format!("The download was corrupted — please try again ({})", e))?;
             binary_out = Some(unverified.clone());
         } else if name.eq_ignore_ascii_case("LICENSE")
             || name.eq_ignore_ascii_case("LICENSE.txt")
             || name.eq_ignore_ascii_case("LICENSE.md")
         {
             let mut f = std::fs::File::create(&license_out)
-                .map_err(|e| format!("No se pudo escribir la licencia: {}", e))?;
+                .map_err(|e| format!("Could not write the license file: {}", e))?;
             let _ = std::io::copy(&mut entry, &mut f);
         }
     }
-    binary_out.ok_or_else(|| "La descarga se corrompió, inténtalo otra vez".to_string())
+    binary_out.ok_or_else(|| "The download was corrupted — please try again".to_string())
 }
 
 pub fn download_and_install<F>(app_data_dir: &Path, mut emit_progress: F) -> Result<PathBuf, String>
@@ -318,13 +318,13 @@ where
     let bin_dir = app_data_dir.join("bin");
     std::fs::create_dir_all(&bin_dir).map_err(|e| {
         eprintln!("[gifski] create bin_dir failed: {}", e);
-        format!("No se pudo crear el directorio: {}", e)
+        format!("Could not create the directory: {}", e)
     })?;
     eprintln!("[gifski] bin_dir={}", bin_dir.display());
 
     let resp = ureq::get(&url).call().map_err(|e| {
         eprintln!("[gifski] HTTP request failed: {:?}", e);
-        "No se pudo descargar el componente".to_string()
+        "Could not download the component".to_string()
     })?;
     eprintln!("[gifski] HTTP {} {}", resp.status(), url);
     let total: u64 = resp
@@ -341,14 +341,14 @@ where
     {
         let mut file = std::fs::File::create(&tmp_path).map_err(|e| {
             eprintln!("[gifski] create tmp_path failed: {}", e);
-            format!("No se pudo crear archivo temporal: {}", e)
+            format!("Could not create a temporary file: {}", e)
         })?;
         let mut chunk = vec![0u8; 64 * 1024];
         let mut done: u64 = 0;
         loop {
             let n = reader.read(&mut chunk).map_err(|e| {
                 eprintln!("[gifski] stream read failed at {} bytes: {}", done, e);
-                "No se pudo descargar el componente".to_string()
+                "Could not download the component".to_string()
             })?;
             if n == 0 {
                 break;
@@ -356,7 +356,7 @@ where
             use std::io::Write;
             file.write_all(&chunk[..n]).map_err(|e| {
                 eprintln!("[gifski] write to tmp failed: {}", e);
-                format!("No se pudo escribir descarga: {}", e)
+                format!("Could not write the download: {}", e)
             })?;
             buffer.extend_from_slice(&chunk[..n]);
             done += n as u64;
@@ -371,14 +371,14 @@ where
         let hash = Sha256::digest(&buffer);
         let hex: String = hash.iter().map(|b| format!("{:02x}", b)).collect();
         let expected = expected_sha256(target)
-            .ok_or_else(|| format!("No hay hash conocido para la plataforma {}", target))?;
+            .ok_or_else(|| format!("No known checksum for platform {}", target))?;
         if hex != expected {
             eprintln!(
                 "[gifski] SHA-256 mismatch: expected={} got={}",
                 expected, hex
             );
             let _ = std::fs::remove_file(&tmp_path);
-            return Err("La descarga está corrupta o fue modificada".to_string());
+            return Err("The download is corrupted or was tampered with".to_string());
         }
         eprintln!("[gifski] SHA-256 OK: {}", hex);
     }
@@ -399,7 +399,7 @@ where
         let perms = std::fs::Permissions::from_mode(0o755);
         std::fs::set_permissions(&unverified, perms).map_err(|e| {
             eprintln!("[gifski] chmod failed: {}", e);
-            format!("No se pudo marcar ejecutable: {}", e)
+            format!("Could not mark the binary as executable: {}", e)
         })?;
         eprintln!("[gifski] chmod 755 OK");
     }
@@ -414,12 +414,12 @@ where
                 GIFSKI_VERSION, v
             );
             let _ = std::fs::remove_file(&unverified);
-            return Err("La instalación ha fallado".to_string());
+            return Err("The installation failed".to_string());
         }
         Err(e) => {
             eprintln!("[gifski] verify FAIL: {}", e);
             let _ = std::fs::remove_file(&unverified);
-            return Err("La instalación ha fallado".to_string());
+            return Err("The installation failed".to_string());
         }
     }
 
@@ -430,7 +430,7 @@ where
         final_path.display()
     );
     std::fs::rename(&unverified, &final_path)
-        .map_err(|e| format!("No se pudo instalar el binario: {}", e))?;
+        .map_err(|e| format!("Could not install the binary: {}", e))?;
     Ok(final_path)
 }
 
@@ -950,7 +950,7 @@ mod tests {
                 assert!(!t.is_empty());
                 assert!(t.contains('-'));
             }
-            Err(e) => assert!(e.contains("no está soportada")),
+            Err(e) => assert!(e.contains("not supported")),
         }
     }
 
