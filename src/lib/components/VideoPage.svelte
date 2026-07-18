@@ -3,7 +3,7 @@
   import { slide, fade } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
   import { prefersReducedMotion } from "svelte/motion";
-  import { Film, Shield, ShieldCheck, Download, Zap, Wifi, CircleCheck, CircleAlert, TriangleAlert, FolderOpen, X, ChevronDown } from "lucide-svelte";
+  import { Film, Shield, ShieldCheck, Download, Zap, Wifi, CircleCheck, CircleAlert, TriangleAlert, FolderOpen, X, ChevronDown, Minimize2, ImagePlay, Scissors, AudioLines } from "lucide-svelte";
   import PrivacyToast from "./PrivacyToast.svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import ToolShell from "./ToolShell.svelte";
@@ -72,11 +72,13 @@
 
   const rm = $derived(prefersReducedMotion.current);
 
+  // Icon rule: same concept → same glyph across the app. Minimize2 mirrors
+  // PdfPage's Optimize mode and Scissors mirrors its Split mode.
   let modeSegments = $derived([
-    { id: "compress", label: t("video.modeCompress") },
-    { id: "gif", label: t("video.modeGif") },
-    { id: "trim", label: t("video.modeTrim") },
-    { id: "audio", label: t("video.modeAudio") },
+    { id: "compress", label: t("video.modeCompress"), icon: Minimize2 },
+    { id: "gif", label: t("video.modeGif"), icon: ImagePlay },
+    { id: "trim", label: t("video.modeTrim"), icon: Scissors },
+    { id: "audio", label: t("video.modeAudio"), icon: AudioLines },
   ] as const);
 
   let audioFormatSegments = $derived([
