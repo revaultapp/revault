@@ -13,6 +13,8 @@
     loading?: boolean;
     success?: boolean;
     alignSelf?: string;
+    /** Native element ref, for callers that need to manage focus. */
+    el?: HTMLButtonElement;
     children: Snippet;
   }
 
@@ -23,6 +25,7 @@
     loading = false,
     success = false,
     alignSelf,
+    el = $bindable(),
     children,
     style: restStyle,
     class: extraClass,
@@ -46,6 +49,7 @@
 </script>
 
 <button
+  bind:this={el}
   class={buttonClass}
   {style}
   disabled={loading || rest.disabled}
@@ -101,7 +105,10 @@
   }
 
   .btn-primary:focus-visible {
-    outline: 2px solid var(--accent);
+    /* --accent-text, not --accent: raw accent is ~1.9:1 against light
+       surfaces (fails the 3:1 focus-indicator floor); --accent-text aliases
+       --accent in dark mode, so dark is pixel-identical. */
+    outline: 2px solid var(--accent-text);
     outline-offset: 2px;
   }
 
@@ -143,7 +150,7 @@
   }
 
   .btn-ghost:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--accent-text);
     outline-offset: 2px;
   }
 

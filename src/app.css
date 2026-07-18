@@ -220,9 +220,12 @@ button {
   cursor: pointer;
 }
 
-/* Keyboard focus indicator */
+/* Keyboard focus indicator. --accent-text, not --accent: raw accent is only
+   ~1.7:1 against light --bg-main (fails the 3:1 focus-indicator floor);
+   --accent-text is #0a7d47 in light mode and aliases --accent in dark, so
+   dark mode is pixel-identical. */
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 2px;
 }
 

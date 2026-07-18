@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import { Sun, Moon, Monitor, FolderOpen, RotateCcw, ShieldCheck } from "lucide-svelte";
   import { theme } from "$lib/stores/theme";
+  import type { Theme } from "$lib/stores/theme";
   import { defaultOutputDir, defaultImagePreset, defaultVideoPreset, defaultVideoPrivacy } from "$lib/stores/settings";
   import type { QualityPreset } from "$lib/stores/compress";
   import type { VideoPreset, PrivacyMode } from "$lib/stores/video";
@@ -8,16 +10,50 @@
   import { getLocale, setLocale, t } from "$lib/stores/locale.svelte";
   import type { Locale } from "$lib/i18n";
   import SegmentedControl from "./SegmentedControl.svelte";
+  import Button from "./Button.svelte";
 
   const REMEMBER = "remember";
 
+  // Screen-reader confirmation of applied changes. Composed exclusively from
+  // existing locale strings ("<row label>: <value label>") — no new i18n keys.
+  let announcement = $state("");
+  function announce(rowLabel: string, valueLabel: string) {
+    announcement = `${rowLabel}: ${valueLabel}`;
+  }
+  function labelOf(segments: readonly { id: string; label: string }[], id: string): string {
+    return segments.find((s) => s.id === id)?.label ?? id;
+  }
+
+  let outputPickerEl: HTMLButtonElement | undefined = $state();
+  let currentOutputName = $derived(
+    $defaultOutputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput"),
+  );
+
   async function pickOutputDir() {
     const dir = await browseOutputDir();
-    if (dir) defaultOutputDir.set(dir);
+    if (dir) {
+      defaultOutputDir.set(dir);
+      announce(t("settings.defaultOutputFolderLabel"), dir.split(/[\\/]/).pop() ?? dir);
+    }
   }
 
   function resetOutputDir() {
     defaultOutputDir.set(null);
+    announce(t("settings.defaultOutputFolderLabel"), t("common.sameAsInput"));
+    // The reset button unmounts with {#if $defaultOutputDir} while focused;
+    // park focus on the sibling picker so it doesn't drop to <body>.
+    tick().then(() => outputPickerEl?.focus());
+  }
+
+  let themeSegments = $derived([
+    { id: "light", label: t("settings.themeLight"), icon: Sun },
+    { id: "dark", label: t("settings.themeDark"), icon: Moon },
+    { id: "system", label: t("settings.themeSystem"), icon: Monitor },
+  ] as const);
+
+  function selectTheme(id: string) {
+    theme.set(id as Theme);
+    announce(t("settings.themeLabel"), labelOf(themeSegments, id));
   }
 
   let languageSegments = $derived([
@@ -30,6 +66,8 @@
 
   function selectLanguage(id: string) {
     setLocale(id as Locale);
+    // t() resolves in the just-chosen locale — announced in the new language.
+    announce(t("settings.language"), labelOf(languageSegments, id));
   }
 
   let imagePresetSegments = $derived([
@@ -56,14 +94,17 @@
 
   function selectImagePreset(id: string) {
     defaultImagePreset.set(id === REMEMBER ? null : (id as QualityPreset));
+    announce(t("settings.defaultImagePresetLabel"), labelOf(imagePresetSegments, id));
   }
 
   function selectVideoPreset(id: string) {
     defaultVideoPreset.set(id === REMEMBER ? null : (id as VideoPreset));
+    announce(t("settings.defaultVideoPresetLabel"), labelOf(videoPresetSegments, id));
   }
 
   function selectVideoPrivacy(id: string) {
     defaultVideoPrivacy.set(id === REMEMBER ? null : (id as PrivacyMode));
+    announce(t("settings.defaultVideoPrivacyLabel"), labelOf(videoPrivacySegments, id));
   }
 </script>
 
@@ -81,20 +122,12 @@
         <span class="name">{t("settings.themeLabel")}</span>
         <span class="desc">{t("settings.themeDesc")}</span>
       </div>
-      <div class="segmented">
-        <button class="seg" class:active={$theme === 'light'} onclick={() => theme.set('light')}>
-          <Sun size={14} strokeWidth={2} />
-          <span>{t("settings.themeLight")}</span>
-        </button>
-        <button class="seg" class:active={$theme === 'dark'} onclick={() => theme.set('dark')}>
-          <Moon size={14} strokeWidth={2} />
-          <span>{t("settings.themeDark")}</span>
-        </button>
-        <button class="seg" class:active={$theme === 'system'} onclick={() => theme.set('system')}>
-          <Monitor size={14} strokeWidth={2} />
-          <span>{t("settings.themeSystem")}</span>
-        </button>
-      </div>
+      <SegmentedControl
+        segments={themeSegments}
+        selected={$theme}
+        onselect={selectTheme}
+        label={t("settings.themeLabel")}
+      />
     </div>
     <div class="row">
       <div class="label">
@@ -113,14 +146,27 @@
         <span class="desc">{t("settings.defaultOutputFolderDesc")}</span>
       </div>
       <div class="output-controls">
-        <button class="btn-ghost" onclick={pickOutputDir}>
+        <Button
+          variant="ghost"
+          size="sm"
+          bind:el={outputPickerEl}
+          onclick={pickOutputDir}
+          aria-label={`${t("settings.defaultOutputFolderLabel")}: ${currentOutputName}`}
+        >
           <FolderOpen size={14} strokeWidth={2} />
-          <span class="output-name">{$defaultOutputDir?.split(/[\\/]/).pop() ?? t("common.sameAsInput")}</span>
-        </button>
+          <span class="output-name">{currentOutputName}</span>
+        </Button>
         {#if $defaultOutputDir}
-          <button class="btn-ghost btn-icon" onclick={resetOutputDir} title={t("settings.resetOutputTitle")}>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="btn-reset"
+            onclick={resetOutputDir}
+            title={t("settings.resetOutputTitle")}
+            aria-label={t("settings.resetOutputTitle")}
+          >
             <RotateCcw size={14} strokeWidth={2} />
-          </button>
+          </Button>
         {/if}
       </div>
     </div>
@@ -188,6 +234,8 @@
     </div>
   </section>
 </div>
+
+<div class="visually-hidden" role="status" aria-live="polite">{announcement}</div>
 </div>
 
 <style>
@@ -212,13 +260,15 @@
   .section-header h2 {
     font-size: 18px;
     font-weight: 700;
-    letter-spacing: -0.025em;
+    letter-spacing: -0.02em;
     color: var(--text-primary);
   }
 
   .section-header p {
     font-size: 13px;
-    color: var(--text-muted);
+    /* --chart-tick, not --text-muted: the legible small-text token
+       (app.css documents --text-muted as failing AA at this size). */
+    color: var(--chart-tick);
     margin-top: 4px;
   }
 
@@ -261,45 +311,21 @@
 
   .desc {
     font-size: 12px;
-    color: var(--text-muted);
-  }
-
-  .segmented {
-    display: flex;
-    border-radius: var(--radius-sm);
-    background: var(--navy-bg);
-    overflow: hidden;
-  }
-
-  .seg {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    font-size: 12px;
-    color: var(--text-muted);
-    border-radius: var(--radius-sm);
-    transition: background-color 0.15s, border-color 0.15s;
-  }
-
-  .seg.active {
-    background: var(--bg-card);
-    color: var(--accent);
-    font-weight: 600;
-    box-shadow: 0 0 0 1px var(--border);
+    color: var(--chart-tick);
   }
 
   .version-val {
     font-size: 13px;
     font-weight: 500;
-    color: var(--text-muted);
+    color: var(--chart-tick);
+    font-variant-numeric: tabular-nums;
   }
 
   .privacy-badge {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
-    padding: 14px 16px;
+    gap: 12px;
+    padding: 16px;
     border-radius: var(--radius-md);
     background: var(--accent-subtle);
     border: 1px solid var(--accent-glow);
@@ -335,27 +361,15 @@
     gap: 6px;
   }
 
-  .btn-ghost {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border-radius: var(--radius-sm);
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--text-secondary);
-    border: 1px solid var(--border);
-    transition: background-color 0.15s, border-color 0.15s;
+  /* Button's sm ghost lands at ~35px — enforce the 36px touch-target floor. */
+  .output-controls :global(.btn-ghost) {
+    min-height: 36px;
   }
 
-  .btn-ghost:hover {
-    background: var(--navy-bg);
-    border-color: var(--text-muted);
-  }
-
-  .btn-ghost.btn-icon {
+  .output-controls :global(.btn-reset) {
+    min-width: 36px;
     padding: 6px;
-    color: var(--text-muted);
+    justify-content: center;
   }
 
   .output-name {
@@ -363,5 +377,17 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 </style>
