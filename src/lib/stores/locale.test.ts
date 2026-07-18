@@ -72,6 +72,22 @@ describe("locale store", () => {
     }
   });
 
+  it("setLocale keeps document.documentElement.lang in sync, mapping pt to pt-BR", async () => {
+    document.documentElement.lang = "";
+    const mod = await import("./locale.svelte");
+    mod.setLocale("pt");
+    expect(document.documentElement.lang).toBe("pt-BR");
+    mod.setLocale("es");
+    expect(document.documentElement.lang).toBe("es");
+  });
+
+  it("module init applies the stored locale to document.documentElement.lang", async () => {
+    document.documentElement.lang = "";
+    localStorage.setItem("revault:locale", "de");
+    await import("./locale.svelte");
+    expect(document.documentElement.lang).toBe("de");
+  });
+
   it("falls back through navigator.language to en when the stored locale is unknown", async () => {
     // Stored "zz" is not a registered locale — the full chain is
     // stored → navigator.language → en, so with jsdom's en-US it lands on en...

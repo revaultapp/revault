@@ -18,7 +18,21 @@ function detectLocale(): Locale {
   return "en";
 }
 
+// The pt dictionary is written in pt-BR — advertise the regional subtag so
+// screen readers pick the Brazilian voice (WCAG 3.1.1 Language of Page).
+const BCP47: Record<Locale, string> = { en: "en", es: "es", fr: "fr", de: "de", pt: "pt-BR" };
+
+function applyDocumentLang(locale: Locale): void {
+  if (typeof document !== "undefined") {
+    document.documentElement.lang = BCP47[locale];
+  }
+}
+
 let currentLocale = $state<Locale>(detectLocale());
+
+// app.html's static lang="en" only covers the first paint of an en session;
+// detectLocale() can land on es/fr/de/pt before the user ever opens Settings.
+applyDocumentLang(currentLocale);
 
 export function getLocale(): Locale {
   return currentLocale;
@@ -26,6 +40,7 @@ export function getLocale(): Locale {
 
 export function setLocale(next: Locale): void {
   currentLocale = next;
+  applyDocumentLang(next);
   if (typeof localStorage !== "undefined") {
     localStorage.setItem(STORAGE_KEY, next);
   }
