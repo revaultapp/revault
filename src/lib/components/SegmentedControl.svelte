@@ -21,9 +21,14 @@
 
   let selectedIndex = $derived(segments.findIndex(s => s.id === selected));
 
-  // Pill position + size, driven by the active button's geometry
+  // Pill position + size, driven by the active button's geometry.
+  // Both axes are measured (not just X) so the control can flex-wrap onto
+  // multiple rows at narrow widths / long locales without the pill
+  // detaching from its segment.
   let pillLeft = $state(0);
+  let pillTop = $state(0);
   let pillWidth = $state(0);
+  let pillHeight = $state(0);
   let measured = $state(false);
 
   function measure() {
@@ -35,7 +40,9 @@
     const btnRect = btn.getBoundingClientRect();
 
     pillLeft = btnRect.left - containerRect.left;
+    pillTop = btnRect.top - containerRect.top;
     pillWidth = btnRect.width;
+    pillHeight = btnRect.height;
     measured = true;
   }
 
@@ -62,6 +69,15 @@
     queueMicrotask(measure);
   });
 
+  // Wrapping means a window resize can move the active segment to another
+  // row — track container size so the pill follows the reflow.
+  $effect(() => {
+    if (!containerEl) return;
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(containerEl);
+    return () => ro.disconnect();
+  });
+
 </script>
 
 <div class="segmented-control" bind:this={containerEl} role="radiogroup" aria-label={label} tabindex="-1" onkeydown={handleKeydown}>
@@ -69,7 +85,7 @@
   <div
     class="pill"
     class:pill--visible={measured}
-    style="transform: translateX({pillLeft}px); width: {pillWidth}px;"
+    style="transform: translate({pillLeft}px, {pillTop}px); width: {pillWidth}px; height: {pillHeight}px;"
     aria-hidden="true"
   ></div>
 
@@ -98,6 +114,11 @@
   .segmented-control {
     position: relative;
     display: inline-flex;
+    /* Wrap instead of overflowing: 5 icon+label modes (PdfPage) exceed the
+       usable width at minWidth×ES/FR locales — the #75 bug class, one level
+       up. The measured pill tracks both axes so wrapping stays coherent. */
+    flex-wrap: wrap;
+    justify-content: center;
     align-items: center;
     gap: 2px;
     padding: 4px;
@@ -109,14 +130,13 @@
   /* The sliding white pill */
   .pill {
     position: absolute;
-    top: 4px;
-    bottom: 4px;
+    top: 0;
+    left: 0;
     border-radius: 9px;
     background: var(--bg-card);
     box-shadow:
       0 1px 3px rgba(0, 0, 0, 0.08),
       0 1px 2px rgba(0, 0, 0, 0.06);
-    left: 0;
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     will-change: transform;
     opacity: 0;

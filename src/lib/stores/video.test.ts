@@ -347,7 +347,10 @@ describe("video store", () => {
     expect(get(trimError)).toContain("end_sec exceeds media duration");
   });
 
-  it("trimVideoFile cancelled path resets to idle", async () => {
+  it("trimVideoFile treats any rejection as an error (trim has no cancel path)", async () => {
+    // trim_video has no cancel command backend-side; the old "cancelled"
+    // substring branch was dead code and was removed — every rejection is a
+    // genuine error now.
     mockInvoke.mockRejectedValueOnce(new Error("trim cancelled"));
     const { trimState, trimError, trimVideoFile } = await import("./video");
 
@@ -363,8 +366,8 @@ describe("video store", () => {
 
     await trimVideoFile(file);
 
-    expect(get(trimState)).toBe("idle");
-    expect(get(trimError)).toBeNull();
+    expect(get(trimState)).toBe("error");
+    expect(get(trimError)).toContain("trim cancelled");
   });
 
   it("audioSettings persists with auto/192 defaults", async () => {

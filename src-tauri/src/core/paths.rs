@@ -96,6 +96,17 @@ pub fn validate_output_dir(dir: &str) -> Result<PathBuf, String> {
     Ok(canon)
 }
 
+/// The "optional output folder" composition used by every output-producing
+/// feature: `Some(dir)` is validated via [`validate_output_dir`]; `None`
+/// falls back to the given directory (conventionally the input's parent).
+/// Promoted here after the same match was re-derived inline at 6+ call sites.
+pub fn resolve_output_dir(output_dir: Option<&str>, fallback: &Path) -> Result<PathBuf, String> {
+    match output_dir {
+        Some(d) => validate_output_dir(d),
+        None => Ok(fallback.to_path_buf()),
+    }
+}
+
 /// Returns `base` if it's free, otherwise the first `{stem}_{n}.{ext}`
 /// sibling that doesn't already exist on disk or in `reserved`. `reserved`
 /// lets a batch resolve every output path up front without two inputs

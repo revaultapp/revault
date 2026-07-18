@@ -1,10 +1,9 @@
+use crate::core::cancel::CancelSlot;
 use crate::core::gif;
 use serde_json::json;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
 
-static ACTIVE_GIF_CANCEL: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
+static ACTIVE_GIF_CANCEL: CancelSlot = CancelSlot::new();
 
 #[tauri::command]
 pub async fn export_gif(
@@ -14,14 +13,7 @@ pub async fn export_gif(
     options: gif::GifOptions,
 ) -> Result<gif::GifResult, String> {
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let cancel_flag = Arc::new(AtomicBool::new(false));
-    {
-        let mut active = ACTIVE_GIF_CANCEL.lock().map_err(|e| e.to_string())?;
-        if active.is_some() {
-            return Err("GIF export already running".to_string());
-        }
-        *active = Some(cancel_flag.clone());
-    }
+    let cancel_flag = ACTIVE_GIF_CANCEL.start("GIF export already running")?;
     let cancel_for_worker = cancel_flag.clone();
     let app_for_emit = app.clone();
     let join_result = tauri::async_runtime::spawn_blocking(move || {
@@ -38,27 +30,13 @@ pub async fn export_gif(
     })
     .await;
 
-    let mut active = ACTIVE_GIF_CANCEL.lock().map_err(|e| e.to_string())?;
-    if active
-        .as_ref()
-        .map(|flag| Arc::ptr_eq(flag, &cancel_flag))
-        .unwrap_or(false)
-    {
-        *active = None;
-    }
+    ACTIVE_GIF_CANCEL.finish(&cancel_flag)?;
     join_result.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
 pub async fn cancel_gif_export() -> Result<(), String> {
-    if let Some(flag) = ACTIVE_GIF_CANCEL
-        .lock()
-        .map_err(|e| e.to_string())?
-        .as_ref()
-    {
-        flag.store(true, Ordering::SeqCst);
-    }
-    Ok(())
+    ACTIVE_GIF_CANCEL.cancel()
 }
 
 #[tauri::command]

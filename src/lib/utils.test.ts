@@ -1,6 +1,21 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { get } from "svelte/store";
-import { formatBytes, runWithConcurrency, persisted } from "./utils";
+import { listen } from "@tauri-apps/api/event";
+import {
+  addUniqueByPath,
+  formatBytes,
+  moveByPath,
+  persisted,
+  removeByPath,
+  runWithConcurrency,
+  withListener,
+} from "./utils";
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(),
+}));
+
+const mockListen = listen as ReturnType<typeof vi.fn>;
 
 describe("formatBytes", () => {
   it("formats zero", () => {
@@ -102,5 +117,71 @@ describe("persisted", () => {
     first.set("b");
     const second = persisted("test_persisted_roundtrip", "z");
     expect(get(second)).toBe("b");
+  });
+});
+
+describe("addUniqueByPath / removeByPath / moveByPath", () => {
+  const make = (path: string, name: string) => ({ path, name });
+
+  it("appends only unseen paths, preserving order, and dedupes within one call", () => {
+    const curr = [{ path: "/a", name: "a" }];
+    const next = addUniqueByPath(curr, ["/a", "/b", "/b", "/c"], make);
+    expect(next.map((f) => f.path)).toEqual(["/a", "/b", "/c"]);
+  });
+
+  it("derives the name from the last path segment (both separators)", () => {
+    const next = addUniqueByPath([], ["/x/y/photo.jpg", "C:\\dir\\doc.pdf"], make);
+    expect(next.map((f) => f.name)).toEqual(["photo.jpg", "doc.pdf"]);
+  });
+
+  it("removeByPath removes the match and no-ops on unknown paths", () => {
+    const curr = [{ path: "/a", name: "a" }, { path: "/b", name: "b" }];
+    expect(removeByPath(curr, "/a").map((f) => f.path)).toEqual(["/b"]);
+    expect(removeByPath(curr, "/nope")).toHaveLength(2);
+  });
+
+  it("moveByPath swaps neighbours and no-ops at the boundaries", () => {
+    const curr = [{ path: "/a", name: "a" }, { path: "/b", name: "b" }, { path: "/c", name: "c" }];
+    expect(moveByPath(curr, "/b", -1).map((f) => f.path)).toEqual(["/b", "/a", "/c"]);
+    expect(moveByPath(curr, "/a", -1).map((f) => f.path)).toEqual(["/a", "/b", "/c"]);
+    expect(moveByPath(curr, "/c", 1).map((f) => f.path)).toEqual(["/a", "/b", "/c"]);
+    expect(moveByPath(curr, "/missing", 1)).toBe(curr);
+  });
+});
+
+describe("withListener", () => {
+  it("attaches, forwards payloads, and unlistens after work resolves", async () => {
+    const unlisten = vi.fn();
+    let handler: ((e: { payload: unknown }) => void) | undefined;
+    mockListen.mockImplementationOnce(async (_evt: string, cb: (e: { payload: unknown }) => void) => {
+      handler = cb;
+      return unlisten;
+    });
+    const seen: unknown[] = [];
+    const result = await withListener("test-evt", (p) => seen.push(p), async () => {
+      handler?.({ payload: 42 });
+      return "done";
+    });
+    expect(result).toBe("done");
+    expect(seen).toEqual([42]);
+    expect(unlisten).toHaveBeenCalledOnce();
+  });
+
+  it("unlistens even when work rejects", async () => {
+    const unlisten = vi.fn();
+    mockListen.mockImplementationOnce(async () => unlisten);
+    await expect(
+      withListener("test-evt", () => {}, async () => {
+        throw new Error("boom");
+      }),
+    ).rejects.toThrow("boom");
+    expect(unlisten).toHaveBeenCalledOnce();
+  });
+
+  it("propagates a listen() rejection without invoking work", async () => {
+    mockListen.mockRejectedValueOnce(new Error("ipc down"));
+    const work = vi.fn();
+    await expect(withListener("test-evt", () => {}, work)).rejects.toThrow("ipc down");
+    expect(work).not.toHaveBeenCalled();
   });
 });

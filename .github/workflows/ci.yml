@@ -66,7 +66,7 @@ jobs:
 
       - name: Rust clippy
         working-directory: src-tauri
-        run: cargo clippy --workspace -- -D warnings
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Install cargo-audit
         uses: taiki-e/install-action@cargo-audit
@@ -97,6 +97,19 @@ jobs:
       - name: Rust tests (ubuntu)
         working-directory: src-tauri
         run: cargo nextest run --workspace
+
+      # Real-render coverage + supply-chain canary in one step: fetching the
+      # pinned pdfium archive verifies the release URL/SHA are still good on
+      # every PR (instead of discovering link-rot mid-release-build), and the
+      # ignored integration test then exercises the actual pdfium render path
+      # on one platform (it's platform-generic; repeating on mac/win adds
+      # nothing). Ubuntu-only on purpose.
+      - name: Rust real-render test (pdfium, ubuntu only)
+        working-directory: src-tauri
+        run: |
+          bash ../scripts/fetch-pdfium.sh linux-x64
+          REVAULT_PDFIUM_PATH="$(pwd)/resources/pdfium/libpdfium.so" \
+            cargo test --lib -- --ignored
 
       - name: Verify MSRV (1.88)
         working-directory: src-tauri
@@ -129,7 +142,7 @@ jobs:
 
       - name: Rust clippy
         working-directory: src-tauri
-        run: cargo clippy --workspace -- -D warnings
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@cargo-nextest

@@ -1,7 +1,6 @@
 import { writable, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { persisted } from "$lib/utils";
+import { persisted, withListener } from "$lib/utils";
 
 export interface DuplicateFile {
   path: string;
@@ -52,14 +51,22 @@ export async function scanForDuplicates(paths: string[], recursive = true) {
   scanError.set(null);
   scanProgress.set(null);
 
-  // Listen for progress events from Rust — scoped to this call
-  let unlisten: (() => void) | null = await listen<ScanProgress>("dedupe-progress", (event) => {
-    if (requestId !== scanRequestId || event.payload.request_id !== requestId) return;
-    scanProgress.set(event.payload);
-  });
-
   try {
-    const result = await invoke<FindDuplicatesResult>("find_duplicates", { paths, recursive, mode: get(scanMode), requestId });
+    // Progress events from Rust — scoped to this call via the request id.
+    const result = await withListener<FindDuplicatesResult, ScanProgress>(
+      "dedupe-progress",
+      (p) => {
+        if (requestId !== scanRequestId || p.request_id !== requestId) return;
+        scanProgress.set(p);
+      },
+      () =>
+        invoke<FindDuplicatesResult>("find_duplicates", {
+          paths,
+          recursive,
+          mode: get(scanMode),
+          requestId,
+        }),
+    );
     if (requestId !== scanRequestId) return;
     const total = result.groups.reduce((acc, g) => acc + g.files.length - 1, 0);
     duplicateGroups.set(result.groups);
@@ -72,7 +79,6 @@ export async function scanForDuplicates(paths: string[], recursive = true) {
       isScanning.set(false);
       scanProgress.set(null);
     }
-    unlisten?.();
   }
 }
 

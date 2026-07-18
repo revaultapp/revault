@@ -1,3 +1,4 @@
+pub mod cancel;
 pub mod compression;
 pub mod dedupe;
 pub mod gif;

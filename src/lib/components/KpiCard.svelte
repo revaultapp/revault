@@ -44,7 +44,10 @@
           {/if}
         </span>
         <span class="delta-pct" class:up={delta.up} class:down={!delta.up}>
-          {delta.pct.toFixed(1)}%
+          <!-- Signed so the direction survives without the (aria-hidden)
+               arrow icon or color — screen readers otherwise hear a bare
+               percentage with no up/down information (WCAG 1.4.1). -->
+          {delta.up ? "+" : "−"}{delta.pct.toFixed(1)}%
         </span>
       {/if}
       {#if deltaSuffix}<span class="delta-suffix">{deltaSuffix}</span>{/if}

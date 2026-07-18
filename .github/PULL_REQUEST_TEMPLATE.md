@@ -24,8 +24,8 @@
 
 - [ ] Tests added or updated for new logic (unit tests in `src-tauri/src/core/**/*.rs` or Vitest in `src/lib/stores/**/*.test.ts`)
 - [ ] **OR** N/A — no testable logic added (e.g., pure documentation, config-only changes)
-- [ ] `cargo nextest run --workspace` passes (Rust, 195+ tests)
-- [ ] `pnpm test` passes (Frontend, 142+ tests)
+- [ ] `cargo nextest run --workspace` passes (Rust, 238+ tests)
+- [ ] `pnpm test` passes (Frontend, 180+ tests)
 
 ## Platform Testing
 

@@ -1,10 +1,9 @@
 import { writable, derived, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { activity } from "./activity";
 import { savings } from "./savings";
 import type { BaseFile } from "$lib/types";
-import { persisted } from "$lib/utils";
+import { addUniqueByPath, moveByPath, persisted, removeByPath, withListener } from "$lib/utils";
 import { defaultOutputDir } from "./settings";
 
 export type PdfStatus = "pending" | "processing" | "done" | "error";
@@ -30,7 +29,17 @@ export const isProcessing = writable(false);
 export const outputDir = persisted<string | null>("revault-pdf-outputDir", null);
 export const stripMetadata = persisted<boolean>("revault-pdf-strip", true);
 export const compressStreams = persisted<boolean>("revault-pdf-compress", true);
-export const compressImages = persisted<boolean>("pdf-compress-images", false);
+// One-time migration: this key originally shipped without the `revault-pdf-`
+// prefix its siblings use. Copy any legacy value before binding the new key.
+try {
+  const legacy = localStorage.getItem("pdf-compress-images");
+  if (legacy !== null && localStorage.getItem("revault-pdf-compress-images") === null) {
+    localStorage.setItem("revault-pdf-compress-images", legacy);
+  }
+} catch {
+  // localStorage unavailable — nothing to migrate
+}
+export const compressImages = persisted<boolean>("revault-pdf-compress-images", false);
 
 export const resolvedOutputDir = derived(
   [outputDir, defaultOutputDir],
@@ -48,26 +57,13 @@ export const summary = derived(files, ($f) => {
 });
 
 export function addFiles(paths: string[]) {
-  files.update((curr) => {
-    const existing = new Set(curr.map((f) => f.path));
-    const newPaths = paths.filter((p) => {
-      if (existing.has(p)) return false;
-      existing.add(p);
-      return true;
-    });
-    return [
-      ...curr,
-      ...newPaths.map((p) => ({
-        path: p,
-        name: p.split(/[\\/]/).pop() ?? p,
-        status: "pending" as const,
-      })),
-    ];
-  });
+  files.update((curr) =>
+    addUniqueByPath(curr, paths, (path, name) => ({ path, name, status: "pending" as const })),
+  );
 }
 
 export function removeFile(path: string) {
-  files.update((curr) => curr.filter((f) => f.path !== path));
+  files.update((curr) => removeByPath(curr, path));
 }
 
 export function clearFiles() {
@@ -98,33 +94,15 @@ export const mergeResult = writable<MergeResultInfo | null>(null);
 export const mergeError = writable<string | null>(null);
 
 export function addMergeFiles(paths: string[]) {
-  mergeFiles.update((curr) => {
-    const existing = new Set(curr.map((f) => f.path));
-    const newPaths = paths.filter((p) => {
-      if (existing.has(p)) return false;
-      existing.add(p);
-      return true;
-    });
-    return [
-      ...curr,
-      ...newPaths.map((p) => ({ path: p, name: p.split(/[\\/]/).pop() ?? p })),
-    ];
-  });
+  mergeFiles.update((curr) => addUniqueByPath(curr, paths, (path, name) => ({ path, name })));
 }
 
 export function removeMergeFile(path: string) {
-  mergeFiles.update((curr) => curr.filter((f) => f.path !== path));
+  mergeFiles.update((curr) => removeByPath(curr, path));
 }
 
 export function moveMergeFile(path: string, direction: -1 | 1) {
-  mergeFiles.update((curr) => {
-    const idx = curr.findIndex((f) => f.path === path);
-    const target = idx + direction;
-    if (idx === -1 || target < 0 || target >= curr.length) return curr;
-    const next = [...curr];
-    [next[idx], next[target]] = [next[target], next[idx]];
-    return next;
-  });
+  mergeFiles.update((curr) => moveByPath(curr, path, direction));
 }
 
 export function clearMerge() {
@@ -180,33 +158,15 @@ export const pageSize = persisted<PdfPageSize>("revault-pdf-i2p-pagesize", "a4")
 export const pageMargin = persisted<PdfPageMargin>("revault-pdf-i2p-margin", "small");
 
 export function addImageFiles(paths: string[]) {
-  imageFiles.update((curr) => {
-    const existing = new Set(curr.map((f) => f.path));
-    const newPaths = paths.filter((p) => {
-      if (existing.has(p)) return false;
-      existing.add(p);
-      return true;
-    });
-    return [
-      ...curr,
-      ...newPaths.map((p) => ({ path: p, name: p.split(/[\\/]/).pop() ?? p })),
-    ];
-  });
+  imageFiles.update((curr) => addUniqueByPath(curr, paths, (path, name) => ({ path, name })));
 }
 
 export function removeImageFile(path: string) {
-  imageFiles.update((curr) => curr.filter((f) => f.path !== path));
+  imageFiles.update((curr) => removeByPath(curr, path));
 }
 
 export function moveImageFile(path: string, direction: -1 | 1) {
-  imageFiles.update((curr) => {
-    const idx = curr.findIndex((f) => f.path === path);
-    const target = idx + direction;
-    if (idx === -1 || target < 0 || target >= curr.length) return curr;
-    const next = [...curr];
-    [next[idx], next[target]] = [next[target], next[idx]];
-    return next;
-  });
+  imageFiles.update((curr) => moveByPath(curr, path, direction));
 }
 
 export function clearImages() {
@@ -338,24 +298,21 @@ export async function pdfToImages(
   p2iResults.set([]);
   p2iProgress.set(null);
 
-  // Declared outside try so it's cleaned up even if listen() itself rejects.
-  let unlisten: (() => void) | null = null;
   try {
-    unlisten = await listen<{ current: number; total: number }>(
+    const paths = await withListener<string[], { current: number; total: number }>(
       "pdf-rasterize-progress",
-      (event) => {
-        p2iProgress.set(event.payload);
-      },
+      (p) => p2iProgress.set(p),
+      () =>
+        invoke<string[]>("pdf_to_images", {
+          input: input.path,
+          pagesMode,
+          start,
+          end,
+          dpi: get(p2iDpi),
+          format: get(p2iFormat),
+          outputDir: outDir,
+        }),
     );
-    const paths = await invoke<string[]>("pdf_to_images", {
-      input: input.path,
-      pagesMode,
-      start,
-      end,
-      dpi: get(p2iDpi),
-      format: get(p2iFormat),
-      outputDir: outDir,
-    });
     p2iResults.set(paths);
     // Rasterizing is additive (the source PDF is kept), so no byte-level
     // savings are recorded — only the operation count, matching audio extract.
@@ -370,7 +327,6 @@ export async function pdfToImages(
     }
   } finally {
     isRasterizing.set(false);
-    unlisten?.();
   }
 }
 

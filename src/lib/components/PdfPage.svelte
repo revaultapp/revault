@@ -102,6 +102,13 @@
       }, 0);
       activity.add({ type: "compress", fileCount: doneCount, savedBytes });
       history.recordSavings("pdf", originalBytes, compressedBytes);
+      // PDF Optimize is a real compression flow — it must feed the same
+      // all-time savings store the Dashboard headline KPIs and the Sidebar
+      // badge read from (history above only covers the monthly charts).
+      savings.incrementOps(doneCount);
+      savings.addOriginalBytes(originalBytes);
+      savings.addCompressedBytes(compressedBytes);
+      if (savedBytes > 0) savings.add(savedBytes);
       if ($stripMetadata) showPrivacyToast(doneCount);
     }
   }
@@ -155,6 +162,7 @@
     await mergePdfs($resolvedOutputDir);
     if ($mergeResult) {
       activity.add({ type: "merge", fileCount, savedBytes: 0 });
+      savings.incrementOps(fileCount);
     }
   }
 
@@ -200,23 +208,14 @@
   async function startImagesToPdf() {
     if ($imageFiles.length < 1) return;
     const fileCount = $imageFiles.length;
-    const paths = $imageFiles.map((f) => f.path);
     await imagesToPdf($resolvedOutputDir);
     if ($imagesResult) {
-      let savedBytes = 0;
-      try {
-        const sizes = await invoke<number[]>("get_file_sizes", { paths });
-        const originalBytes = sizes.reduce((a, b) => a + b, 0);
-        savings.incrementOps(fileCount);
-        savings.addOriginalBytes(originalBytes);
-        savings.addCompressedBytes($imagesResult.outputSize);
-        savedBytes = Math.max(0, originalBytes - $imagesResult.outputSize);
-        if (savedBytes > 0) savings.add(savedBytes);
-        history.recordSavings("pdf", originalBytes, $imagesResult.outputSize);
-      } catch {
-        // sizes are best-effort; the PDF was still created
-      }
-      activity.add({ type: "convert", fileCount, savedBytes });
+      // Conversion policy: images→PDF is additive (the source images are
+      // kept), so byte-level "savings" would be fake — record the operation
+      // only, matching audio extraction and PDF→Images. Savings bytes are
+      // reserved for genuine compression flows.
+      savings.incrementOps(fileCount);
+      activity.add({ type: "convert", fileCount, savedBytes: 0 });
     }
   }
 
@@ -248,6 +247,7 @@
     await splitPdf(splitModeChoice, start, end, $resolvedOutputDir);
     if ($splitResults.length > 0) {
       activity.add({ type: "split", fileCount: $splitResults.length, savedBytes: 0 });
+      savings.incrementOps(1);
     }
   }
 
@@ -401,7 +401,7 @@
         </div>
       {:else if $mergeResult}
         <div class="result-view">
-          <div class="result-card">
+          <div class="result-card" role="status" aria-live="polite">
             <CircleCheck size={28} color="var(--accent)" />
             <span class="result-name">{$mergeResult.outputPath.split(/[\\/]/).pop()}</span>
             <span class="result-meta">
@@ -489,7 +489,7 @@
         </div>
       {:else if $imagesResult}
         <div class="result-view">
-          <div class="result-card">
+          <div class="result-card" role="status" aria-live="polite">
             <CircleCheck size={28} color="var(--accent)" />
             <span class="result-name">{$imagesResult.outputPath.split(/[\\/]/).pop()}</span>
             <span class="result-meta">
@@ -535,9 +535,9 @@
               >
                 <span class="merge-index">{i + 1}</span>
                 {#if imageThumbs[file.path]}
-                  <img class="i2p-thumb" src={imageThumbs[file.path]} alt="" />
+                  <img class="page-thumb" src={imageThumbs[file.path]} alt="" />
                 {:else}
-                  <div class="i2p-thumb i2p-thumb-placeholder"><ImageIcon size={16} /></div>
+                  <div class="page-thumb page-thumb-placeholder"><ImageIcon size={16} /></div>
                 {/if}
                 <span class="merge-name">{file.name}</span>
                 <div class="merge-actions">
@@ -593,7 +593,7 @@
         </div>
       {:else if $splitResults.length > 0}
         <div class="result-view">
-          <div class="result-card">
+          <div class="result-card" role="status" aria-live="polite">
             <CircleCheck size={28} color="var(--accent)" />
             <span class="result-name">{$splitResults.length === 1 ? t("pdf.filesCreatedOne", { count: $splitResults.length }) : t("pdf.filesCreatedOther", { count: $splitResults.length })}</span>
             <div class="split-output-list">
@@ -643,11 +643,11 @@
             {#if splitModeChoice === "range"}
               <div class="control-group">
                 <span class="label">{t("pdf.fromPageLabel")}</span>
-                <input type="number" min="1" step="1" class="page-input" bind:value={rangeStart} aria-label={t("pdf.startPageAriaLabel")} />
+                <input type="number" min="1" step="1" class="page-input" bind:value={rangeStart} aria-label={t("pdf.fromPageLabel")} />
               </div>
               <div class="control-group">
                 <span class="label">{t("pdf.toPageLabel")}</span>
-                <input type="number" min="1" step="1" class="page-input" bind:value={rangeEnd} aria-label={t("pdf.endPageAriaLabel")} />
+                <input type="number" min="1" step="1" class="page-input" bind:value={rangeEnd} aria-label={t("pdf.toPageLabel")} />
               </div>
               {#if !canSplit}
                 <span class="hint">{t("pdf.endPageError")}</span>
@@ -682,16 +682,16 @@
         </div>
       {:else if $p2iResults.length > 0}
         <div class="result-view">
-          <div class="result-card">
+          <div class="result-card" role="status" aria-live="polite">
             <CircleCheck size={28} color="var(--accent)" />
             <span class="result-name">{$p2iResults.length === 1 ? t("pdf.imagesCreatedOne", { count: $p2iResults.length }) : t("pdf.imagesCreatedOther", { count: $p2iResults.length })}</span>
             <div class="split-output-list">
               {#each $p2iResults as path (path)}
                 <div class="split-output-row">
                   {#if p2iThumbs[path]}
-                    <img class="i2p-thumb" src={p2iThumbs[path]} alt="" />
+                    <img class="page-thumb" src={p2iThumbs[path]} alt="" />
                   {:else}
-                    <div class="i2p-thumb i2p-thumb-placeholder"><ImageIcon size={16} /></div>
+                    <div class="page-thumb page-thumb-placeholder"><ImageIcon size={16} /></div>
                   {/if}
                   <span class="split-output-name">{path.split(/[\\/]/).pop()}</span>
                   <button class="btn-icon reveal-btn" aria-label={t("pdf.revealNamedAriaLabel", { name: path.split(/[\\/]/).pop() ?? "" })} onclick={() => revealPdfOutput(path)}>
@@ -728,12 +728,12 @@
           {/if}
 
           {#if $isRasterizing && $p2iProgress}
-            <div class="p2i-progress" role="status" aria-live="polite">
+            <div class="p2i-progress">
               <div class="p2i-progress-header">
                 <span>{t("pdf.p2iProgressLabel", { current: $p2iProgress.current, total: $p2iProgress.total })}</span>
                 <span class="p2i-progress-pct">{Math.round(($p2iProgress.current / Math.max(1, $p2iProgress.total)) * 100)}%</span>
               </div>
-              <div class="p2i-progress-track" role="progressbar" aria-valuenow={$p2iProgress.current} aria-valuemin={0} aria-valuemax={$p2iProgress.total}>
+              <div class="p2i-progress-track" role="progressbar" aria-label={t("pdf.p2iProgressLabel", { current: $p2iProgress.current, total: $p2iProgress.total })} aria-valuenow={$p2iProgress.current} aria-valuemin={0} aria-valuemax={$p2iProgress.total}>
                 <div class="p2i-progress-fill" style="transform: scaleX({$p2iProgress.current / Math.max(1, $p2iProgress.total)})"></div>
               </div>
             </div>
@@ -748,12 +748,15 @@
             {#if p2iPagesChoice === "range"}
               <div class="control-group">
                 <span class="label">{t("pdf.fromPageLabel")}</span>
-                <input type="number" min="1" step="1" class="page-input" bind:value={p2iRangeStart} aria-label={t("pdf.startPageAriaLabel")} />
+                <input type="number" min="1" step="1" class="page-input" bind:value={p2iRangeStart} aria-label={t("pdf.fromPageLabel")} />
               </div>
               <div class="control-group">
                 <span class="label">{t("pdf.toPageLabel")}</span>
-                <input type="number" min="1" step="1" class="page-input" bind:value={p2iRangeEnd} aria-label={t("pdf.endPageAriaLabel")} />
+                <input type="number" min="1" step="1" class="page-input" bind:value={p2iRangeEnd} aria-label={t("pdf.toPageLabel")} />
               </div>
+              {#if !canRasterize}
+                <span class="hint">{t("pdf.endPageError")}</span>
+              {/if}
             {/if}
 
             <div class="control-group">
@@ -766,7 +769,7 @@
               <div class="pill-row">
                 {#each p2iDpiOptions as dpi}
                   <button
-                    class="dpi-pill"
+                    class="pill"
                     class:active={$p2iDpi === dpi}
                     aria-pressed={$p2iDpi === dpi}
                     onclick={() => p2iDpi.set(dpi as PdfRasterDpi)}
@@ -1009,7 +1012,7 @@
 
   /* --- Images → PDF list thumbnails --- */
 
-  .i2p-thumb {
+  .page-thumb {
     flex-shrink: 0;
     width: 40px;
     height: 40px;
@@ -1018,7 +1021,7 @@
     background: var(--bg-main);
   }
 
-  .i2p-thumb-placeholder {
+  .page-thumb-placeholder {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1033,25 +1036,26 @@
     gap: 4px;
   }
 
-  .dpi-pill {
-    padding: 5px 14px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-    background: none;
+  /* Shared .pill contract (values must match ToolShell.svelte's documented
+     pill classes) — PdfPage's non-optimize modes render outside ToolShell so
+     the classes are re-declared locally rather than reinvented visually. */
+  .pill {
+    padding: 4px 11px;
+    border-radius: 6px;
+    border: none;
+    background: var(--navy-bg);
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 12px;
     font-variant-numeric: tabular-nums;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    transition: background 0.15s, color 0.15s;
   }
 
-  .dpi-pill:hover { background: var(--navy-bg); }
+  .pill:hover { background: var(--border); }
 
-  .dpi-pill.active {
+  .pill.active {
     background: var(--accent);
     color: var(--text-on-accent);
-    border-color: var(--accent);
-    font-weight: 600;
   }
 
   .p2i-progress {
@@ -1079,8 +1083,8 @@
   }
 
   .p2i-progress-track {
-    height: 6px;
-    border-radius: 3px;
+    height: 4px;
+    border-radius: 2px;
     background: var(--bg-main);
     overflow: hidden;
   }
@@ -1090,11 +1094,11 @@
     background: var(--accent);
     border-radius: 3px;
     transform-origin: left;
-    transition: transform 0.2s var(--ease-out);
+    transition: transform var(--duration-normal) var(--ease-out);
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .dpi-pill, .p2i-progress-fill { transition: none; }
+    .pill, .p2i-progress-fill { transition: none; }
   }
 
   /* --- Controls row (Merge / Split) --- */
