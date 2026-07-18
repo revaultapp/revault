@@ -152,28 +152,31 @@ pub enum QualityPreset {
 }
 
 impl QualityPreset {
-    fn jpeg_quality(self) -> f32 {
+    // pub(crate): resize maps the same preset to per-format quality values so
+    // both tools stay tuned identically (incl. the webp sns_strength branches
+    // keyed on these exact floats).
+    pub(crate) fn jpeg_quality(self) -> f32 {
         match self {
             QualityPreset::Smallest => 45.0,
             QualityPreset::Balanced => 75.0,
             QualityPreset::HighQuality => 88.0,
         }
     }
-    fn webp_quality(self) -> f32 {
+    pub(crate) fn webp_quality(self) -> f32 {
         match self {
             QualityPreset::Smallest => 40.0,
             QualityPreset::Balanced => 72.0,
             QualityPreset::HighQuality => 85.0,
         }
     }
-    fn avif_quality(self) -> f32 {
+    pub(crate) fn avif_quality(self) -> f32 {
         match self {
             QualityPreset::Smallest => 50.0,
             QualityPreset::Balanced => 72.0,
             QualityPreset::HighQuality => 88.0,
         }
     }
-    fn avif_speed(self) -> u8 {
+    pub(crate) fn avif_speed(self) -> u8 {
         match self {
             QualityPreset::Smallest => 2,
             QualityPreset::Balanced => 4,

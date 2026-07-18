@@ -6,7 +6,7 @@
   import HelperTooltip from "./HelperTooltip.svelte";
   import ToggleSwitch from "./ToggleSwitch.svelte";
   import { browseOutputDir, formatBytes } from "$lib/utils";
-  import { stripGps } from "$lib/stores/compress";
+  import { stripGps, qualityPreset } from "$lib/stores/compress";
   import { IMAGE_EXTENSIONS } from "$lib/types";
   import { t } from "$lib/stores/locale.svelte";
   import {
@@ -104,6 +104,7 @@
         width: w,
         height: h,
         mode,
+        qualityPreset: $qualityPreset,
         outputDir: outDir,
         stripGps: $stripGps,
       });
@@ -226,6 +227,23 @@
           {label}
         </button>
       {/each}
+    </div>
+  </div>
+  <div class="control-group">
+    <span class="label">
+      {t("common.qualityLabel")}
+      <HelperTooltip tip={t("common.qualityTooltip")} />
+    </span>
+    <div class="pills">
+      <button class="pill" class:active={$qualityPreset === "Smallest"} aria-pressed={$qualityPreset === "Smallest"} onclick={() => qualityPreset.set("Smallest")}>
+        {t("common.qualitySmallest")}
+      </button>
+      <button class="pill" class:active={$qualityPreset === "Balanced"} aria-pressed={$qualityPreset === "Balanced"} onclick={() => qualityPreset.set("Balanced")}>
+        {t("common.qualityBalanced")}
+      </button>
+      <button class="pill" class:active={$qualityPreset === "HighQuality"} aria-pressed={$qualityPreset === "HighQuality"} onclick={() => qualityPreset.set("HighQuality")}>
+        {t("common.qualityHighQuality")}
+      </button>
     </div>
   </div>
   <div class="control-group">

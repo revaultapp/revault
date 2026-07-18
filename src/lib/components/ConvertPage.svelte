@@ -147,7 +147,7 @@
               width: platform.width,
               height: platform.height,
               mode: "Fit",
-              quality: null,
+              qualityPreset: $qualityPreset,
               outputDir: $resolvedOutputDir,
               stripGps: $stripGps,
               suffix: `_${platform.id}`,

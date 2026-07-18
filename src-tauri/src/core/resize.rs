@@ -11,6 +11,7 @@ use tempfile::NamedTempFile;
 
 use crate::core::compression::{
     detect_format, encode_avif_bytes, encode_jpeg_bytes, encode_webp_bytes, OutputFormat,
+    QualityPreset,
 };
 use crate::core::image_io::{checked_size, ext_lowercase, open_image, write_preserving_timestamps};
 use crate::core::privacy;
@@ -28,6 +29,24 @@ fn encode_jpeg_mozjpeg(
 pub enum ResizeMode {
     Fit,
     Exact,
+}
+
+/// Per-format encode parameters for an optional quality preset. `None`
+/// preserves the historical defaults exactly (quality 90.0, AVIF speed 5)
+/// so pre-preset outputs are byte-identical.
+fn resolve_encode_params(fmt: OutputFormat, preset: Option<QualityPreset>) -> (f32, u8) {
+    let Some(p) = preset else { return (90.0, 5) };
+    let quality = match fmt {
+        OutputFormat::Jpeg => p.jpeg_quality(),
+        OutputFormat::Webp => p.webp_quality(),
+        OutputFormat::Avif => p.avif_quality(),
+        OutputFormat::Png => 90.0, // lossless — value is ignored downstream
+    };
+    let speed = match fmt {
+        OutputFormat::Avif => p.avif_speed(),
+        _ => 5,
+    };
+    (quality, speed)
 }
 
 #[derive(Serialize)]
@@ -96,7 +115,7 @@ pub fn resize_image(
     width: u32,
     height: u32,
     mode: &ResizeMode,
-    quality: Option<f32>,
+    preset: Option<QualityPreset>,
     strip_gps: bool,
 ) -> Result<ResizeResult, Box<dyn std::error::Error>> {
     if width == 0 || height == 0 {
@@ -116,7 +135,7 @@ pub fn resize_image(
     let resized = fast_resize(&img, dst_w, dst_h)?;
 
     let fmt = detect_format(input);
-    let quality = quality.unwrap_or(90.0).clamp(0.0, 100.0);
+    let (quality, avif_speed) = resolve_encode_params(fmt, preset);
 
     let bytes = match fmt {
         OutputFormat::Jpeg => encode_jpeg_mozjpeg(&resized, quality)?,
@@ -126,7 +145,7 @@ pub fn resize_image(
             buf.into_inner()
         }
         OutputFormat::Webp => encode_webp_bytes(&resized, quality)?,
-        OutputFormat::Avif => encode_avif_bytes(&resized, quality, 5)?,
+        OutputFormat::Avif => encode_avif_bytes(&resized, quality, avif_speed)?,
     };
 
     if strip_gps {
@@ -166,7 +185,7 @@ pub fn resize_batch(
     width: u32,
     height: u32,
     mode: ResizeMode,
-    quality: Option<f32>,
+    preset: Option<QualityPreset>,
     output_dir: Option<&str>,
     strip_gps: bool,
     suffix: Option<&str>,
@@ -200,7 +219,7 @@ pub fn resize_batch(
                 Ok(output) => output,
                 Err(e) => return ResizeResult::err(path, e),
             };
-            match resize_image(path, &output, width, height, &mode, quality, strip_gps) {
+            match resize_image(path, &output, width, height, &mode, preset, strip_gps) {
                 Ok(r) => r,
                 Err(e) => ResizeResult::err(path, e.to_string()),
             }
@@ -254,6 +273,87 @@ mod tests {
             image::Rgb([(x % 256) as u8, (y % 256) as u8, ((x + y) % 256) as u8])
         });
         img.save(path).unwrap();
+    }
+
+    fn create_test_jpeg(path: &str, width: u32, height: u32) {
+        let img = image::RgbImage::from_fn(width, height, |x, y| {
+            image::Rgb([(x % 256) as u8, (y % 256) as u8, ((x + y) % 256) as u8])
+        });
+        img.save(path).unwrap();
+    }
+
+    #[test]
+    fn encode_params_default_to_90_and_speed_5_without_preset() {
+        for fmt in [
+            OutputFormat::Jpeg,
+            OutputFormat::Png,
+            OutputFormat::Webp,
+            OutputFormat::Avif,
+        ] {
+            assert_eq!(resolve_encode_params(fmt, None), (90.0, 5));
+        }
+    }
+
+    #[test]
+    fn encode_params_map_preset_per_format() {
+        // Must match compression.rs exactly so both tools stay tuned identically.
+        let cases = [
+            (QualityPreset::Smallest, 45.0, 40.0, 50.0, 2),
+            (QualityPreset::Balanced, 75.0, 72.0, 72.0, 4),
+            (QualityPreset::HighQuality, 88.0, 85.0, 88.0, 3),
+        ];
+        for (preset, jpeg, webp, avif, speed) in cases {
+            assert_eq!(
+                resolve_encode_params(OutputFormat::Jpeg, Some(preset)),
+                (jpeg, 5)
+            );
+            assert_eq!(
+                resolve_encode_params(OutputFormat::Webp, Some(preset)),
+                (webp, 5)
+            );
+            assert_eq!(
+                resolve_encode_params(OutputFormat::Avif, Some(preset)),
+                (avif, speed)
+            );
+            // PNG is lossless — quality placeholder, never preset-dependent speed.
+            assert_eq!(
+                resolve_encode_params(OutputFormat::Png, Some(preset)),
+                (90.0, 5)
+            );
+        }
+    }
+
+    #[test]
+    fn resize_applies_preset_quality_end_to_end() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("photo.jpg");
+        let out_small = dir.path().join("photo_small.jpg");
+        let out_high = dir.path().join("photo_high.jpg");
+        create_test_jpeg(input.to_str().unwrap(), 400, 300);
+
+        let small = resize_image(
+            input.to_str().unwrap(),
+            out_small.to_str().unwrap(),
+            200,
+            150,
+            &ResizeMode::Exact,
+            Some(QualityPreset::Smallest),
+            false,
+        )
+        .unwrap();
+        let high = resize_image(
+            input.to_str().unwrap(),
+            out_high.to_str().unwrap(),
+            200,
+            150,
+            &ResizeMode::Exact,
+            Some(QualityPreset::HighQuality),
+            false,
+        )
+        .unwrap();
+
+        // The preset must actually reach the encoder: lower quality → fewer bytes.
+        assert!(small.resized_size < high.resized_size);
     }
 
     #[test]

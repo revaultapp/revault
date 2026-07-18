@@ -1,3 +1,4 @@
+use crate::core::compression;
 use crate::core::resize;
 
 #[allow(clippy::too_many_arguments)]
@@ -7,7 +8,7 @@ pub async fn resize_images(
     width: u32,
     height: u32,
     mode: resize::ResizeMode,
-    quality: Option<f32>,
+    quality_preset: Option<compression::QualityPreset>,
     output_dir: Option<String>,
     strip_gps: Option<bool>,
     suffix: Option<String>,
@@ -19,7 +20,7 @@ pub async fn resize_images(
             width,
             height,
             mode,
-            quality,
+            quality_preset,
             output_dir.as_deref(),
             strip_gps,
             suffix.as_deref(),
