@@ -9,11 +9,11 @@
 </script>
 
 <!--
-  Settings as staggered sliders instead of a gear: separate gear teeth
-  turned to mush at 18px (the v1 lesson), while three tracks with round
-  knobs stay crisp at any size and match what the page actually holds
-  (toggles/options). The knobs are the duo layer — they light up green
-  like adjusted controls. See icons/index.ts for the shared mechanism.
+  Settings — gear, restored by user request after a sliders experiment.
+  Single-piece gear silhouette (one continuous path, so it stays crisp at
+  18px — unlike the v1 attempt of 8 separate teeth that turned to mush);
+  the center hub is the duo layer and lights up on hover/active.
+  See icons/index.ts for the shared duo-fill mechanism.
 -->
 <svg
   width={size}
@@ -27,12 +27,10 @@
   class={className}
   aria-hidden="true"
 >
-  <path d="M3.5 5h17" />
-  <path d="M3.5 12h17" />
-  <path d="M3.5 19h17" />
-  <circle class="icon-duo" cx="15" cy="5" r="2.2" />
-  <circle class="icon-duo" cx="8" cy="12" r="2.2" />
-  <circle class="icon-duo" cx="16" cy="19" r="2.2" />
+  <path
+    d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
+  />
+  <circle class="icon-duo" cx="12" cy="12" r="3" />
 </svg>
 
 <style>

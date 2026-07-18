@@ -9,10 +9,10 @@
 </script>
 
 <!--
-  Compass — bold rim + kite needle. The needle is the duo layer but keeps
-  its stroke: without it the glyph at rest is just an empty circle (the v1
-  mistake — rim ticks mushed at 18px and the reveal-only needle left a
-  hollow ring). Active fills the needle with the accent tint.
+  Dashboard — widget mosaic (replaced the compass, which read "explore"
+  rather than "control panel"). Four tiles of alternating heights; the
+  tall hero tile is the duo layer and lights up on hover/active, echoing
+  the Dashboard page's own hero-stat layout.
   See icons/index.ts for the shared duo-fill mechanism.
 -->
 <svg
@@ -27,8 +27,10 @@
   class={className}
   aria-hidden="true"
 >
-  <circle cx="12" cy="12" r="9" />
-  <path class="icon-duo" d="M16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88Z" />
+  <rect class="icon-duo" x="3" y="3" width="7" height="9" rx="1.5" />
+  <rect x="14" y="3" width="7" height="5" rx="1.5" />
+  <rect x="14" y="12" width="7" height="9" rx="1.5" />
+  <rect x="3" y="16" width="7" height="5" rx="1.5" />
 </svg>
 
 <style>

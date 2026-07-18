@@ -9,10 +9,12 @@
 </script>
 
 <!--
-  Document with folded corner. The dog-ear triangle is the duo fill
-  (stroke-less — its two visible edges are already drawn by the primary
-  fold path, and the hypotenuse is the document's own cut corner), plus
-  two text lines for the "document" read.
+  Document with an oversized folded corner — the dog-ear grown to half
+  the page width so it becomes the glyph's signature rather than a
+  timid notch. The fold triangle is the duo fill (stroke-less: its two
+  visible edges are drawn by the primary fold path and its hypotenuse
+  IS the document's cut corner, kept perfectly aligned by sharing the
+  13,2 → 20,9 diagonal), plus a single text line for the "document" read.
   See icons/index.ts for the shared duo-fill mechanism.
 -->
 <svg
@@ -27,11 +29,10 @@
   class={className}
   aria-hidden="true"
 >
-  <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
-  <path class="icon-duo" stroke="none" d="M14 2v4a2 2 0 0 0 2 2h4Z" />
-  <path d="M14 2v4a2 2 0 0 0 2 2h4" />
-  <path d="M8 13h8" />
-  <path d="M8 17h5" />
+  <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z" />
+  <path class="icon-duo" stroke="none" d="M13 2v5a2 2 0 0 0 2 2h5Z" />
+  <path d="M13 2v5a2 2 0 0 0 2 2h5" />
+  <path d="M8.5 16h7" />
 </svg>
 
 <style>
