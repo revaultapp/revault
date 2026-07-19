@@ -479,7 +479,7 @@
     color: var(--chart-tick);
   }
 
-  @media (min-width: 760px) {
+  @media (min-width: 761px) {
     .workspace-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
