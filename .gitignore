@@ -1,4 +1,7 @@
 .claude
+.agents/
+.codex/
+CI_HARNESS_PLAYBOOK.md
 
 # Dependencies
 node_modules/
