@@ -147,7 +147,9 @@ describe("StorageDonut", () => {
     const source = readFileSync(resolve("src/lib/components/StorageDonut.svelte"), "utf8");
     const svg = target.querySelector("svg");
 
-    expect(source).toContain("container: storage-donut / inline-size");
+    expect(source).toContain(".storage-donut-shell { container: storage-donut / inline-size;");
+    expect(source).not.toMatch(/\.storage-donut\s*\{[^}]*container:/s);
+    expect(target.querySelector(".storage-donut-shell > .storage-donut")).not.toBeNull();
     expect(source).toContain("@container storage-donut (max-width: 420px)");
     expect(source).toContain("@container storage-donut (max-width: 320px)");
     expect(source).toContain("@media (prefers-reduced-motion: reduce)");

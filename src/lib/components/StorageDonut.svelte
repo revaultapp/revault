@@ -100,6 +100,7 @@
   }
 </script>
 
+<div class="storage-donut-shell">
 <div class="storage-donut" class:table-mode={view === "table"}>
   {#if view === "table"}
     <div class="table-scroll">
@@ -199,10 +200,12 @@
     </table>
   {/if}
 </div>
+</div>
 
 <style>
+  .storage-donut-shell { container: storage-donut / inline-size; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
+
   .storage-donut {
-    container: storage-donut / inline-size;
     display: grid;
     grid-template-columns: minmax(0, 1fr) clamp(136px, 30cqi, 160px) minmax(0, 1.2fr);
     align-items: center;
