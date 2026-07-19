@@ -19,9 +19,9 @@ Let installed desktop copies of ReVault discover a newer trusted release when th
 
 ### Installation
 
-- **Update now** begins a visible download with byte progress, then verifies and installs through Tauri's updater.
-- After installation, show **Restart to update**. Restart is explicit; the app does not terminate an active job.
-- Installation failures remain recoverable: show a concise error and retain **Try again** plus the release download fallback.
+- **Update now** downloads the platform package with visible byte progress and verifies its updater signature.
+- Once the verified package is ready, show **Restart to update**. That explicit, idle-guarded action installs the package and relaunches ReVault; on Windows the installer closes the app as part of installation.
+- Download or installation failures remain recoverable: show the correct stage-specific error and retain **Try again** plus the release download fallback. A relaunch failure retries only the relaunch.
 
 ### Settings
 
@@ -29,7 +29,7 @@ The existing About/version row becomes an update status row:
 
 - Current: `Version 0.1.0` with a secondary **Check for updates** action.
 - Update found: `Version 0.2.0 available` with **Update now**.
-- Checking/downloading/installing: show a compact status and progress; do not permit duplicate checks or downloads.
+- Checking/installing: show a compact status. While downloading, also show byte progress; do not permit duplicate checks or downloads.
 - Up to date: announce a quiet confirmation only after a manual check.
 
 ## Architecture

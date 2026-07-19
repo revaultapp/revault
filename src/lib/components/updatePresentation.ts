@@ -1,12 +1,19 @@
-import type { UpdateProgress, UpdateStatus } from "$lib/stores/updates";
+import type {
+  UpdateErrorOperation,
+  UpdateProgress,
+  UpdateStatus,
+} from "$lib/stores/updates";
 
 export function shouldShowUpdateDialog(
   status: UpdateStatus,
   canShowOffer: boolean,
   hasUpdate: boolean,
+  errorOperation: UpdateErrorOperation | null = null,
 ): boolean {
   if (canShowOffer) return true;
-  return hasUpdate && ["downloading", "readyToRestart", "error"].includes(status);
+  if (!hasUpdate) return false;
+  if (["downloading", "installing", "readyToRestart"].includes(status)) return true;
+  return status === "error" && ["download", "install"].includes(errorOperation ?? "");
 }
 
 export function progressPercent(progress: UpdateProgress): number | null {

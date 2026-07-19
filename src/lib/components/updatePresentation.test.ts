@@ -6,8 +6,11 @@ describe("update presentation", () => {
     expect(shouldShowUpdateDialog("available", true, false)).toBe(true);
     expect(shouldShowUpdateDialog("downloading", false, true)).toBe(true);
     expect(shouldShowUpdateDialog("readyToRestart", false, true)).toBe(true);
-    expect(shouldShowUpdateDialog("error", false, true)).toBe(true);
-    expect(shouldShowUpdateDialog("error", false, false)).toBe(false);
+    expect(shouldShowUpdateDialog("installing", false, true, null)).toBe(true);
+    expect(shouldShowUpdateDialog("error", false, true, "download")).toBe(true);
+    expect(shouldShowUpdateDialog("error", false, true, "install")).toBe(true);
+    expect(shouldShowUpdateDialog("error", false, true, "check")).toBe(false);
+    expect(shouldShowUpdateDialog("error", false, false, "install")).toBe(false);
     expect(shouldShowUpdateDialog("upToDate", false, false)).toBe(false);
   });
 

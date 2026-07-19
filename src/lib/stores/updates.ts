@@ -22,6 +22,7 @@ export type UpdateStatus =
   | "checking"
   | "available"
   | "downloading"
+  | "installing"
   | "readyToRestart"
   | "error"
   | "upToDate";
@@ -36,9 +37,18 @@ export interface UpdateProgress {
   total: number;
 }
 
+export type UpdateErrorOperation = "check" | "download" | "install" | "restart";
+
+export class UpdateOperationError extends Error {
+  constructor(public readonly operation: "install" | "restart", cause: unknown) {
+    super(cause instanceof Error ? cause.message : typeof cause === "string" ? cause : "");
+    this.name = "UpdateOperationError";
+  }
+}
+
 export interface UpdateAdapter {
   check(): Promise<AvailableUpdate | null>;
-  downloadAndInstall(
+  download(
     update: AvailableUpdate,
     onProgress: (progress: UpdateProgress) => void,
   ): Promise<void>;
@@ -146,6 +156,7 @@ export function createUpdateStore({ adapter: initialAdapter, isProcessing, now =
   const pendingUpdate = writable<AvailableUpdate | null>(null);
   const progress = writable<UpdateProgress>({ downloaded: 0, total: 0 });
   const error = writable<string | null>(null);
+  const errorOperation = writable<UpdateErrorOperation | null>(null);
   const canShowDialog = derived(
     [status, pendingUpdate, isProcessing],
     ([$status, $update, $isProcessing]) =>
@@ -155,10 +166,11 @@ export function createUpdateStore({ adapter: initialAdapter, isProcessing, now =
       !isDeferred($update.version, now),
   );
 
-  function errorMessage(operation: "check" | "download" | "restart", cause: unknown): string {
+  function errorMessage(operation: UpdateErrorOperation, cause: unknown): string {
     const prefix = {
       check: "Unable to check for updates.",
       download: "Unable to download the update.",
+      install: "Unable to install the update.",
       restart: "Unable to restart ReVault.",
     }[operation];
     const detail = cause instanceof Error ? cause.message : typeof cause === "string" ? cause : "";
@@ -168,9 +180,12 @@ export function createUpdateStore({ adapter: initialAdapter, isProcessing, now =
   function checkForUpdates(): Promise<void> {
     if (checkTask) return checkTask;
     if (get(isProcessing)) return Promise.resolve();
-    if (["downloading", "readyToRestart"].includes(get(status))) return Promise.resolve();
+    if (["downloading", "installing", "readyToRestart"].includes(get(status))) {
+      return Promise.resolve();
+    }
     status.set("checking");
     error.set(null);
+    errorOperation.set(null);
     let task: Promise<void>;
     try {
       task = adapter.check().then((update) => {
@@ -186,10 +201,12 @@ export function createUpdateStore({ adapter: initialAdapter, isProcessing, now =
         }
       }).catch((cause) => {
         status.set("error");
+        errorOperation.set("check");
         error.set(errorMessage("check", cause));
       });
     } catch (cause) {
       status.set("error");
+      errorOperation.set("check");
       error.set(errorMessage("check", cause));
       return Promise.resolve();
     }
@@ -198,26 +215,31 @@ export function createUpdateStore({ adapter: initialAdapter, isProcessing, now =
     return task;
   }
 
-  function downloadAndInstall(): Promise<void> {
+  function download(): Promise<void> {
     if (downloadTask) return downloadTask;
     if (get(isProcessing)) return Promise.resolve();
-    if (!["available", "error"].includes(get(status))) return Promise.resolve();
+    const currentStatus = get(status);
+    const canRetryDownload = currentStatus === "error" && get(errorOperation) === "download";
+    if (currentStatus !== "available" && !canRetryDownload) return Promise.resolve();
     const update = get(pendingUpdate);
     if (!update) return Promise.resolve();
 
     status.set("downloading");
     error.set(null);
+    errorOperation.set(null);
     progress.set({ downloaded: 0, total: 0 });
     let task: Promise<void>;
     try {
-      task = adapter.downloadAndInstall(update, progress.set).then(() => {
+      task = adapter.download(update, progress.set).then(() => {
         status.set("readyToRestart");
       }).catch((cause) => {
         status.set("error");
+        errorOperation.set("download");
         error.set(errorMessage("download", cause));
       });
     } catch (cause) {
       status.set("error");
+      errorOperation.set("download");
       error.set(errorMessage("download", cause));
       return Promise.resolve();
     }
@@ -229,19 +251,30 @@ export function createUpdateStore({ adapter: initialAdapter, isProcessing, now =
   function restart(): Promise<void> {
     if (restartTask) return restartTask;
     if (get(isProcessing)) return Promise.resolve();
-    if (restarted || get(status) !== "readyToRestart") return Promise.resolve();
+    const currentStatus = get(status);
+    const canRetryInstall = currentStatus === "error" && get(errorOperation) === "install";
+    if (restarted || (currentStatus !== "readyToRestart" && !canRetryInstall)) return Promise.resolve();
     restarted = true;
+    status.set("installing");
     error.set(null);
+    errorOperation.set(null);
     let task: Promise<void>;
     try {
       task = adapter.restart().catch((cause) => {
         restarted = false;
-        status.set("readyToRestart");
-        error.set(errorMessage("restart", cause));
+        const operation = cause instanceof UpdateOperationError
+          ? cause.operation
+          : typeof cause === "object" && cause !== null && "operation" in cause && cause.operation === "install"
+            ? "install"
+            : "restart";
+        status.set(operation === "install" ? "error" : "readyToRestart");
+        errorOperation.set(operation);
+        error.set(errorMessage(operation, cause));
       });
     } catch (cause) {
       restarted = false;
       status.set("readyToRestart");
+      errorOperation.set("restart");
       error.set(errorMessage("restart", cause));
       return Promise.resolve();
     }
@@ -262,10 +295,11 @@ export function createUpdateStore({ adapter: initialAdapter, isProcessing, now =
     pendingUpdate,
     progress,
     error,
+    errorOperation,
     canShowDialog,
     checkForUpdates,
     manualCheck: checkForUpdates,
-    downloadAndInstall,
+    download,
     restart,
     defer,
     setAdapter: (next: UpdateAdapter) => { adapter = next; },
@@ -274,7 +308,7 @@ export function createUpdateStore({ adapter: initialAdapter, isProcessing, now =
 
 const unavailableAdapter: UpdateAdapter = {
   check: async () => { throw new Error("Updater is not configured"); },
-  downloadAndInstall: async () => { throw new Error("Updater is not configured"); },
+  download: async () => { throw new Error("Updater is not configured"); },
   restart: async () => { throw new Error("Updater is not configured"); },
 };
 

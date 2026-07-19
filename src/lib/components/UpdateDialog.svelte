@@ -10,15 +10,27 @@
   const updateStatus = updates.status;
   const pendingUpdate = updates.pendingUpdate;
   const updateProgress = updates.progress;
-  const updateError = updates.error;
+  const updateErrorOperation = updates.errorOperation;
   const canShowDialog = updates.canShowDialog;
 
   let percent = $derived(progressPercent($updateProgress));
   let visible = $derived(
-    shouldShowUpdateDialog($updateStatus, $canShowDialog, $pendingUpdate !== null),
+    shouldShowUpdateDialog(
+      $updateStatus,
+      $canShowDialog,
+      $pendingUpdate !== null,
+      $updateErrorOperation,
+    ),
   );
-  let isDownloadError = $derived($updateStatus === "error" && $pendingUpdate !== null);
-  let isRestartError = $derived($updateStatus === "readyToRestart" && $updateError !== null);
+  let isDownloadError = $derived(
+    $updateStatus === "error" && $updateErrorOperation === "download",
+  );
+  let isInstallError = $derived(
+    $updateStatus === "error" && $updateErrorOperation === "install",
+  );
+  let isRestartError = $derived(
+    $updateStatus === "readyToRestart" && $updateErrorOperation === "restart",
+  );
 
   function postpone() {
     updates.defer();
@@ -50,9 +62,9 @@
     aria-describedby="update-dialog-description"
   >
     <div class="dialog-icon" aria-hidden="true">
-      {#if $updateStatus === "readyToRestart"}
+      {#if $updateStatus === "readyToRestart" || $updateStatus === "installing"}
         <RotateCcw size={20} strokeWidth={1.8} />
-      {:else if isDownloadError}
+      {:else if isDownloadError || isInstallError}
         <RefreshCw size={20} strokeWidth={1.8} />
       {:else}
         <ArrowDownToLine size={20} strokeWidth={1.8} />
@@ -63,6 +75,10 @@
       <h2 id="update-dialog-title">
         {#if isRestartError}
           {t("updates.restartErrorTitle")}
+        {:else if isInstallError}
+          {t("updates.installErrorTitle")}
+        {:else if $updateStatus === "installing"}
+          {t("updates.installingTitle")}
         {:else if $updateStatus === "readyToRestart"}
           {t("updates.readyTitle")}
         {:else if isDownloadError}
@@ -74,6 +90,10 @@
       <p id="update-dialog-description">
         {#if isRestartError}
           {t("updates.restartErrorDescription")}
+        {:else if isInstallError}
+          {t("updates.installErrorDescription")}
+        {:else if $updateStatus === "installing"}
+          {t("updates.installingDescription", { version: $pendingUpdate.version })}
         {:else if $updateStatus === "readyToRestart"}
           {t("updates.readyDescription", { version: $pendingUpdate.version })}
         {:else if isDownloadError}
@@ -120,7 +140,7 @@
           <Clock3 size={16} strokeWidth={2} />
           {t("updates.later")}
         </Button>
-        <Button variant="primary" size="sm" onclick={updates.downloadAndInstall}>
+        <Button variant="primary" size="sm" onclick={updates.download}>
           <ArrowDownToLine size={16} strokeWidth={2} />
           {t("updates.updateNow")}
         </Button>
@@ -128,7 +148,15 @@
         <Button variant="ghost" size="sm" onclick={openReleasePage}>
           {t("updates.downloadManually")}
         </Button>
-        <Button variant="primary" size="sm" onclick={updates.downloadAndInstall}>
+        <Button variant="primary" size="sm" onclick={updates.download}>
+          <RefreshCw size={16} strokeWidth={2} />
+          {t("updates.tryAgain")}
+        </Button>
+      {:else if isInstallError}
+        <Button variant="ghost" size="sm" onclick={openReleasePage}>
+          {t("updates.downloadManually")}
+        </Button>
+        <Button variant="primary" size="sm" onclick={updates.restart}>
           <RefreshCw size={16} strokeWidth={2} />
           {t("updates.tryAgain")}
         </Button>
@@ -209,7 +237,7 @@
     position: relative;
     height: 4px;
     overflow: hidden;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: var(--navy-bg);
   }
 

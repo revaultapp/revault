@@ -7,7 +7,7 @@
   import { defaultOutputDir, defaultImagePreset, defaultVideoPreset, defaultVideoPrivacy } from "$lib/stores/settings";
   import type { QualityPreset } from "$lib/stores/compress";
   import type { VideoPreset, PrivacyMode } from "$lib/stores/video";
-  import { browseOutputDir } from "$lib/utils";
+  import { browseOutputDir, formatBytes } from "$lib/utils";
   import { getLocale, setLocale, t } from "$lib/stores/locale.svelte";
   import { updates } from "$lib/stores/updates";
   import type { Locale } from "$lib/i18n";
@@ -28,6 +28,8 @@
   const REMEMBER = "remember";
   const updateStatus = updates.status;
   const pendingUpdate = updates.pendingUpdate;
+  const updateProgress = updates.progress;
+  const updateErrorOperation = updates.errorOperation;
 
   // Screen-reader confirmation of applied changes. Composed exclusively from
   // existing locale strings ("<row label>: <value label>") — no new i18n keys.
@@ -127,8 +129,22 @@
     const version = $pendingUpdate?.version ?? __APP_VERSION__;
     if ($updateStatus === "available") return t("settings.updateAvailable", { version });
     if ($updateStatus === "checking") return t("settings.updateChecking");
+    if ($updateStatus === "downloading" && $updateProgress.total > 0) {
+      return t("settings.updateDownloadingProgress", {
+        version,
+        downloaded: formatBytes($updateProgress.downloaded),
+        total: formatBytes($updateProgress.total),
+      });
+    }
     if ($updateStatus === "downloading") return t("settings.updateDownloading", { version });
+    if ($updateStatus === "installing") return t("settings.updateInstalling", { version });
     if ($updateStatus === "readyToRestart") return t("settings.updateReady", { version });
+    if ($updateStatus === "error" && $updateErrorOperation === "download") {
+      return t("settings.updateDownloadFailed");
+    }
+    if ($updateStatus === "error" && $updateErrorOperation === "install") {
+      return t("settings.updateInstallFailed");
+    }
     if (manualUpdateResult && $updateStatus === "upToDate") return t("settings.updateUpToDate");
     if (manualUpdateResult && $updateStatus === "error") return t("settings.updateCheckFailed");
     return `${t("settings.versionLabel")} ${__APP_VERSION__}`;
@@ -304,16 +320,26 @@
           </div>
           <div class="update-actions">
             {#if $updateStatus === "available"}
-              <Button variant="primary" size="sm" onclick={updates.downloadAndInstall}>
+              <Button variant="primary" size="sm" onclick={updates.download}>
                 <ArrowDownToLine size={16} strokeWidth={2} />
                 {t("updates.updateNow")}
+              </Button>
+            {:else if $updateStatus === "error" && $updateErrorOperation === "download"}
+              <Button variant="primary" size="sm" onclick={updates.download}>
+                <RefreshCw size={16} strokeWidth={2} />
+                {t("updates.tryAgain")}
+              </Button>
+            {:else if $updateStatus === "error" && $updateErrorOperation === "install"}
+              <Button variant="primary" size="sm" onclick={updates.restart}>
+                <RefreshCw size={16} strokeWidth={2} />
+                {t("updates.tryAgain")}
               </Button>
             {:else if $updateStatus === "readyToRestart"}
               <Button variant="primary" size="sm" onclick={updates.restart}>
                 <RotateCcw size={16} strokeWidth={2} />
                 {t("updates.restart")}
               </Button>
-            {:else if !["checking", "downloading"].includes($updateStatus)}
+            {:else if !["checking", "downloading", "installing"].includes($updateStatus)}
               <Button variant="ghost" size="sm" onclick={checkForUpdates}>
                 <RefreshCw size={16} strokeWidth={2} />
                 {t("settings.checkForUpdates")}

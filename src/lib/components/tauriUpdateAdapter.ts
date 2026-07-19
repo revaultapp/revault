@@ -1,7 +1,7 @@
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
 import type { DownloadEvent } from "@tauri-apps/plugin-updater";
-import type { AvailableUpdate, UpdateAdapter } from "$lib/stores/updates";
+import { UpdateOperationError, type AvailableUpdate, type UpdateAdapter } from "$lib/stores/updates";
 
 export interface NativeUpdate {
   version: string;
@@ -32,7 +32,7 @@ export function createTauriUpdateAdapter(
       };
     },
 
-    async downloadAndInstall(update: AvailableUpdate, onProgress) {
+    async download(update: AvailableUpdate, onProgress) {
       if (!candidate || candidate.version !== update.version) {
         throw new Error("The selected update is no longer available.");
       }
@@ -58,7 +58,11 @@ export function createTauriUpdateAdapter(
       }
       if (!candidate) throw new Error("The downloaded update is no longer available.");
       const selectedCandidate = candidate;
-      await selectedCandidate.install();
+      try {
+        await selectedCandidate.install();
+      } catch (cause) {
+        throw new UpdateOperationError("install", cause);
+      }
       installed = true;
       if (candidate === selectedCandidate) {
         candidate = null;
@@ -68,7 +72,11 @@ export function createTauriUpdateAdapter(
           // The update is already installed; retrying must still relaunch it.
         }
       }
-      await restartNative();
+      try {
+        await restartNative();
+      } catch (cause) {
+        throw new UpdateOperationError("restart", cause);
+      }
     },
   };
 }

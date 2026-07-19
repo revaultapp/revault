@@ -11,7 +11,7 @@ function setup(update: { version: string; notes?: string } | null = { version: "
   const isProcessing = writable(false);
   const adapter: UpdateAdapter = {
     check: async () => update,
-    downloadAndInstall: async (_update, onProgress) => onProgress({ downloaded: 100, total: 100 }),
+    download: async (_update, onProgress) => onProgress({ downloaded: 100, total: 100 }),
     restart: async () => {},
   };
 
@@ -61,7 +61,7 @@ describe("updates store", () => {
     const { store } = setup();
     store.setAdapter({
       check: () => pending.promise,
-      downloadAndInstall: async () => {},
+      download: async () => {},
       restart: async () => {},
     });
 
@@ -77,7 +77,7 @@ describe("updates store", () => {
     const { store } = setup();
     store.setAdapter({
       check: async () => { throw new Error("offline"); },
-      downloadAndInstall: async () => {},
+      download: async () => {},
       restart: async () => {},
     });
 
@@ -90,7 +90,7 @@ describe("updates store", () => {
   it("does not check for updates while processing is active", async () => {
     const { store, isProcessing } = setup();
     const check = vi.fn(async () => ({ version: "1.1.0" }));
-    store.setAdapter({ check, downloadAndInstall: async () => {}, restart: async () => {} });
+    store.setAdapter({ check, download: async () => {}, restart: async () => {} });
     isProcessing.set(true);
 
     await store.checkForUpdates();
@@ -108,7 +108,7 @@ describe("updates store", () => {
         checks += 1;
         return pending.promise;
       },
-      downloadAndInstall: async () => {},
+      download: async () => {},
       restart: async () => {},
     });
 
@@ -145,7 +145,7 @@ describe("updates store", () => {
     store.defer();
     store.setAdapter({
       check: async () => ({ version: "1.2.0" }),
-      downloadAndInstall: async () => {},
+      download: async () => {},
       restart: async () => {},
     });
     await store.checkForUpdates();
@@ -160,7 +160,7 @@ describe("updates store", () => {
     store.defer();
     store.setAdapter({
       check: async () => ({ version: "1.0.0-beta.2+build.9" }),
-      downloadAndInstall: async () => {},
+      download: async () => {},
       restart: async () => {},
     });
 
@@ -176,7 +176,7 @@ describe("updates store", () => {
     store.defer();
     store.setAdapter({
       check: async () => ({ version: "1.0.0" }),
-      downloadAndInstall: async () => {},
+      download: async () => {},
       restart: async () => {},
     });
 
@@ -198,20 +198,20 @@ describe("updates store", () => {
     expect(get(store.canShowDialog)).toBe(true);
   });
 
-  it("does not install an update while processing is active", async () => {
+  it("does not download an update while processing is active", async () => {
     const { store, isProcessing } = setup();
-    const downloadAndInstall = vi.fn(async () => {});
+    const download = vi.fn(async () => {});
     store.setAdapter({
       check: async () => ({ version: "1.1.0" }),
-      downloadAndInstall,
+      download,
       restart: async () => {},
     });
     await store.checkForUpdates();
 
     isProcessing.set(true);
-    await store.downloadAndInstall();
+    await store.download();
 
-    expect(downloadAndInstall).not.toHaveBeenCalled();
+    expect(download).not.toHaveBeenCalled();
     expect(get(store.status)).toBe("available");
   });
 
@@ -220,11 +220,11 @@ describe("updates store", () => {
     const restart = vi.fn(async () => {});
     store.setAdapter({
       check: async () => ({ version: "1.1.0" }),
-      downloadAndInstall: async () => {},
+      download: async () => {},
       restart,
     });
     await store.checkForUpdates();
-    await store.downloadAndInstall();
+    await store.download();
 
     isProcessing.set(true);
     await store.restart();
@@ -239,25 +239,25 @@ describe("updates store", () => {
     await store.manualCheck();
     expect(get(store.status)).toBe("available");
 
-    await store.downloadAndInstall();
+    await store.download();
     expect(get(store.status)).toBe("readyToRestart");
     expect(get(store.progress)).toEqual({ downloaded: 100, total: 100 });
   });
 
-  it("is downloading until installation completes", async () => {
+  it("is downloading until the verified package is ready", async () => {
     const pending = deferred<void>();
     const { store } = setup();
     await store.checkForUpdates();
     store.setAdapter({
       check: async () => ({ version: "1.1.0" }),
-      downloadAndInstall: async () => pending.promise,
+      download: async () => pending.promise,
       restart: async () => {},
     });
 
-    const download = store.downloadAndInstall();
+    const downloadTask = store.download();
     expect(get(store.status)).toBe("downloading");
     pending.resolve();
-    await download;
+    await downloadTask;
 
     expect(get(store.status)).toBe("readyToRestart");
   });
@@ -267,11 +267,11 @@ describe("updates store", () => {
     await store.checkForUpdates();
     store.setAdapter({
       check: async () => ({ version: "1.1.0" }),
-      downloadAndInstall: async () => { throw new Error("disk full"); },
+      download: async () => { throw new Error("disk full"); },
       restart: async () => {},
     });
 
-    await store.downloadAndInstall();
+    await store.download();
 
     expect(get(store.status)).toBe("error");
     expect(get(store.error)).toBe("Unable to download the update. disk full");
@@ -287,7 +287,7 @@ describe("updates store", () => {
         checks += 1;
         return { version: "1.1.0" };
       },
-      downloadAndInstall: async () => {
+      download: async () => {
         downloads += 1;
         return pending.promise;
       },
@@ -295,8 +295,8 @@ describe("updates store", () => {
     });
     await store.checkForUpdates();
 
-    const first = store.downloadAndInstall();
-    const second = store.downloadAndInstall();
+    const first = store.download();
+    const second = store.download();
     await store.checkForUpdates();
 
     expect(second).toBe(first);
@@ -314,10 +314,10 @@ describe("updates store", () => {
   it("records a restart error", async () => {
     const { store } = setup();
     await store.checkForUpdates();
-    await store.downloadAndInstall();
+    await store.download();
     store.setAdapter({
       check: async () => ({ version: "1.1.0" }),
-      downloadAndInstall: async () => {},
+      download: async () => {},
       restart: async () => { throw new Error("restart denied"); },
     });
 
@@ -327,24 +327,47 @@ describe("updates store", () => {
     expect(get(store.error)).toBe("Unable to restart ReVault. restart denied");
   });
 
+  it("keeps installation failures distinct and retryable", async () => {
+    const { store } = setup();
+    const download = vi.fn(async () => {});
+    await store.checkForUpdates();
+    await store.download();
+    store.setAdapter({
+      check: async () => ({ version: "1.1.0" }),
+      download,
+      restart: async () => {
+        throw Object.assign(new Error("installer denied"), { operation: "install" });
+      },
+    });
+
+    await store.restart();
+
+    expect(get(store.status)).toBe("error");
+    expect(get(store.errorOperation)).toBe("install");
+    expect(get(store.error)).toBe("Unable to install the update. installer denied");
+
+    await store.download();
+    expect(download).not.toHaveBeenCalled();
+  });
+
   it("retries restart after failure without downloading again", async () => {
     const { store } = setup();
     let downloads = 0;
     let restarts = 0;
     store.setAdapter({
       check: async () => ({ version: "1.1.0" }),
-      downloadAndInstall: async () => { downloads += 1; },
+      download: async () => { downloads += 1; },
       restart: async () => {
         restarts += 1;
         if (restarts === 1) throw new Error("restart denied");
       },
     });
     await store.checkForUpdates();
-    await store.downloadAndInstall();
+    await store.download();
 
     await store.restart();
     expect(get(store.status)).toBe("readyToRestart");
-    await store.downloadAndInstall();
+    await store.download();
     await store.restart();
 
     expect(downloads).toBe(1);
@@ -356,11 +379,11 @@ describe("updates store", () => {
     const pending = deferred<void>();
     const { store } = setup();
     await store.checkForUpdates();
-    await store.downloadAndInstall();
+    await store.download();
     let restarts = 0;
     store.setAdapter({
       check: async () => ({ version: "1.1.0" }),
-      downloadAndInstall: async () => {},
+      download: async () => {},
       restart: async () => {
         restarts += 1;
         return pending.promise;
@@ -380,7 +403,7 @@ describe("updates store", () => {
     const { store } = setup();
     store.setAdapter({
       check: async () => { throw { code: "OFFLINE" }; },
-      downloadAndInstall: async () => {},
+      download: async () => {},
       restart: async () => {},
     });
 
@@ -407,7 +430,7 @@ describe("updates store", () => {
     });
     store.setAdapter({
       check: async () => ({ version: "1.2.0" }),
-      downloadAndInstall: async () => {},
+      download: async () => {},
       restart: async () => {},
     });
 

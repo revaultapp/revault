@@ -19,7 +19,7 @@ describe("Tauri update adapter", () => {
     const progress = vi.fn();
 
     expect(available).toEqual({ version: "0.2.0", notes: "Faster exports" });
-    await adapter.downloadAndInstall(available!, progress);
+    await adapter.download(available!, progress);
     expect(progress).toHaveBeenLastCalledWith({ downloaded: 50, total: 100 });
   });
 
@@ -33,7 +33,7 @@ describe("Tauri update adapter", () => {
     };
     const adapter = createTauriUpdateAdapter(async () => nativeUpdate, restart);
     const available = await adapter.check();
-    await adapter.downloadAndInstall(available!, vi.fn());
+    await adapter.download(available!, vi.fn());
     await adapter.restart();
 
     expect(install).toHaveBeenCalledOnce();
@@ -50,13 +50,32 @@ describe("Tauri update adapter", () => {
     };
     const adapter = createTauriUpdateAdapter(async () => nativeUpdate, restart);
     const available = await adapter.check();
-    await adapter.downloadAndInstall(available!, vi.fn());
+    await adapter.download(available!, vi.fn());
 
-    await expect(adapter.restart()).rejects.toThrow("relaunch failed");
+    await expect(adapter.restart()).rejects.toMatchObject({
+      operation: "restart",
+      message: "relaunch failed",
+    });
     await adapter.restart();
 
     expect(install).toHaveBeenCalledOnce();
     expect(restart).toHaveBeenCalledTimes(2);
+  });
+
+  it("identifies installation failures separately from relaunch failures", async () => {
+    const nativeUpdate: NativeUpdate = {
+      version: "0.2.0",
+      download: async () => {},
+      install: async () => { throw new Error("installer denied"); },
+    };
+    const adapter = createTauriUpdateAdapter(async () => nativeUpdate, vi.fn());
+    const available = await adapter.check();
+    await adapter.download(available!, vi.fn());
+
+    await expect(adapter.restart()).rejects.toMatchObject({
+      operation: "install",
+      message: "installer denied",
+    });
   });
 
   it("releases a previous native update before replacing it", async () => {

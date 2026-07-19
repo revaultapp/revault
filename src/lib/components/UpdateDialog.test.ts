@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
 const source = readFileSync("src/lib/components/UpdateDialog.svelte", "utf8");
+const settingsSource = readFileSync("src/lib/components/SettingsPage.svelte", "utf8");
 
 describe("UpdateDialog accessibility contract", () => {
   it("is a labelled non-modal dialog with live progress", () => {
@@ -14,7 +15,7 @@ describe("UpdateDialog accessibility contract", () => {
   });
 
   it("exposes update, later, retry, and restart actions", () => {
-    expect(source).toContain("updates.downloadAndInstall");
+    expect(source).toContain("updates.download");
     expect(source).toContain("updates.defer");
     expect(source).toContain("updates.restart");
     expect(source).toContain('t("updates.tryAgain")');
@@ -24,5 +25,12 @@ describe("UpdateDialog accessibility contract", () => {
     expect(source).toContain("openUrl");
     expect(source).toContain("https://github.com/revaultapp/revault/releases/latest");
     expect(source).toContain('t("updates.downloadManually")');
+    expect(source).toContain("isInstallError");
+    expect(source).toContain('t("updates.installErrorTitle")');
+  });
+
+  it("keeps compact download progress visible in Settings", () => {
+    expect(settingsSource).toContain("updates.progress");
+    expect(settingsSource).toContain('t("settings.updateDownloadingProgress"');
   });
 });

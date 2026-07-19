@@ -17,7 +17,7 @@
 - Create: `src/lib/stores/updates.test.ts`
 
 - [ ] Write failing tests for 24-hour deferral, a newer-version reset, idle-only prompting, and state transitions.
-- [ ] Implement a focused store with explicit update status, pending version, progress, manual check, download/install and restart actions.
+- [ ] Implement a focused store with explicit update status, pending version, progress, manual check, download and install/restart actions.
 - [ ] Run `pnpm vitest run src/lib/stores/updates.test.ts` red then green.
 
 ### Task 2: Add updater dependencies and signed release configuration
