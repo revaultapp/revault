@@ -13,7 +13,7 @@ The approved direction is **A: Control room sereno** with **direct custom Vault 
 
 - ReVault is a desktop Svelte 5 application using component-scoped CSS and tokens from `src/app.css`; no Tailwind.
 - The page must retain its existing persisted settings, keyboard interaction, live region announcements, output-directory picker and reset-focus handling.
-- The sidebar's custom icon family is the source pattern. Its SVGs use a complete primary outline plus a non-essential `--icon-duo` fill layer revealed by interaction.
+- The sidebar's custom icon family is the source pattern. Settings uses a separate, Settings-only family so the sidebar barrel remains scoped to navigation; both families use a complete primary outline plus a non-essential `--icon-duo` fill layer revealed by interaction.
 - Plus Jakarta Sans and the existing dark/light theme tokens remain unchanged.
 - The Settings page is localized in EN, ES, FR, DE and PT-BR. New visible copy requires parity across every locale and must remain concise.
 
@@ -77,7 +77,7 @@ The redesign is presentational around the existing state contract.
 
 - `SettingsPage.svelte` continues to own settings orchestration, locale-derived segment arrays, output-directory operations and screen-reader announcements.
 - A small local presentation component may be introduced only if it removes repeated markup for a labeled settings tile without absorbing store behavior.
-- New custom icons are isolated components exported from `src/lib/components/icons/index.ts`.
+- New custom icons are isolated components exported from `src/lib/components/settings-icons/index.ts`; the existing sidebar barrel remains sidebar-only.
 - `SegmentedControl` retains its existing behavioral contract. Any styling additions must be opt-in or scoped so other tools do not regress.
 - Existing stores (`theme`, locale, output directory and default presets) remain unchanged; no storage migration is needed.
 

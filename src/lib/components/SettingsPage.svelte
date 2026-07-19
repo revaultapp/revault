@@ -150,6 +150,7 @@
             <span class="setting-icon"><LanguageIcon /></span>
             <div class="label">
               <span class="name">{t("settings.language")}</span>
+              <span class="desc">{t("settings.languageDesc")}</span>
             </div>
           </div>
           <div class="setting-control">
@@ -207,7 +208,10 @@
         <article class="default-tile">
           <div class="setting-heading">
             <span class="setting-icon"><ImageDefaultsIcon /></span>
-            <span class="name">{t("settings.defaultImagePresetLabel")}</span>
+            <div class="label">
+              <span class="name">{t("settings.defaultImagePresetLabel")}</span>
+              <span class="desc">{t("settings.defaultImagePresetDesc")}</span>
+            </div>
           </div>
           <div class="setting-control">
             <SegmentedControl
@@ -222,7 +226,10 @@
         <article class="default-tile">
           <div class="setting-heading">
             <span class="setting-icon"><VideoDefaultsIcon /></span>
-            <span class="name">{t("settings.defaultVideoPresetLabel")}</span>
+            <div class="label">
+              <span class="name">{t("settings.defaultVideoPresetLabel")}</span>
+              <span class="desc">{t("settings.defaultVideoPresetDesc")}</span>
+            </div>
           </div>
           <div class="setting-control">
             <SegmentedControl
@@ -237,7 +244,10 @@
         <article class="default-tile">
           <div class="setting-heading">
             <span class="setting-icon"><PrivacyIcon /></span>
-            <span class="name">{t("settings.defaultVideoPrivacyLabel")}</span>
+            <div class="label">
+              <span class="name">{t("settings.defaultVideoPrivacyLabel")}</span>
+              <span class="desc">{t("settings.defaultVideoPrivacyDesc")}</span>
+            </div>
           </div>
           <div class="setting-control">
             <SegmentedControl
@@ -280,6 +290,7 @@
     width: 100%;
     max-width: 920px;
     margin: 0 auto;
+    container: settings / inline-size;
   }
 
   .sections {
@@ -325,12 +336,13 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     background: var(--bg-card);
-    box-shadow: var(--shadow-xs);
   }
 
   .setting-card,
   .default-tile {
-    transition: transform var(--duration-normal) var(--ease-out);
+    transition:
+      border-color var(--duration-fast) var(--ease-out),
+      color var(--duration-fast) var(--ease-out);
   }
 
   .setting-card:hover,
@@ -338,8 +350,7 @@
   .default-tile:hover,
   .default-tile:focus-within {
     --icon-duo: color-mix(in oklch, var(--accent) 18%, transparent);
-    box-shadow: var(--shadow-md);
-    transform: translateY(-2px);
+    border-color: color-mix(in oklch, var(--accent) 22%, var(--border));
   }
 
   .setting-card:focus-within,
@@ -479,7 +490,7 @@
     color: var(--chart-tick);
   }
 
-  @media (min-width: 761px) {
+  @container settings (min-width: 761px) {
     .workspace-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -495,12 +506,10 @@
       flex: 0 0 auto;
     }
 
-    .defaults-surface {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
+  }
 
-    .default-tile {
-      padding: 16px;
-    }
+  @container settings (min-width: 860px) {
+    .defaults-surface { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .default-tile { padding: 16px; }
   }
 </style>

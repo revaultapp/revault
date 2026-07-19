@@ -13,7 +13,7 @@ Core positioning: open source, local-only processing, cross-platform desktop, no
 - Backend: Rust. Business logic belongs in Rust, not TypeScript.
 - Package manager: `pnpm` only.
 - Font: Plus Jakarta Sans.
-- Icons: `lucide-svelte` — except the sidebar, which uses the custom duotone set in `src/lib/components/icons/` (primary stroke layer + `--icon-duo` fill layer that `Sidebar.svelte` tints on hover/active/badge; design rules in `icons/index.ts`).
+- Icons: `lucide-svelte` by default. Two deliberate branded exceptions use custom duotone SVGs: the sidebar set in `src/lib/components/icons/`, and the Settings-only set in `src/lib/components/settings-icons/`. Both use a complete primary stroke plus a non-essential `--icon-duo` fill layer; do not extend either exception to unrelated pages.
 
 ## Commands
 
@@ -118,8 +118,8 @@ Source of truth is `src/app.css`.
 Current test suite (verified 2026-07-19, cross-screen coherence package: trim privacy, resize quality preset, document lang, output-dir contract tests):
 
 - Rust: 247 unit tests via `cd src-tauri && cargo test` (+1 `#[ignore]` real-render test, run in CI on ubuntu and locally with `REVAULT_PDFIUM_PATH` set).
-- Frontend: 228 Vitest tests via `pnpm test`.
-- Total: 475 passing tests.
+- Frontend: 230 Vitest tests via `pnpm test`.
+- Total: 477 passing tests.
 
 Always verify counts after changing tests by running the commands above; this section should be updated when tests are added or removed.
 

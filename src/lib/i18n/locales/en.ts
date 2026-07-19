@@ -1,6 +1,7 @@
 export const en = {
   settings: {
     language: "Language",
+    languageDesc: "Language used throughout the app",
     languageEnglish: "English",
     languageSpanish: "Español",
     languageFrench: "Français",
@@ -20,8 +21,11 @@ export const en = {
     defaultsDesc: "Starting values for new sessions — change them anytime on each tool's page",
     defaultRememberLast: "Remember last used",
     defaultImagePresetLabel: "Image quality",
+    defaultImagePresetDesc: "Starting quality for image compression",
     defaultVideoPresetLabel: "Video quality",
+    defaultVideoPresetDesc: "Starting quality for video compression",
     defaultVideoPrivacyLabel: "Video privacy",
+    defaultVideoPrivacyDesc: "Metadata removal for new video sessions",
     aboutTitle: "About",
     aboutDesc: "App info and links",
     privacyBadgeTitle: "Total privacy",

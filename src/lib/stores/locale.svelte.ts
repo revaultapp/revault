@@ -28,11 +28,12 @@ function applyDocumentLang(locale: Locale): void {
   }
 }
 
-let currentLocale = $state<Locale>(detectLocale());
+const initialLocale = detectLocale();
+let currentLocale = $state<Locale>(initialLocale);
 
 // app.html's static lang="en" only covers the first paint of an en session;
 // detectLocale() can land on es/fr/de/pt before the user ever opens Settings.
-applyDocumentLang(currentLocale);
+applyDocumentLang(initialLocale);
 
 export function getLocale(): Locale {
   return currentLocale;

@@ -72,6 +72,24 @@ describe("locale store", () => {
     }
   });
 
+  it("every locale explains the Settings choices that need context", async () => {
+    const { dictionaries } = await import("$lib/i18n");
+    const contextualKeys = [
+      "languageDesc",
+      "defaultImagePresetDesc",
+      "defaultVideoPresetDesc",
+      "defaultVideoPrivacyDesc",
+    ];
+
+    for (const [locale, dictionary] of Object.entries(dictionaries)) {
+      const settings = dictionary.settings as Record<string, string>;
+      for (const key of contextualKeys) {
+        expect(settings[key], `${locale}.settings.${key}`).toBeTypeOf("string");
+        expect(settings[key].trim(), `${locale}.settings.${key}`).not.toBe("");
+      }
+    }
+  });
+
   it("setLocale keeps document.documentElement.lang in sync, mapping pt to pt-BR", async () => {
     document.documentElement.lang = "";
     const mod = await import("./locale.svelte");

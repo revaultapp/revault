@@ -3,6 +3,7 @@ import type { Dictionary } from "./en";
 export const fr: Dictionary = {
   settings: {
     language: "Langue",
+    languageDesc: "Langue utilisée dans toute l'application",
     languageEnglish: "English",
     languageSpanish: "Español",
     languageFrench: "Français",
@@ -22,8 +23,11 @@ export const fr: Dictionary = {
     defaultsDesc: "Valeurs de départ pour les nouvelles sessions — modifiables à tout moment sur chaque outil",
     defaultRememberLast: "Se souvenir du dernier choix",
     defaultImagePresetLabel: "Qualité d'image",
+    defaultImagePresetDesc: "Qualité initiale pour la compression d'images",
     defaultVideoPresetLabel: "Qualité vidéo",
+    defaultVideoPresetDesc: "Qualité initiale pour la compression vidéo",
     defaultVideoPrivacyLabel: "Confidentialité vidéo",
+    defaultVideoPrivacyDesc: "Suppression des métadonnées pour les nouvelles sessions vidéo",
     aboutTitle: "À propos",
     aboutDesc: "Informations et liens de l'application",
     privacyBadgeTitle: "Confidentialité totale",
