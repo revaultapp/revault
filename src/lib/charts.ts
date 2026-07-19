@@ -8,6 +8,67 @@ export interface Point {
   y: number;
 }
 
+export interface RawChartSegment {
+  label: string;
+  bytes: number;
+  count: number;
+}
+
+export interface DisplayChartSegment extends RawChartSegment {
+  key: string;
+  sourceLabels: string[];
+}
+
+export function groupDonutDisplaySegments(
+  segments: RawChartSegment[],
+  otherLabel: string,
+  maxVisible = 5,
+): DisplayChartSegment[] {
+  const grouped = new Map<string, DisplayChartSegment>();
+
+  for (const segment of segments) {
+    const label = segment.label.trim();
+    if (!label || !Number.isFinite(segment.bytes) || segment.bytes < 0) continue;
+
+    const key = label.toLowerCase();
+    const count = Number.isFinite(segment.count) && segment.count >= 0 ? segment.count : 0;
+    const existing = grouped.get(key);
+
+    if (existing) {
+      existing.bytes += segment.bytes;
+      existing.count += count;
+      existing.sourceLabels.push(segment.label);
+    } else {
+      grouped.set(key, {
+        key,
+        label,
+        bytes: segment.bytes,
+        count,
+        sourceLabels: [segment.label],
+      });
+    }
+  }
+
+  const sorted = [...grouped.values()].sort(
+    (a, b) => b.bytes - a.bytes || a.label.localeCompare(b.label),
+  );
+  const limit = Number.isInteger(maxVisible) && maxVisible > 0 ? maxVisible : 5;
+  if (sorted.length <= limit) return sorted;
+
+  const visible = sorted.slice(0, limit - 1);
+  const other = sorted.slice(limit - 1).reduce<DisplayChartSegment>(
+    (combined, segment) => ({
+      ...combined,
+      bytes: combined.bytes + segment.bytes,
+      count: combined.count + segment.count,
+      sourceLabels: [...combined.sourceLabels, ...segment.sourceLabels],
+    }),
+    { key: "__other__", label: otherLabel, bytes: 0, count: 0, sourceLabels: [] },
+  );
+
+  return [...visible, other];
+}
+
 export function normalizeChartIndex(current: number, length: number): number | null {
   if (!Number.isInteger(length) || length <= 0 || !Number.isInteger(current)) return null;
   return Math.min(Math.max(current, 0), length - 1);
