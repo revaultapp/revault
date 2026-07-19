@@ -33,6 +33,18 @@ describe("locale store", () => {
     expect(mod.t("common.savedTotal", { amount: "2 Mo" })).toBe("2 Mo économisés");
   });
 
+  it("lets Intl-formatted dashboard percentages own the percent sign", async () => {
+    const mod = await import("./locale.svelte");
+    const percent = new Intl.NumberFormat("de", {
+      style: "percent",
+      maximumFractionDigits: 0,
+    }).format(0.8);
+    mod.setLocale("de");
+
+    expect(mod.t("dashboard.chartCategoryAria", { img: percent, vid: percent, pdf: percent }))
+      .toBe(`Ersparnis nach Dateityp: ${percent} Bilder, ${percent} Video, ${percent} PDF`);
+  });
+
   it("t() falls back to the English dictionary when the key is missing in the current locale", async () => {
     const mod = await import("./locale.svelte");
     const { dictionaries } = await import("$lib/i18n");

@@ -93,6 +93,15 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+export function formatBytesLocalized(bytes: number, locale: string): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const unitIndex = Math.max(0, Math.min(Math.floor(Math.log(bytes) / Math.log(1000)), units.length - 1));
+  const scaled = bytes / 1000 ** unitIndex;
+  const value = unitIndex > 0 && bytes === 1024 ** unitIndex ? 1 : scaled;
+  return `${new Intl.NumberFormat(locale, { maximumFractionDigits: unitIndex === 0 ? 0 : 2 }).format(value)} ${units[unitIndex]}`;
+}
+
 export async function runWithConcurrency<T>(
   items: T[],
   task: (item: T) => Promise<void>,

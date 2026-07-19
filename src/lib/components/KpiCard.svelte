@@ -13,14 +13,24 @@
         takes zero store imports (no i18n access of its own). Only rendered
         when `delta` is present (not undefined). */
     deltaSuffix?: string;
+    formatPercent?: (value: number) => string;
   }
 
-  let { label, icon, value, delta, sub, ariaNote, deltaSuffix }: Props = $props();
+  let {
+    label,
+    icon,
+    value,
+    delta,
+    sub,
+    ariaNote,
+    deltaSuffix,
+    formatPercent = (percent) => `${percent.toFixed(1)}%`,
+  }: Props = $props();
 </script>
 
 <div class="kpi-card" aria-label={ariaNote}>
   <div class="kpi-top">
-    <span class="kpi-label">{label}</span>
+    <span class="kpi-label" title={label}>{label}</span>
     <span class="kpi-icon" aria-hidden="true">
       {#if icon}
         {@const Icon = icon}
@@ -47,7 +57,7 @@
           <!-- Signed so the direction survives without the (aria-hidden)
                arrow icon or color — screen readers otherwise hear a bare
                percentage with no up/down information (WCAG 1.4.1). -->
-          {delta.up ? "+" : "−"}{delta.pct.toFixed(1)}%
+          {delta.up ? "+" : "−"}{formatPercent(delta.pct)}
         </span>
       {/if}
       {#if deltaSuffix}<span class="delta-suffix">{deltaSuffix}</span>{/if}
@@ -78,13 +88,12 @@
   }
 
   .kpi-label {
+    min-width: 0;
     font-size: 12px;
     font-weight: 500;
     color: var(--chart-tick);
     letter-spacing: -0.01em;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
   }
 
   .kpi-icon {

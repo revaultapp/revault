@@ -19,6 +19,7 @@
     tableCaption: string;
     delta?: { pct: number; up: boolean } | null;
     deltaSuffix?: string;
+    formatPercent?: (value: number) => string;
     emptyTitle?: string;
     emptyHint?: string;
     emptyCta?: string;
@@ -35,6 +36,7 @@
     tableCaption,
     delta,
     deltaSuffix,
+    formatPercent = (percent) => `${percent.toFixed(1)}%`,
     emptyTitle,
     emptyHint,
     emptyCta,
@@ -122,7 +124,8 @@
       {/if}
     </div>
   {:else if view === "table"}
-    <div class="table-scroll">
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex (scrollable table region must be keyboard-focusable) -->
+    <div class="table-scroll" role="region" tabindex="0" aria-label={tableCaption}>
       <table class="data-table">
         <caption class="visually-hidden">{tableCaption}</caption>
         <thead>
@@ -134,7 +137,7 @@
         <tbody>
           {#each series as s (s.key)}
             <tr>
-              <td>{monthLabel(s.date)} {s.date.getFullYear()}</td>
+              <th scope="row">{monthLabel(s.date)} {s.date.getFullYear()}</th>
               <td class="col-num">{formatValue(s.total)}</td>
             </tr>
           {/each}
@@ -149,7 +152,7 @@
       </div>
       {#if visibleIndex === effectiveHeroIndex && delta}
         <span class="month-comparison" class:up={delta.up} class:down={!delta.up}>
-          {delta.up ? "+" : "−"}{delta.pct.toFixed(1)}%
+          {delta.up ? "+" : "−"}{formatPercent(delta.pct)}
           {#if deltaSuffix}<span>{deltaSuffix}</span>{/if}
         </span>
       {/if}
@@ -222,7 +225,7 @@
       <tbody>
         {#each series as s (s.key)}
           <tr>
-            <td>{monthLabel(s.date)} {s.date.getFullYear()}</td>
+            <th scope="row">{monthLabel(s.date)} {s.date.getFullYear()}</th>
             <td>{formatValue(s.total)}</td>
           </tr>
         {/each}
@@ -327,6 +330,14 @@
     padding: 6px 8px;
     border-bottom: 1px solid var(--border);
     font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .data-table tbody th {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 400;
     color: var(--text-secondary);
   }
 

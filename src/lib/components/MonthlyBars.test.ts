@@ -17,7 +17,7 @@ const series = months.map((month, index) => ({
 const instances: ReturnType<typeof mount>[] = [];
 const legacyInstances: { $destroy(): void }[] = [];
 
-function renderMonthlyBars() {
+function renderMonthlyBars(overrides: Record<string, unknown> = {}) {
   const target = document.createElement("div");
   document.body.append(target);
   instances.push(
@@ -32,6 +32,7 @@ function renderMonthlyBars() {
         tableCaption: "Monthly savings data",
         delta: { pct: 25, up: true },
         deltaSuffix: "vs previous month",
+        ...overrides,
       },
     }),
   );
@@ -71,6 +72,20 @@ describe("MonthlyBars", () => {
     expect(target.querySelector(".chart-tooltip")).toBeNull();
   });
 
+  it("uses the supplied locale-aware formatter for its comparison", () => {
+    const formatPercent = (value: number) => new Intl.NumberFormat("de", {
+      style: "percent",
+      maximumFractionDigits: 1,
+    }).format(value / 100);
+    const target = renderMonthlyBars({
+      formatPercent,
+    });
+
+    expect(target.querySelector(".month-comparison")?.textContent?.replace(/\s+vs/, " vs").trim()).toBe(
+      `+${formatPercent(25)} vs previous month`,
+    );
+  });
+
   it("moves selection and focus with ArrowLeft, Home, End, and wrapping ArrowRight", async () => {
     const target = renderMonthlyBars();
     const controls = [...target.querySelectorAll<HTMLButtonElement>(".month-control")];
@@ -94,6 +109,20 @@ describe("MonthlyBars", () => {
     controls[11].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
     await tick();
     expect(document.activeElement).toBe(controls[0]);
+  });
+
+  it("moves down to the next month and up to the previous month with wrapping", async () => {
+    const target = renderMonthlyBars();
+    const controls = [...target.querySelectorAll<HTMLButtonElement>(".month-control")];
+
+    controls[11].focus();
+    controls[11].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    await tick();
+    expect(document.activeElement).toBe(controls[0]);
+
+    controls[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+    await tick();
+    expect(document.activeElement).toBe(controls[11]);
   });
 
   it("previews on hover without changing selection and restores it on mouseleave", async () => {
@@ -221,6 +250,16 @@ describe("MonthlyBars", () => {
     expect(captions).toHaveLength(1);
     expect(captions[0].classList.contains("visually-hidden")).toBe(true);
     expect(captions[0].textContent).toBe("Monthly savings data");
+    const region = target.querySelector(".table-scroll");
+    expect(region?.getAttribute("role")).toBe("region");
+    expect(region?.getAttribute("tabindex")).toBe("0");
+    expect(region?.getAttribute("aria-label")).toBe("Monthly savings data");
+    expect(target.querySelectorAll("tbody tr > th[scope='row']")).toHaveLength(12);
+  });
+
+  it("uses row headers in its screen-reader table", () => {
+    const target = renderMonthlyBars();
+    expect(target.querySelectorAll(".visually-hidden tbody tr > th[scope='row']")).toHaveLength(12);
   });
 
   it("uses component container queries without JS width measurement or horizontal scrolling", () => {
@@ -239,13 +278,13 @@ describe("MonthlyBars", () => {
     expect(source).toMatch(/@container monthly-bars \(max-width: 399px\)[\s\S]*?gap:\s*4px;/);
   });
 
-  it("receives the monthly delta and scopes the 36px toggle target to its Dashboard card", () => {
+  it("receives the monthly delta and shares the accessible 36px Dashboard toggle target", () => {
     const source = readFileSync(resolve("src/lib/components/DashboardPage.svelte"), "utf8");
 
     expect(source).toMatch(/<MonthlyBars[\s\S]*?delta=\{\$momDeltas\.saved\}[\s\S]*?deltaSuffix=\{t\("dashboard\.vsPrevMonth"\)\}/);
-    expect(source).toContain('class="card-corner monthly-card-toggle"');
-    expect(source).toMatch(/\.monthly-card-toggle\s*\{[^}]*width:\s*36px;[^}]*height:\s*36px;/s);
-    expect(source).toMatch(/\.monthly-card-toggle:focus-visible\s*\{/);
+    expect(source).toContain('class="card-corner"');
+    expect(source).toMatch(/\.card-corner\s*\{[^}]*width:\s*36px;[^}]*height:\s*36px;/s);
+    expect(source).toMatch(/\.card-corner:focus-visible\s*\{/);
   });
 
   it("keeps row-a unchanged and constrains table scrolling to the monthly card", () => {
@@ -253,7 +292,7 @@ describe("MonthlyBars", () => {
     const rowA = source.match(/\.row-a\s*\{([^}]*)\}/)?.[1] ?? "";
     const monthlyCard = source.match(/\.monthly-card\s*\{([^}]*)\}/)?.[1] ?? "";
 
-    expect(source).toContain('<section class="chart-card monthly-card">');
+    expect(source).toContain('<section class="chart-card monthly-card" aria-labelledby="monthly-savings-title">');
     expect(rowA).toContain("min-height: 230px;");
     expect(rowA.replace("min-height", "")).not.toMatch(/\bheight:/);
     expect(monthlyCard).toContain("contain: size;");
