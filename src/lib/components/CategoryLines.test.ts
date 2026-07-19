@@ -65,11 +65,9 @@ describe("CategoryLines", () => {
     expect(controls.filter((control) => control.tabIndex === 0)).toEqual([controls[11]]);
     expect(controls.filter((control) => control.getAttribute("aria-checked") === "true")).toEqual([controls[11]]);
     expect(target.querySelector(".active-month")?.textContent?.trim()).toBe("Dec 2026");
-    expect([...target.querySelectorAll(".active-value")].map((value) => value.textContent?.trim())).toEqual([
-      "Images 1200 B",
-      "Video 240 B",
-      "PDF 12 B",
-    ]);
+    expect(
+      [...target.querySelectorAll(".active-value")].map((value) => value.textContent?.replace(/\s+/g, " ").trim()),
+    ).toEqual(["Images 80% 1200 B", "Video 15% 240 B", "PDF 5% 12 B"]);
     expect(target.querySelector(".chart-tooltip")).toBeNull();
   });
 
