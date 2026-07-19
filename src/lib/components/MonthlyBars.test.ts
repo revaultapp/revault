@@ -239,13 +239,13 @@ describe("MonthlyBars", () => {
     expect(source).toMatch(/@container monthly-bars \(max-width: 399px\)[\s\S]*?gap:\s*4px;/);
   });
 
-  it("receives the monthly delta and scopes the 36px toggle target to its Dashboard card", () => {
+  it("receives the monthly delta and shares the accessible 36px Dashboard toggle target", () => {
     const source = readFileSync(resolve("src/lib/components/DashboardPage.svelte"), "utf8");
 
     expect(source).toMatch(/<MonthlyBars[\s\S]*?delta=\{\$momDeltas\.saved\}[\s\S]*?deltaSuffix=\{t\("dashboard\.vsPrevMonth"\)\}/);
-    expect(source).toContain('class="card-corner monthly-card-toggle"');
-    expect(source).toMatch(/\.monthly-card-toggle\s*\{[^}]*width:\s*36px;[^}]*height:\s*36px;/s);
-    expect(source).toMatch(/\.monthly-card-toggle:focus-visible\s*\{/);
+    expect(source).toContain('class="card-corner"');
+    expect(source).toMatch(/\.card-corner\s*\{[^}]*width:\s*36px;[^}]*height:\s*36px;/s);
+    expect(source).toMatch(/\.card-corner:focus-visible\s*\{/);
   });
 
   it("keeps row-a unchanged and constrains table scrolling to the monthly card", () => {
@@ -253,7 +253,7 @@ describe("MonthlyBars", () => {
     const rowA = source.match(/\.row-a\s*\{([^}]*)\}/)?.[1] ?? "";
     const monthlyCard = source.match(/\.monthly-card\s*\{([^}]*)\}/)?.[1] ?? "";
 
-    expect(source).toContain('<section class="chart-card monthly-card">');
+    expect(source).toContain('<section class="chart-card monthly-card" aria-labelledby="monthly-savings-title">');
     expect(rowA).toContain("min-height: 230px;");
     expect(rowA.replace("min-height", "")).not.toMatch(/\bheight:/);
     expect(monthlyCard).toContain("contain: size;");

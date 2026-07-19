@@ -43,6 +43,19 @@ describe("formatBytes", () => {
     expect(formatBytes(-500)).toBe("-500 B");
     expect(formatBytes(-2048)).toBe("-2.0 KB");
   });
+
+  it("uses locale decimal separators without changing byte thresholds or units", () => {
+    expect(formatBytes(1536, "en")).toBe("1.5 KB");
+    expect(formatBytes(1536, "es")).toBe("1,5 KB");
+    expect(formatBytes(1536, "de")).toBe("1,5 KB");
+  });
+
+  it("uses locale grouping for byte counts and preserves negative signs", () => {
+    expect(formatBytes(1000, "en")).toBe("1,000 B");
+    expect(formatBytes(1000, "es")).toBe("1000 B");
+    expect(formatBytes(1000, "de")).toBe("1.000 B");
+    expect(formatBytes(-1536, "de")).toBe("-1,5 KB");
+  });
 });
 
 describe("runWithConcurrency", () => {

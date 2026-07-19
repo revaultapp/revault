@@ -50,6 +50,14 @@
     return new Intl.DateTimeFormat(getLocale(), { month: "short" }).format(d);
   }
 
+  function formatDashboardBytes(bytes: number): string {
+    return formatBytes(bytes, getLocale());
+  }
+
+  function formatDashboardCount(count: number): string {
+    return new Intl.NumberFormat(getLocale()).format(count);
+  }
+
   const monthlyGrandTotal = $derived($monthlySeries.reduce((acc, m) => acc + m.total, 0));
 
   // Mirrors MonthlyBars'/CategoryLines' internal `allZero` (every month's
@@ -88,13 +96,6 @@
     })
   );
 
-  // Donut source: prefer this session's live scan result; fall back to the
-  // last persisted scan (survives app restart) so returning users still see
-  // a filled-in panel instead of the idle empty state.
-  const hasDonutData = $derived(
-    $storage.scanState === "done" || ($storage.scanState === "idle" && $history.lastScan !== null)
-  );
-
   const donutData = $derived.by(() => {
     if ($storage.scanState === "done" && $storage.scanResult) {
       return $breakdown.map((g) => ({ label: g.extension, bytes: g.totalSize, count: g.count }));
@@ -107,6 +108,7 @@
   });
 
   const donutTotalBytes = $derived(donutData.reduce((acc, s) => acc + s.bytes, 0));
+  const hasDonutData = $derived(donutData.length > 0 && donutTotalBytes > 0);
 
   // The donut card is scoped to the LAST SCAN only — its facts come from the
   // scan itself. App-lifetime totals (saved bytes, files optimized, protected)
@@ -118,8 +120,8 @@
     const top = donutData.reduce((a, b) => (b.bytes > a.bytes ? b : a));
     const topPct = donutTotalBytes > 0 ? Math.round((top.bytes / donutTotalBytes) * 100) : 0;
     return [
-      { value: String(files), label: t("dashboard.donutFactScanFiles") },
-      { value: String(donutData.length), label: t("dashboard.donutFactScanTypes") },
+      { value: formatDashboardCount(files), label: t("dashboard.donutFactScanFiles") },
+      { value: formatDashboardCount(donutData.length), label: t("dashboard.donutFactScanTypes") },
       { value: top.label, label: t("dashboard.donutFactScanTop", { pct: topPct }) },
     ];
   });
@@ -142,6 +144,7 @@
   }
 </script>
 
+<div class="dashboard-shell">
 <div class="dashboard">
   <header class="dash-head">
     <h2>{t("dashboard.panelTitle")}</h2>
@@ -168,14 +171,14 @@
       <KpiCard
         label={t("dashboard.kpiSpaceRecovered")}
         icon={HardDrive}
-        value={formatBytes(spaceSavedTween.current)}
+        value={formatDashboardBytes(spaceSavedTween.current)}
         delta={$momDeltas.saved}
         deltaSuffix={t("dashboard.vsPrevMonth")}
       />
       <KpiCard
         label={t("dashboard.kpiAnalyzedSize")}
         icon={Layers}
-        value={$history.lastScan ? formatBytes(analyzedTween.current) : "—"}
+        value={$history.lastScan ? formatDashboardBytes(analyzedTween.current) : "—"}
       />
       <KpiCard
         label={t("dashboard.avgCompression")}
@@ -187,20 +190,20 @@
       <KpiCard
         label={t("dashboard.kpiProtectedFiles")}
         icon={Shield}
-        value={Math.round(protectedTween.current).toString()}
+        value={formatDashboardCount(Math.round(protectedTween.current))}
         sub={t("dashboard.kpiProtectedSub")}
       />
     </div>
 
-    <section class="chart-card monthly-card">
+    <section class="chart-card monthly-card" aria-labelledby="monthly-savings-title">
       <div class="card-head">
-        <span class="card-title">{t("dashboard.chartMonthlyTitle")}</span>
+        <h3 id="monthly-savings-title" class="card-title">{t("dashboard.chartMonthlyTitle")}</h3>
         {#if hasHistoryData}
           <button
-            class="card-corner monthly-card-toggle"
+            class="card-corner"
             type="button"
             aria-pressed={monthlyTable}
-            aria-label={t("dashboard.cardTableToggle", { chart: t("dashboard.chartMonthlyTitle") })}
+            aria-label={t(monthlyTable ? "dashboard.showChart" : "dashboard.showTable", { chart: t("dashboard.chartMonthlyTitle") })}
             onclick={() => (monthlyTable = !monthlyTable)}
           >
             {#if monthlyTable}
@@ -216,8 +219,8 @@
           series={$monthlySeries}
           heroIndex={$monthlySeries.length - 1}
           {monthLabel}
-          formatValue={formatBytes}
-          ariaSummary={t("dashboard.chartMonthlyAria", { total: formatBytes(monthlyGrandTotal) })}
+          formatValue={formatDashboardBytes}
+          ariaSummary={t("dashboard.chartMonthlyAria", { total: formatDashboardBytes(monthlyGrandTotal) })}
           tableCaption={t("dashboard.tableCaptionMonthly")}
           delta={$momDeltas.saved}
           deltaSuffix={t("dashboard.vsPrevMonth")}
@@ -232,15 +235,15 @@
   </div>
 
   <div class="row row-b">
-    <section class="chart-card">
+    <section class="chart-card" aria-labelledby="category-savings-title">
       <div class="card-head">
-        <span class="card-title">{t("dashboard.chartCategoryTitle")}</span>
+        <h3 id="category-savings-title" class="card-title">{t("dashboard.chartCategoryTitle")}</h3>
         {#if hasHistoryData}
           <button
             class="card-corner"
             type="button"
             aria-pressed={categoryTable}
-            aria-label={t("dashboard.cardTableToggle", { chart: t("dashboard.chartCategoryTitle") })}
+            aria-label={t(categoryTable ? "dashboard.showChart" : "dashboard.showTable", { chart: t("dashboard.chartCategoryTitle") })}
             onclick={() => (categoryTable = !categoryTable)}
           >
             {#if categoryTable}
@@ -256,7 +259,7 @@
           series={$monthlySeries}
           shares={categoryLinesShares}
           {monthLabel}
-          formatValue={formatBytes}
+          formatValue={formatDashboardBytes}
           ariaSummary={categoryAriaSummary}
           tableCaption={t("dashboard.tableCaptionCategory")}
           emptyTitle={t("dashboard.emptyHistoryTitle")}
@@ -268,20 +271,20 @@
       </div>
     </section>
 
-    <section class="chart-card">
+    <section class="chart-card" aria-labelledby="last-scan-title">
       <div class="card-head">
-        <span class="card-title">
+        <h3 id="last-scan-title" class="card-title">
           {t("dashboard.chartLastScanTitle")}
           {#if hasDonutData && lastScanDate}
             <span class="card-title-ctx">· {#if lastScanFolder}{lastScanFolder} · {/if}{lastScanDate}</span>
           {/if}
-        </span>
+        </h3>
         {#if hasDonutData}
           <button
             class="card-corner"
             type="button"
             aria-pressed={donutTable}
-            aria-label={t("dashboard.cardTableToggle", { chart: t("dashboard.chartLastScanTitle") })}
+            aria-label={t(donutTable ? "dashboard.showChart" : "dashboard.showTable", { chart: t("dashboard.chartLastScanTitle") })}
             onclick={() => (donutTable = !donutTable)}
           >
             {#if donutTable}
@@ -303,18 +306,19 @@
           <div class="donut-status error" role="alert">
             <p>{t("dashboard.scanFailed")}</p>
             <span>{$storage.errorMessage}</span>
-            <Button danger size="sm" style="margin-top: 8px" onclick={() => storage.scanFolder()}>
+            <Button danger size="sm" class="retry-button" onclick={() => storage.scanFolder()}>
               {t("dashboard.tryAgain")}
             </Button>
           </div>
         {:else if hasDonutData}
           <StorageDonut
             segments={donutData}
-            totalLabel={formatBytes(donutTotalBytes)}
+            otherLabel={t("dashboard.donutOther")}
+            totalLabel={formatDashboardBytes(donutTotalBytes)}
             centerSub={t("dashboard.donutCenterScanned")}
             facts={donutFacts}
-            formatValue={formatBytes}
-            ariaSummary={t("dashboard.chartDonutAria", { total: formatBytes(donutTotalBytes) })}
+            formatValue={formatDashboardBytes}
+            ariaSummary={t("dashboard.chartDonutAria", { total: formatDashboardBytes(donutTotalBytes) })}
             tableCaption={t("dashboard.tableCaptionDonut")}
             view={donutTable ? "table" : "chart"}
           />
@@ -332,16 +336,24 @@
     </section>
   </div>
 </div>
+</div>
 
 <style>
+  .dashboard-shell {
+    container: dashboard / inline-size;
+    width: 100%;
+    min-width: 0;
+    min-height: 100%;
+  }
+
   .dashboard {
     display: flex;
     flex-direction: column;
     gap: 14px;
     /* .content-area already contributes 28px; no extra padding here. */
     padding: 0;
-    height: 100%;
-    overflow-y: auto;
+    min-width: 0;
+    min-height: 100%;
   }
 
   .dash-head {
@@ -350,6 +362,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
+    flex-wrap: wrap;
   }
 
   .dash-head h2 {
@@ -363,6 +376,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
   }
 
   .range-pill {
@@ -462,9 +476,16 @@
     align-items: center;
     justify-content: space-between;
     margin-bottom: 10px;
+    min-width: 0;
   }
 
   .card-title {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
     font-size: 11px;
     font-weight: 600;
     color: var(--chart-tick);
@@ -474,15 +495,19 @@
   /* Scan context (folder · date) appended to the last-scan card title. Same
      --chart-tick color as the title (AA at this size); weight alone demotes it. */
   .card-title-ctx {
+    min-width: 0;
+    overflow: hidden;
     font-weight: 400;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .card-corner {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 26px;
-    height: 26px;
+    width: 36px;
+    height: 36px;
     flex-shrink: 0;
     border-radius: var(--radius-sm);
     color: var(--chart-tick);
@@ -494,12 +519,7 @@
     color: var(--accent-text);
   }
 
-  .monthly-card-toggle {
-    width: 36px;
-    height: 36px;
-  }
-
-  .monthly-card-toggle:focus-visible {
+  .card-corner:focus-visible {
     outline: 2px solid var(--accent-text);
     outline-offset: 2px;
   }
@@ -537,6 +557,10 @@
   .donut-status.error p {
     color: var(--danger-text);
     font-weight: 600;
+  }
+
+  :global(button.retry-button) {
+    margin-top: 8px;
   }
 
   .donut-status span {
@@ -597,5 +621,38 @@
 
   .status-cta:active {
     transform: scale(0.98);
+  }
+
+  @container dashboard (max-width: 820px) {
+    .row-a,
+    .row-b {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .row-a {
+      min-height: 0;
+    }
+
+    .row-a .chart-card {
+      min-height: 230px;
+    }
+
+    .row-b {
+      min-height: 0;
+    }
+
+    .row-b .chart-card {
+      min-height: 280px;
+    }
+
+    .kpi-grid {
+      min-height: 230px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spinner {
+      animation: none;
+    }
   }
 </style>

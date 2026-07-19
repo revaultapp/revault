@@ -102,7 +102,9 @@ export const fr: Dictionary = {
     tableCaptionMonthly: "Données d'économies mensuelles",
     tableCaptionCategory: "Données d'économies par type de fichier",
     tableCaptionDonut: "Données de la dernière analyse",
-    cardTableToggle: "Vue tableau : {chart}",
+    showChart: "Afficher le graphique : {chart}",
+    showTable: "Afficher le tableau : {chart}",
+    donutOther: "Autres",
   },
   compress: {
     headerDone: "{done} sur {total} compressées",

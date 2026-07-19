@@ -84,13 +84,20 @@ export async function browseOutputDir(): Promise<string | null> {
 }
 
 
-export function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number, locale?: string): string {
   if (bytes === 0) return "0 B";
-  if (bytes < 0) return `-${formatBytes(-bytes)}`;
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  if (bytes < 0) return `-${formatBytes(-bytes, locale)}`;
+  const number = (value: number, digits: number) =>
+    locale
+      ? new Intl.NumberFormat(locale, {
+          minimumFractionDigits: digits,
+          maximumFractionDigits: digits,
+        }).format(value)
+      : value.toFixed(digits);
+  if (bytes < 1024) return `${locale ? new Intl.NumberFormat(locale).format(bytes) : bytes} B`;
+  if (bytes < 1024 * 1024) return `${number(bytes / 1024, 1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${number(bytes / (1024 * 1024), 1)} MB`;
+  return `${number(bytes / (1024 * 1024 * 1024), 2)} GB`;
 }
 
 export async function runWithConcurrency<T>(

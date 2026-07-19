@@ -100,7 +100,9 @@ export const en = {
     tableCaptionMonthly: "Monthly savings data",
     tableCaptionCategory: "Savings by file type data",
     tableCaptionDonut: "Last scan data",
-    cardTableToggle: "Table view: {chart}",
+    showChart: "Show chart: {chart}",
+    showTable: "Show table: {chart}",
+    donutOther: "Other",
   },
   compress: {
     headerDone: "{done} of {total} compressed",
