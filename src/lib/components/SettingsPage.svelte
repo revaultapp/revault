@@ -327,7 +327,6 @@
   }
 
   .setting-card,
-  .default-tile,
   .about-surface {
     display: flex;
     flex-direction: column;
@@ -338,23 +337,19 @@
     background: var(--bg-card);
   }
 
-  .setting-card,
-  .default-tile {
+  .setting-card {
     transition:
       border-color var(--duration-fast) var(--ease-out),
       color var(--duration-fast) var(--ease-out);
   }
 
   .setting-card:hover,
-  .setting-card:focus-within,
-  .default-tile:hover,
-  .default-tile:focus-within {
+  .setting-card:focus-within {
     --icon-duo: color-mix(in oklch, var(--accent) 18%, transparent);
     border-color: color-mix(in oklch, var(--accent) 22%, var(--border));
   }
 
-  .setting-card:focus-within,
-  .default-tile:focus-within {
+  .setting-card:focus-within {
     border-color: var(--accent-text);
   }
 
@@ -415,13 +410,54 @@
     min-width: 0;
   }
 
+  .defaults-surface .setting-control {
+    display: flex;
+  }
+
+  /* The subgrid gives every control row the height of its tallest member
+     (video privacy has five options). Stretch the controls into that shared
+     row so their outer tracks finish on the same baseline. */
+  .defaults-surface .setting-control :global(.segmented-control) {
+    flex: 1;
+    align-content: center;
+  }
+
   .defaults-surface {
     display: grid;
-    gap: 8px;
-    padding: 8px;
+    grid-template-columns: minmax(0, 1fr);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    background: var(--navy-bg);
+    background: var(--bg-card);
+    overflow: hidden;
+  }
+
+  .default-tile {
+    position: relative;
+    display: grid;
+    grid-template-rows: auto auto;
+    gap: 16px;
+    min-width: 0;
+    padding: 16px 20px;
+    background: transparent;
+  }
+
+  .default-tile + .default-tile::before {
+    position: absolute;
+    top: 0;
+    right: 20px;
+    left: 20px;
+    height: 1px;
+    background: var(--border);
+    content: "";
+  }
+
+  .default-tile:hover,
+  .default-tile:focus-within {
+    --icon-duo: color-mix(in oklch, var(--accent) 18%, transparent);
+  }
+
+  .default-tile .setting-icon {
+    transition: color var(--duration-fast) var(--ease-out);
   }
 
   .output-controls {
@@ -509,7 +545,23 @@
   }
 
   @container settings (min-width: 860px) {
-    .defaults-surface { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .default-tile { padding: 16px; }
+    .defaults-surface {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-rows: auto auto;
+    }
+
+    .default-tile {
+      grid-row: span 2;
+      grid-template-rows: subgrid;
+    }
+
+    .default-tile + .default-tile::before {
+      top: 16px;
+      right: auto;
+      bottom: 16px;
+      left: 0;
+      width: 1px;
+      height: auto;
+    }
   }
 </style>
