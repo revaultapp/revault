@@ -71,6 +71,8 @@ export const en = {
     scanningAriaLabel: "Scanning folder",
     scanningText: "Scanning folder...",
     scanFailed: "Scan failed",
+    scanComplete: "Scan complete. {total} analyzed.",
+    scanCompleteEmpty: "Scan complete. No useful image files found.",
     tryAgain: "Try Again",
     donutCenterScanned: "total scanned",
     panelTitle: "Panel",

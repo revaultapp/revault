@@ -111,6 +111,20 @@ describe("MonthlyBars", () => {
     expect(document.activeElement).toBe(controls[0]);
   });
 
+  it("moves down to the next month and up to the previous month with wrapping", async () => {
+    const target = renderMonthlyBars();
+    const controls = [...target.querySelectorAll<HTMLButtonElement>(".month-control")];
+
+    controls[11].focus();
+    controls[11].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    await tick();
+    expect(document.activeElement).toBe(controls[0]);
+
+    controls[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+    await tick();
+    expect(document.activeElement).toBe(controls[11]);
+  });
+
   it("previews on hover without changing selection and restores it on mouseleave", async () => {
     const target = renderMonthlyBars();
     const controls = [...target.querySelectorAll<HTMLButtonElement>(".month-control")];
@@ -236,6 +250,16 @@ describe("MonthlyBars", () => {
     expect(captions).toHaveLength(1);
     expect(captions[0].classList.contains("visually-hidden")).toBe(true);
     expect(captions[0].textContent).toBe("Monthly savings data");
+    const region = target.querySelector(".table-scroll");
+    expect(region?.getAttribute("role")).toBe("region");
+    expect(region?.getAttribute("tabindex")).toBe("0");
+    expect(region?.getAttribute("aria-label")).toBe("Monthly savings data");
+    expect(target.querySelectorAll("tbody tr > th[scope='row']")).toHaveLength(12);
+  });
+
+  it("uses row headers in its screen-reader table", () => {
+    const target = renderMonthlyBars();
+    expect(target.querySelectorAll(".visually-hidden tbody tr > th[scope='row']")).toHaveLength(12);
   });
 
   it("uses component container queries without JS width measurement or horizontal scrolling", () => {

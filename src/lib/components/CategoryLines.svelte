@@ -126,7 +126,8 @@
       {#if emptyCta && onCta}<button class="empty-cta" onclick={onCta}>{emptyCta}</button>{/if}
     </div>
   {:else if view === "table"}
-    <div class="table-scroll">
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex (scrollable table region must be keyboard-focusable) -->
+    <div class="table-scroll" role="region" tabindex="0" aria-label={tableCaption}>
       <table class="data-table">
         <caption class="visually-hidden">{tableCaption}</caption>
         <thead>
@@ -138,7 +139,7 @@
         <tbody>
           {#each series as point (point.key)}
             <tr>
-              <td>{monthLabel(point.date)} {point.date.getFullYear()}</td>
+              <th scope="row">{monthLabel(point.date)} {point.date.getFullYear()}</th>
               {#each KINDS as kind (kind)}<td class="col-num">{formatValue(point[kind])}</td>{/each}
             </tr>
           {/each}
@@ -215,7 +216,7 @@
       </thead>
       <tbody>
         {#each series as point (point.key)}
-          <tr><td>{monthLabel(point.date)} {point.date.getFullYear()}</td>{#each KINDS as kind (kind)}<td>{formatValue(point[kind])}</td>{/each}</tr>
+          <tr><th scope="row">{monthLabel(point.date)} {point.date.getFullYear()}</th>{#each KINDS as kind (kind)}<td>{formatValue(point[kind])}</td>{/each}</tr>
         {/each}
       </tbody>
     </table>
@@ -266,6 +267,7 @@
   .data-table { width: 100%; border-collapse: collapse; }
   .data-table th { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; color: var(--chart-tick); text-align: left; }
   .data-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-secondary); }
+  .data-table tbody th { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 400; color: var(--text-secondary); }
   .data-table .col-num { text-align: right; }
   .data-table td.col-num { color: var(--text-primary); font-variant-numeric: tabular-nums; }
 

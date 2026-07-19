@@ -73,6 +73,8 @@ export const es: Dictionary = {
     scanningAriaLabel: "Escaneando carpeta",
     scanningText: "Escaneando carpeta...",
     scanFailed: "Error al escanear",
+    scanComplete: "Análisis completado. Se analizaron {total}.",
+    scanCompleteEmpty: "Análisis completado. No se encontraron archivos de imagen útiles.",
     tryAgain: "Reintentar",
     donutCenterScanned: "total escaneado",
     panelTitle: "Panel",

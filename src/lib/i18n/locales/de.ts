@@ -73,6 +73,8 @@ export const de: Dictionary = {
     scanningAriaLabel: "Ordner wird gescannt",
     scanningText: "Ordner wird gescannt...",
     scanFailed: "Scan fehlgeschlagen",
+    scanComplete: "Scan abgeschlossen. {total} analysiert.",
+    scanCompleteEmpty: "Scan abgeschlossen. Keine geeigneten Bilddateien gefunden.",
     tryAgain: "Erneut versuchen",
     donutCenterScanned: "insgesamt gescannt",
     panelTitle: "Übersicht",

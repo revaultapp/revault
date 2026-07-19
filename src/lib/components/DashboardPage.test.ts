@@ -56,4 +56,17 @@ describe("DashboardPage integration contracts", () => {
     expect(source).not.toContain('style="margin-top: 8px"');
     expect(source).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.spinner\s*\{[^}]*animation:\s*none;/s);
   });
+
+  it("keeps one atomic polite live region mounted and silent before scan completion", () => {
+    expect(source).toContain('class="scan-announcement visually-hidden"');
+    expect(source).toContain('aria-live="polite"');
+    expect(source).toContain('aria-atomic="true"');
+    expect(source).toContain('{scanAnnouncement}');
+    expect(source).toMatch(/const scanAnnouncement = \$derived\.by\([\s\S]*?scanState !== "done"[\s\S]*?return "";/);
+  });
+
+  it("announces localized scan completion with a total or a useful empty result", () => {
+    expect(source).toContain('t("dashboard.scanComplete", { total: formatDashboardBytes($storage.scanResult.total_size) })');
+    expect(source).toContain('t("dashboard.scanCompleteEmpty")');
+  });
 });

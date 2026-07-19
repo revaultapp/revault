@@ -123,6 +123,12 @@
 
   const donutTotalBytes = $derived(donutData.reduce((acc, s) => acc + s.bytes, 0));
   const hasDonutData = $derived(donutData.length > 0 && donutTotalBytes > 0);
+  const scanAnnouncement = $derived.by(() => {
+    if ($storage.scanState !== "done" || !$storage.scanResult) return "";
+    return hasDonutData
+      ? t("dashboard.scanComplete", { total: formatDashboardBytes($storage.scanResult.total_size) })
+      : t("dashboard.scanCompleteEmpty");
+  });
 
   // The donut card is scoped to the LAST SCAN only — its facts come from the
   // scan itself. App-lifetime totals (saved bytes, files optimized, protected)
@@ -159,6 +165,7 @@
 </script>
 
 <div class="dashboard-shell">
+<span class="scan-announcement visually-hidden" aria-live="polite" aria-atomic="true">{scanAnnouncement}</span>
 <div class="dashboard">
   <header class="dash-head">
     <h2>{t("dashboard.panelTitle")}</h2>
@@ -374,6 +381,18 @@
     padding: 0;
     min-width: 0;
     min-height: 100%;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .dash-head {

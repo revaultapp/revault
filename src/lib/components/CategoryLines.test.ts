@@ -112,6 +112,20 @@ describe("CategoryLines", () => {
     expect(document.activeElement).toBe(controls[0]);
   });
 
+  it("moves down to the next month and up to the previous month with wrapping", async () => {
+    const target = renderCategoryLines();
+    const controls = [...target.querySelectorAll<HTMLButtonElement>(".month-control")];
+
+    controls[11].focus();
+    controls[11].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    await tick();
+    expect(document.activeElement).toBe(controls[0]);
+
+    controls[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+    await tick();
+    expect(document.activeElement).toBe(controls[11]);
+  });
+
   it("previews hover without selecting and restores the selected month", async () => {
     const target = renderCategoryLines();
     const controls = [...target.querySelectorAll<HTMLButtonElement>(".month-control")];
@@ -212,7 +226,17 @@ describe("CategoryLines", () => {
     expect(target.querySelectorAll(".data-table > caption")).toHaveLength(1);
     expect(target.querySelector("caption")?.textContent).toBe("Category savings data");
     expect(target.querySelectorAll("tbody tr")).toHaveLength(12);
-    expect(target.querySelectorAll("tbody tr:first-child td")).toHaveLength(4);
+    expect(target.querySelectorAll("tbody tr:first-child td")).toHaveLength(3);
+    const region = target.querySelector(".table-scroll");
+    expect(region?.getAttribute("role")).toBe("region");
+    expect(region?.getAttribute("tabindex")).toBe("0");
+    expect(region?.getAttribute("aria-label")).toBe("Category savings data");
+    expect(target.querySelectorAll("tbody tr > th[scope='row']")).toHaveLength(12);
+  });
+
+  it("uses row headers in its screen-reader table", () => {
+    const target = renderCategoryLines();
+    expect(target.querySelectorAll(".visually-hidden tbody tr > th[scope='row']")).toHaveLength(12);
   });
 
   it("uses container queries, keyed state, distinct line styles, and a delta-free legend", () => {

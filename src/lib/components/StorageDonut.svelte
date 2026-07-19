@@ -58,6 +58,7 @@
     untrack(() => groupDonutDisplaySegments(segments, otherLabel, 5)[0]?.key ?? null),
   );
   let hoverKey = $state<string | null>(null);
+  let hasSelection = $state(false);
 
   const total = $derived(segments.reduce((sum, segment) => sum + segment.bytes, 0));
   const displaySegments = $derived(groupDonutDisplaySegments(segments, otherLabel, 5));
@@ -76,7 +77,8 @@
     const index = displaySegments.findIndex((segment) => segment.key === hoverKey);
     return index >= 0 ? index : null;
   });
-  const visibleIndex = $derived(hoverIndex ?? selectedIndex);
+  const visibleIndex = $derived(hoverIndex ?? (hasSelection ? selectedIndex : null));
+  const visibleSegment = $derived(visibleIndex === null ? null : displaySegments[visibleIndex]);
 
   function percentage(bytes: number): string {
     return formatPercent(total > 0 ? (bytes / total) * 100 : 0);
@@ -84,6 +86,7 @@
 
   function selectIndex(index: number) {
     selectedKey = displaySegments[index]?.key ?? null;
+    hasSelection = selectedKey !== null;
     hoverKey = null;
   }
 
@@ -107,7 +110,8 @@
 <div class="storage-donut-shell">
 <div class="storage-donut" class:table-mode={view === "table"}>
   {#if view === "table"}
-    <div class="table-scroll">
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex (scrollable table region must be keyboard-focusable) -->
+    <div class="table-scroll" role="region" tabindex="0" aria-label={tableCaption}>
       <table class="data-table">
         <caption class="visually-hidden">{tableCaption}</caption>
         <thead>
@@ -120,7 +124,7 @@
         <tbody>
           {#each segments as seg, index (`${seg.label}-${index}`)}
             <tr>
-              <td>{seg.label}</td>
+              <th scope="row">{seg.label}</th>
               <td class="col-num">{formatValue(seg.bytes)}</td>
               <td class="col-num">{formatCount(seg.count)}</td>
             </tr>
@@ -162,8 +166,8 @@
       </svg>
 
       <div class="ring-center">
-        <span class="ring-total">{totalLabel}</span>
-        <span class="ring-sub">{centerSub}</span>
+        <span class="ring-total">{visibleSegment ? formatValue(visibleSegment.bytes) : totalLabel}</span>
+        <span class="ring-sub">{visibleSegment ? `${visibleSegment.label} · ${percentage(visibleSegment.bytes)}` : centerSub}</span>
       </div>
     </div>
 
@@ -198,7 +202,7 @@
       </thead>
       <tbody>
         {#each segments as seg, index (`${seg.label}-${index}`)}
-          <tr><td>{seg.label}</td><td>{formatValue(seg.bytes)}</td><td>{formatCount(seg.count)}</td></tr>
+          <tr><th scope="row">{seg.label}</th><td>{formatValue(seg.bytes)}</td><td>{formatCount(seg.count)}</td></tr>
         {/each}
       </tbody>
     </table>
@@ -226,6 +230,7 @@
   .data-table th, .data-table td { overflow-wrap: anywhere; }
   .data-table th { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; color: var(--chart-tick); text-align: left; }
   .data-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-secondary); }
+  .data-table tbody th { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 400; color: var(--text-secondary); }
   .data-table .col-num { text-align: right; }
   .data-table td.col-num { color: var(--text-primary); font-variant-numeric: tabular-nums; }
 
@@ -254,7 +259,7 @@
 
   .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
-  @container storage-donut (max-width: 420px) {
+  @container storage-donut (max-width: 379px) {
     .storage-donut { grid-template-columns: minmax(120px, 0.8fr) minmax(0, 1.2fr); align-content: start; }
     .facts-col { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
     .fact { text-align: center; }

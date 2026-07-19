@@ -124,6 +124,54 @@ describe("StorageDonut", () => {
     expect(controls[3].classList.contains("active")).toBe(false);
   });
 
+  it("starts with the total and previews exact localized segment summaries", async () => {
+    const formatPercent = (value: number) => new Intl.NumberFormat("de", {
+      style: "percent",
+      maximumFractionDigits: 0,
+    }).format(value / 100);
+    const target = renderStorageDonut({ formatPercent });
+    const controls = [...target.querySelectorAll<HTMLButtonElement>(".legend-row")];
+
+    expect(target.querySelector(".ring-total")?.textContent).toBe("2 KB");
+    expect(target.querySelector(".ring-sub")?.textContent).toBe("Total");
+
+    controls[1].dispatchEvent(new MouseEvent("mouseenter"));
+    await tick();
+    expect(target.querySelector(".ring-total")?.textContent).toBe("500 B");
+    expect(target.querySelector(".ring-sub")?.textContent).toBe(`PNG · ${formatPercent(25)}`);
+
+    controls[1].dispatchEvent(new MouseEvent("mouseleave"));
+    await tick();
+    expect(target.querySelector(".ring-total")?.textContent).toBe("2 KB");
+    expect(target.querySelector(".ring-sub")?.textContent).toBe("Total");
+  });
+
+  it("keeps the selected summary after hover leaves and focus blurs", async () => {
+    const target = renderStorageDonut();
+    const controls = [...target.querySelectorAll<HTMLButtonElement>(".legend-row")];
+
+    controls[1].click();
+    await tick();
+    expect(target.querySelector(".ring-total")?.textContent).toBe("500 B");
+    controls[3].dispatchEvent(new MouseEvent("mouseenter"));
+    await tick();
+    expect(target.querySelector(".ring-total")?.textContent).toBe("300 B");
+    controls[3].dispatchEvent(new MouseEvent("mouseleave"));
+    await tick();
+    expect(target.querySelector(".ring-total")?.textContent).toBe("500 B");
+
+    controls[2].focus();
+    await tick();
+    controls[2].blur();
+    await tick();
+    expect(target.querySelector(".ring-total")?.textContent).toBe("400 B");
+
+    controls[2].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    await tick();
+    expect(target.querySelector(".ring-total")?.textContent).toBe("300 B");
+    expect(target.querySelector(".chart-tooltip")).toBeNull();
+  });
+
   it("shows and announces only label, percentage, and exact bytes", () => {
     const target = renderStorageDonut();
     const first = target.querySelector<HTMLButtonElement>(".legend-row");
@@ -140,6 +188,16 @@ describe("StorageDonut", () => {
     expect(target.querySelector("caption")?.textContent).toBe("Storage scan data");
     expect(target.querySelectorAll("tbody tr")).toHaveLength(6);
     expect(target.querySelectorAll(".legend-row")).toHaveLength(0);
+    const region = target.querySelector(".table-scroll");
+    expect(region?.getAttribute("role")).toBe("region");
+    expect(region?.getAttribute("tabindex")).toBe("0");
+    expect(region?.getAttribute("aria-label")).toBe("Storage scan data");
+    expect(target.querySelectorAll("tbody tr > th[scope='row']")).toHaveLength(6);
+  });
+
+  it("uses row headers in its screen-reader table", () => {
+    const target = renderStorageDonut();
+    expect(target.querySelectorAll(".visually-hidden tbody tr > th[scope='row']")).toHaveLength(6);
   });
 
   it("uses supplied locale-aware percent and count formatters", () => {
@@ -174,7 +232,8 @@ describe("StorageDonut", () => {
     expect(source).toContain(".storage-donut-shell { container: storage-donut / inline-size;");
     expect(source).not.toMatch(/\.storage-donut\s*\{[^}]*container:/s);
     expect(target.querySelector(".storage-donut-shell > .storage-donut")).not.toBeNull();
-    expect(source).toContain("@container storage-donut (max-width: 420px)");
+    expect(source).toContain("@container storage-donut (max-width: 379px)");
+    expect(source).not.toContain("@container storage-donut (max-width: 420px)");
     expect(source).toContain("@container storage-donut (max-width: 320px)");
     expect(source).toContain("@media (prefers-reduced-motion: reduce)");
     expect(source).not.toMatch(/overflow-x:\s*(auto|scroll)/);

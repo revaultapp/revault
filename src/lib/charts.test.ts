@@ -160,13 +160,17 @@ describe("nextChartIndex", () => {
     expect(nextChartIndex(0, "ArrowLeft", 12)).toBe(11);
   });
 
+  it("maps vertical arrows to next and previous points with wrapping", () => {
+    expect(nextChartIndex(11, "ArrowDown", 12)).toBe(0);
+    expect(nextChartIndex(0, "ArrowUp", 12)).toBe(11);
+  });
+
   it("jumps to the first and last points", () => {
     expect(nextChartIndex(7, "Home", 12)).toBe(0);
     expect(nextChartIndex(3, "End", 12)).toBe(11);
   });
 
   it("ignores unsupported keys", () => {
-    expect(nextChartIndex(5, "ArrowDown", 12)).toBeNull();
     expect(nextChartIndex(5, "Enter", 12)).toBeNull();
   });
 

@@ -30,7 +30,7 @@
 
 <div class="kpi-card" aria-label={ariaNote}>
   <div class="kpi-top">
-    <span class="kpi-label">{label}</span>
+    <span class="kpi-label" title={label}>{label}</span>
     <span class="kpi-icon" aria-hidden="true">
       {#if icon}
         {@const Icon = icon}
@@ -88,13 +88,12 @@
   }
 
   .kpi-label {
+    min-width: 0;
     font-size: 12px;
     font-weight: 500;
     color: var(--chart-tick);
     letter-spacing: -0.01em;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
   }
 
   .kpi-icon {

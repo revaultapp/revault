@@ -80,8 +80,10 @@ export function nextChartIndex(current: number, key: string, length: number): nu
 
   switch (key) {
     case "ArrowRight":
+    case "ArrowDown":
       return (normalized + 1) % length;
     case "ArrowLeft":
+    case "ArrowUp":
       return (normalized - 1 + length) % length;
     case "Home":
       return 0;
