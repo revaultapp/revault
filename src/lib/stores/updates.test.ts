@@ -1,0 +1,455 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { get, writable } from "svelte/store";
+import { isCompressing as isImageCompressing, isEstimating } from "./compress";
+import { trimState } from "./video";
+import { createUpdateStore, isUpdateProcessing, type UpdateAdapter } from "./updates";
+
+const DAY = 24 * 60 * 60 * 1000;
+
+function setup(update: { version: string; notes?: string } | null = { version: "1.1.0" }) {
+  let now = 1_000;
+  const isProcessing = writable(false);
+  const adapter: UpdateAdapter = {
+    check: async () => update,
+    download: async (_update, onProgress) => onProgress({ downloaded: 100, total: 100 }),
+    restart: async () => {},
+  };
+
+  return {
+    store: createUpdateStore({ adapter, isProcessing, now: () => now }),
+    isProcessing,
+    setNow: (value: number) => { now = value; },
+  };
+}
+
+function deferred<T>() {
+  let resolve: (value: T) => void;
+  const promise = new Promise<T>((next) => { resolve = next; });
+  return { promise, resolve: resolve! };
+}
+
+describe("updates store", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("starts idle", () => {
+    expect(get(setup().store.status)).toBe("idle");
+  });
+
+  it("defers the global update offer while an image job is running", () => {
+    isImageCompressing.set(true);
+    expect(get(isUpdateProcessing)).toBe(true);
+
+    isImageCompressing.set(false);
+    expect(get(isUpdateProcessing)).toBe(false);
+  });
+
+  it("treats image estimation and video trimming as active work", () => {
+    isEstimating.set(true);
+    expect(get(isUpdateProcessing)).toBe(true);
+    isEstimating.set(false);
+
+    trimState.set("trimming");
+    expect(get(isUpdateProcessing)).toBe(true);
+    trimState.set("idle");
+    expect(get(isUpdateProcessing)).toBe(false);
+  });
+
+  it("is checking until the adapter resolves", async () => {
+    const pending = deferred<{ version: string } | null>();
+    const { store } = setup();
+    store.setAdapter({
+      check: () => pending.promise,
+      download: async () => {},
+      restart: async () => {},
+    });
+
+    const check = store.checkForUpdates();
+    expect(get(store.status)).toBe("checking");
+    pending.resolve({ version: "1.1.0" });
+    await check;
+
+    expect(get(store.status)).toBe("available");
+  });
+
+  it("records a check error", async () => {
+    const { store } = setup();
+    store.setAdapter({
+      check: async () => { throw new Error("offline"); },
+      download: async () => {},
+      restart: async () => {},
+    });
+
+    await store.checkForUpdates();
+
+    expect(get(store.status)).toBe("error");
+    expect(get(store.error)).toBe("Unable to check for updates. offline");
+  });
+
+  it("does not check for updates while processing is active", async () => {
+    const { store, isProcessing } = setup();
+    const check = vi.fn(async () => ({ version: "1.1.0" }));
+    store.setAdapter({ check, download: async () => {}, restart: async () => {} });
+    isProcessing.set(true);
+
+    await store.checkForUpdates();
+
+    expect(check).not.toHaveBeenCalled();
+    expect(get(store.status)).toBe("idle");
+  });
+
+  it("shares an in-flight update check", async () => {
+    const pending = deferred<{ version: string } | null>();
+    const { store } = setup();
+    let checks = 0;
+    store.setAdapter({
+      check: () => {
+        checks += 1;
+        return pending.promise;
+      },
+      download: async () => {},
+      restart: async () => {},
+    });
+
+    const first = store.checkForUpdates();
+    const second = store.checkForUpdates();
+
+    expect(second).toBe(first);
+    expect(checks).toBe(1);
+    pending.resolve({ version: "1.1.0" });
+    await first;
+    expect(get(store.status)).toBe("available");
+  });
+
+  it("does not allow the dialog for the same deferred version within 24 hours", async () => {
+    localStorage.clear();
+    const { store, setNow } = setup();
+
+    await store.checkForUpdates();
+    store.defer();
+    setNow(1_000 + DAY - 1);
+    await store.checkForUpdates();
+
+    expect(get(store.canShowDialog)).toBe(false);
+    expect(localStorage.getItem("revault_update_deferral")).toBe(
+      JSON.stringify({ version: "1.1.0", timestamp: 1_000 }),
+    );
+  });
+
+  it("allows a newer version immediately after deferring an older version", async () => {
+    localStorage.clear();
+    const { store } = setup({ version: "1.1.0" });
+
+    await store.checkForUpdates();
+    store.defer();
+    store.setAdapter({
+      check: async () => ({ version: "1.2.0" }),
+      download: async () => {},
+      restart: async () => {},
+    });
+    await store.checkForUpdates();
+
+    expect(get(store.canShowDialog)).toBe(true);
+    expect(localStorage.getItem("revault_update_deferral")).toBeNull();
+  });
+
+  it("treats a later prerelease as newer", async () => {
+    const { store } = setup({ version: "1.0.0-beta.1" });
+    await store.checkForUpdates();
+    store.defer();
+    store.setAdapter({
+      check: async () => ({ version: "1.0.0-beta.2+build.9" }),
+      download: async () => {},
+      restart: async () => {},
+    });
+
+    await store.checkForUpdates();
+
+    expect(get(store.canShowDialog)).toBe(true);
+    expect(localStorage.getItem("revault_update_deferral")).toBeNull();
+  });
+
+  it("treats a stable release as newer than its prerelease", async () => {
+    const { store } = setup({ version: "1.0.0-rc.1" });
+    await store.checkForUpdates();
+    store.defer();
+    store.setAdapter({
+      check: async () => ({ version: "1.0.0" }),
+      download: async () => {},
+      restart: async () => {},
+    });
+
+    await store.checkForUpdates();
+
+    expect(get(store.canShowDialog)).toBe(true);
+    expect(localStorage.getItem("revault_update_deferral")).toBeNull();
+  });
+
+  it("only allows the dialog when an update is available and processing is idle", async () => {
+    localStorage.clear();
+    const { store, isProcessing } = setup();
+
+    await store.checkForUpdates();
+    isProcessing.set(true);
+    expect(get(store.canShowDialog)).toBe(false);
+
+    isProcessing.set(false);
+    expect(get(store.canShowDialog)).toBe(true);
+  });
+
+  it("does not download an update while processing is active", async () => {
+    const { store, isProcessing } = setup();
+    const download = vi.fn(async () => {});
+    store.setAdapter({
+      check: async () => ({ version: "1.1.0" }),
+      download,
+      restart: async () => {},
+    });
+    await store.checkForUpdates();
+
+    isProcessing.set(true);
+    await store.download();
+
+    expect(download).not.toHaveBeenCalled();
+    expect(get(store.status)).toBe("available");
+  });
+
+  it("does not restart while processing is active", async () => {
+    const { store, isProcessing } = setup();
+    const restart = vi.fn(async () => {});
+    store.setAdapter({
+      check: async () => ({ version: "1.1.0" }),
+      download: async () => {},
+      restart,
+    });
+    await store.checkForUpdates();
+    await store.download();
+
+    isProcessing.set(true);
+    await store.restart();
+
+    expect(restart).not.toHaveBeenCalled();
+  });
+
+  it("moves through manual check, download, and restart-ready states", async () => {
+    localStorage.clear();
+    const { store } = setup();
+
+    await store.manualCheck();
+    expect(get(store.status)).toBe("available");
+
+    await store.download();
+    expect(get(store.status)).toBe("readyToRestart");
+    expect(get(store.progress)).toEqual({ downloaded: 100, total: 100 });
+  });
+
+  it("is downloading until the verified package is ready", async () => {
+    const pending = deferred<void>();
+    const { store } = setup();
+    await store.checkForUpdates();
+    store.setAdapter({
+      check: async () => ({ version: "1.1.0" }),
+      download: async () => pending.promise,
+      restart: async () => {},
+    });
+
+    const downloadTask = store.download();
+    expect(get(store.status)).toBe("downloading");
+    pending.resolve();
+    await downloadTask;
+
+    expect(get(store.status)).toBe("readyToRestart");
+  });
+
+  it("records a download error", async () => {
+    const { store } = setup();
+    await store.checkForUpdates();
+    store.setAdapter({
+      check: async () => ({ version: "1.1.0" }),
+      download: async () => { throw new Error("disk full"); },
+      restart: async () => {},
+    });
+
+    await store.download();
+
+    expect(get(store.status)).toBe("error");
+    expect(get(store.error)).toBe("Unable to download the update. disk full");
+  });
+
+  it("shares an in-flight download and blocks checks until it completes", async () => {
+    const pending = deferred<void>();
+    const { store } = setup();
+    let downloads = 0;
+    let checks = 0;
+    store.setAdapter({
+      check: async () => {
+        checks += 1;
+        return { version: "1.1.0" };
+      },
+      download: async () => {
+        downloads += 1;
+        return pending.promise;
+      },
+      restart: async () => {},
+    });
+    await store.checkForUpdates();
+
+    const first = store.download();
+    const second = store.download();
+    await store.checkForUpdates();
+
+    expect(second).toBe(first);
+    expect(downloads).toBe(1);
+    expect(checks).toBe(1);
+    expect(get(store.status)).toBe("downloading");
+    pending.resolve();
+    await first;
+
+    await store.checkForUpdates();
+    expect(checks).toBe(1);
+    expect(get(store.status)).toBe("readyToRestart");
+  });
+
+  it("records a restart error", async () => {
+    const { store } = setup();
+    await store.checkForUpdates();
+    await store.download();
+    store.setAdapter({
+      check: async () => ({ version: "1.1.0" }),
+      download: async () => {},
+      restart: async () => { throw new Error("restart denied"); },
+    });
+
+    await store.restart();
+
+    expect(get(store.status)).toBe("readyToRestart");
+    expect(get(store.error)).toBe("Unable to restart ReVault. restart denied");
+  });
+
+  it("keeps installation failures distinct and retryable", async () => {
+    const { store } = setup();
+    const download = vi.fn(async () => {});
+    await store.checkForUpdates();
+    await store.download();
+    store.setAdapter({
+      check: async () => ({ version: "1.1.0" }),
+      download,
+      restart: async () => {
+        throw Object.assign(new Error("installer denied"), { operation: "install" });
+      },
+    });
+
+    await store.restart();
+
+    expect(get(store.status)).toBe("error");
+    expect(get(store.errorOperation)).toBe("install");
+    expect(get(store.error)).toBe("Unable to install the update. installer denied");
+
+    await store.download();
+    expect(download).not.toHaveBeenCalled();
+  });
+
+  it("retries restart after failure without downloading again", async () => {
+    const { store } = setup();
+    let downloads = 0;
+    let restarts = 0;
+    store.setAdapter({
+      check: async () => ({ version: "1.1.0" }),
+      download: async () => { downloads += 1; },
+      restart: async () => {
+        restarts += 1;
+        if (restarts === 1) throw new Error("restart denied");
+      },
+    });
+    await store.checkForUpdates();
+    await store.download();
+
+    await store.restart();
+    expect(get(store.status)).toBe("readyToRestart");
+    await store.download();
+    await store.restart();
+
+    expect(downloads).toBe(1);
+    expect(restarts).toBe(2);
+    expect(get(store.error)).toBeNull();
+  });
+
+  it("shares an in-flight restart", async () => {
+    const pending = deferred<void>();
+    const { store } = setup();
+    await store.checkForUpdates();
+    await store.download();
+    let restarts = 0;
+    store.setAdapter({
+      check: async () => ({ version: "1.1.0" }),
+      download: async () => {},
+      restart: async () => {
+        restarts += 1;
+        return pending.promise;
+      },
+    });
+
+    const first = store.restart();
+    const second = store.restart();
+
+    expect(second).toBe(first);
+    expect(restarts).toBe(1);
+    pending.resolve();
+    await first;
+  });
+
+  it("does not expose object errors", async () => {
+    const { store } = setup();
+    store.setAdapter({
+      check: async () => { throw { code: "OFFLINE" }; },
+      download: async () => {},
+      restart: async () => {},
+    });
+
+    await store.checkForUpdates();
+
+    expect(get(store.error)).toBe("Unable to check for updates.");
+  });
+
+  it("shows upToDate after a manual check without an available update", async () => {
+    localStorage.clear();
+    const { store } = setup(null);
+
+    await store.manualCheck();
+
+    expect(get(store.status)).toBe("upToDate");
+  });
+
+  it("keeps a newer update available when clearing an old deferral fails", async () => {
+    const { store } = setup({ version: "1.1.0" });
+    await store.checkForUpdates();
+    store.defer();
+    const removeItem = vi.spyOn(localStorage, "removeItem").mockImplementation(() => {
+      throw new Error("storage unavailable");
+    });
+    store.setAdapter({
+      check: async () => ({ version: "1.2.0" }),
+      download: async () => {},
+      restart: async () => {},
+    });
+
+    await store.checkForUpdates();
+    removeItem.mockRestore();
+
+    expect(get(store.status)).toBe("available");
+  });
+
+  it("keeps an available update visible when saving a deferral fails", async () => {
+    const { store } = setup();
+    await store.checkForUpdates();
+    const setItem = vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+      throw new Error("storage unavailable");
+    });
+
+    expect(() => store.defer()).not.toThrow();
+    setItem.mockRestore();
+
+    expect(get(store.canShowDialog)).toBe(true);
+  });
+});
