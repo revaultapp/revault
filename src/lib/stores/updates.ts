@@ -1,4 +1,18 @@
 import { derived, get, writable, type Readable } from "svelte/store";
+import { isCompressing as isImageCompressing, isEstimating } from "./compress";
+import { isConverting } from "./convert";
+import { isScanning as isDuplicateScanRunning } from "./dedupe";
+import {
+  isBuildingPdf,
+  isMerging,
+  isProcessing as isPdfProcessing,
+  isRasterizing,
+  isSplitting,
+} from "./pdf";
+import { isProcessing as isPrivacyProcessing } from "./privacy";
+import { isResizing } from "./resize";
+import { storage } from "./storage";
+import { audioState, gifState, isCompressing as isVideoCompressing, trimState } from "./video";
 
 const DEFERRAL_KEY = "revault_update_deferral";
 const DEFERRAL_DURATION = 24 * 60 * 60 * 1000;
@@ -153,6 +167,7 @@ export function createUpdateStore({ adapter: initialAdapter, isProcessing, now =
 
   function checkForUpdates(): Promise<void> {
     if (checkTask) return checkTask;
+    if (get(isProcessing)) return Promise.resolve();
     if (["downloading", "readyToRestart"].includes(get(status))) return Promise.resolve();
     status.set("checking");
     error.set(null);
@@ -185,6 +200,7 @@ export function createUpdateStore({ adapter: initialAdapter, isProcessing, now =
 
   function downloadAndInstall(): Promise<void> {
     if (downloadTask) return downloadTask;
+    if (get(isProcessing)) return Promise.resolve();
     if (!["available", "error"].includes(get(status))) return Promise.resolve();
     const update = get(pendingUpdate);
     if (!update) return Promise.resolve();
@@ -212,6 +228,7 @@ export function createUpdateStore({ adapter: initialAdapter, isProcessing, now =
 
   function restart(): Promise<void> {
     if (restartTask) return restartTask;
+    if (get(isProcessing)) return Promise.resolve();
     if (restarted || get(status) !== "readyToRestart") return Promise.resolve();
     restarted = true;
     error.set(null);
@@ -261,5 +278,58 @@ const unavailableAdapter: UpdateAdapter = {
   restart: async () => { throw new Error("Updater is not configured"); },
 };
 
-export const isUpdateProcessing = writable(false);
+export const isUpdateProcessing = derived(
+  [
+    isImageCompressing,
+    isEstimating,
+    isConverting,
+    isResizing,
+    isDuplicateScanRunning,
+    isPrivacyProcessing,
+    isPdfProcessing,
+    isMerging,
+    isBuildingPdf,
+    isSplitting,
+    isRasterizing,
+    isVideoCompressing,
+    gifState,
+    audioState,
+    trimState,
+    storage,
+  ],
+  ([
+    imageCompressing,
+    estimatingImage,
+    converting,
+    resizing,
+    scanningDuplicates,
+    processingPrivacy,
+    processingPdf,
+    mergingPdf,
+    buildingPdf,
+    splittingPdf,
+    rasterizingPdf,
+    compressingVideo,
+    currentGifState,
+    currentAudioState,
+    currentTrimState,
+    currentStorage,
+  ]) =>
+    imageCompressing ||
+    estimatingImage ||
+    converting ||
+    resizing ||
+    scanningDuplicates ||
+    processingPrivacy ||
+    processingPdf ||
+    mergingPdf ||
+    buildingPdf ||
+    splittingPdf ||
+    rasterizingPdf ||
+    compressingVideo ||
+    currentGifState === "generating" ||
+    currentAudioState === "extracting" ||
+    currentTrimState === "trimming" ||
+    currentStorage.scanState === "scanning",
+);
 export const updates = createUpdateStore({ adapter: unavailableAdapter, isProcessing: isUpdateProcessing });

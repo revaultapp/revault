@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { get, writable } from "svelte/store";
-import { createUpdateStore, type UpdateAdapter } from "./updates";
+import { isCompressing as isImageCompressing, isEstimating } from "./compress";
+import { trimState } from "./video";
+import { createUpdateStore, isUpdateProcessing, type UpdateAdapter } from "./updates";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -35,6 +37,25 @@ describe("updates store", () => {
     expect(get(setup().store.status)).toBe("idle");
   });
 
+  it("defers the global update offer while an image job is running", () => {
+    isImageCompressing.set(true);
+    expect(get(isUpdateProcessing)).toBe(true);
+
+    isImageCompressing.set(false);
+    expect(get(isUpdateProcessing)).toBe(false);
+  });
+
+  it("treats image estimation and video trimming as active work", () => {
+    isEstimating.set(true);
+    expect(get(isUpdateProcessing)).toBe(true);
+    isEstimating.set(false);
+
+    trimState.set("trimming");
+    expect(get(isUpdateProcessing)).toBe(true);
+    trimState.set("idle");
+    expect(get(isUpdateProcessing)).toBe(false);
+  });
+
   it("is checking until the adapter resolves", async () => {
     const pending = deferred<{ version: string } | null>();
     const { store } = setup();
@@ -64,6 +85,18 @@ describe("updates store", () => {
 
     expect(get(store.status)).toBe("error");
     expect(get(store.error)).toBe("Unable to check for updates. offline");
+  });
+
+  it("does not check for updates while processing is active", async () => {
+    const { store, isProcessing } = setup();
+    const check = vi.fn(async () => ({ version: "1.1.0" }));
+    store.setAdapter({ check, downloadAndInstall: async () => {}, restart: async () => {} });
+    isProcessing.set(true);
+
+    await store.checkForUpdates();
+
+    expect(check).not.toHaveBeenCalled();
+    expect(get(store.status)).toBe("idle");
   });
 
   it("shares an in-flight update check", async () => {
@@ -157,12 +190,46 @@ describe("updates store", () => {
     localStorage.clear();
     const { store, isProcessing } = setup();
 
-    isProcessing.set(true);
     await store.checkForUpdates();
+    isProcessing.set(true);
     expect(get(store.canShowDialog)).toBe(false);
 
     isProcessing.set(false);
     expect(get(store.canShowDialog)).toBe(true);
+  });
+
+  it("does not install an update while processing is active", async () => {
+    const { store, isProcessing } = setup();
+    const downloadAndInstall = vi.fn(async () => {});
+    store.setAdapter({
+      check: async () => ({ version: "1.1.0" }),
+      downloadAndInstall,
+      restart: async () => {},
+    });
+    await store.checkForUpdates();
+
+    isProcessing.set(true);
+    await store.downloadAndInstall();
+
+    expect(downloadAndInstall).not.toHaveBeenCalled();
+    expect(get(store.status)).toBe("available");
+  });
+
+  it("does not restart while processing is active", async () => {
+    const { store, isProcessing } = setup();
+    const restart = vi.fn(async () => {});
+    store.setAdapter({
+      check: async () => ({ version: "1.1.0" }),
+      downloadAndInstall: async () => {},
+      restart,
+    });
+    await store.checkForUpdates();
+    await store.downloadAndInstall();
+
+    isProcessing.set(true);
+    await store.restart();
+
+    expect(restart).not.toHaveBeenCalled();
   });
 
   it("moves through manual check, download, and restart-ready states", async () => {

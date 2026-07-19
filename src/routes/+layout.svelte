@@ -1,16 +1,34 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import { isTauri } from "@tauri-apps/api/core";
   import "@fontsource-variable/plus-jakarta-sans";
   import "../app.css";
+  import { updates } from "$lib/stores/updates";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import TopBar from "$lib/components/TopBar.svelte";
+  import UpdateDialog from "$lib/components/UpdateDialog.svelte";
   import WindowControls from "$lib/components/WindowControls.svelte";
+  import { scheduleStartupUpdateCheck } from "$lib/components/startUpdateCheck";
+  import { tauriUpdateAdapter } from "$lib/components/tauriUpdateAdapter";
 
   let { children } = $props();
+
+  onMount(() => {
+    updates.setAdapter(tauriUpdateAdapter);
+    return scheduleStartupUpdateCheck(
+      isTauri(),
+      requestAnimationFrame,
+      cancelAnimationFrame,
+      () => { void updates.checkForUpdates(); },
+    );
+  });
 </script>
 
 <div class="titlebar" data-tauri-drag-region>
   <WindowControls />
 </div>
+
+<UpdateDialog />
 
 <div class="shell">
   <Sidebar />
