@@ -176,13 +176,12 @@
           onfocus={() => selectIndex(index)}
           onclick={() => selectIndex(index)}
           onkeydown={(event) => handleKeydown(event, index)}
-          aria-label="{seg.label}: {percentage(seg.bytes)}, {formatValue(seg.bytes)}, {seg.count} {t("dashboard.tableColFiles")}"
+          aria-label="{seg.label}: {percentage(seg.bytes)}, {formatValue(seg.bytes)}"
         >
           <span class="tick" style="background: {CHART_COLORS[index % CHART_COLORS.length]}"></span>
           <span class="legend-name">{seg.label}</span>
           <span class="legend-percent">{percentage(seg.bytes)}</span>
           <span class="legend-value">{formatValue(seg.bytes)}</span>
-          <span class="legend-count" aria-hidden="true">{seg.count}</span>
         </button>
       {/each}
     </div>
@@ -238,14 +237,13 @@
   .ring-sub { font-size: 9px; font-weight: 600; color: var(--chart-tick); letter-spacing: 0.04em; text-transform: uppercase; }
 
   .legend-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-  .legend-row { display: grid; grid-template-columns: 3px minmax(0, 1fr) auto auto auto; align-items: center; gap: 6px; min-width: 0; min-height: 36px; padding: 3px 4px; border-radius: var(--radius-sm); text-align: left; cursor: pointer; }
+  .legend-row { display: grid; grid-template-columns: 3px minmax(0, 1fr) auto auto; align-items: center; gap: 6px; min-width: 0; min-height: 36px; padding: 3px 4px; border-radius: var(--radius-sm); text-align: left; cursor: pointer; }
   .legend-row.active { font-weight: 700; background: var(--state-hover); }
   .legend-row:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
   .tick { width: 3px; height: 12px; border-radius: 2px; }
   .legend-name { overflow: hidden; font-size: 11px; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; }
-  .legend-percent, .legend-value, .legend-count { font-size: 10px; color: var(--text-primary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .legend-percent, .legend-value { font-size: 10px; color: var(--text-primary); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .legend-percent { color: var(--chart-tick); }
-  .legend-count { color: var(--chart-tick); }
 
   .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 

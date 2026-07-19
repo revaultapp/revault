@@ -124,15 +124,13 @@ describe("StorageDonut", () => {
     expect(controls[3].classList.contains("active")).toBe(false);
   });
 
-  it("shows and announces label, percentage, exact bytes, and count", () => {
+  it("shows and announces only label, percentage, and exact bytes", () => {
     const target = renderStorageDonut();
     const first = target.querySelector<HTMLButtonElement>(".legend-row");
 
-    expect(first?.textContent?.replace(/\s+/g, " ").trim()).toBe("JPEG 30% 600 B 6");
-    expect(first?.getAttribute("aria-label")).toContain("JPEG");
-    expect(first?.getAttribute("aria-label")).toContain("30%");
-    expect(first?.getAttribute("aria-label")).toContain("600 B");
-    expect(first?.getAttribute("aria-label")).toContain("6");
+    expect(first?.textContent?.replace(/\s+/g, " ").trim()).toBe("JPEG 30% 600 B");
+    expect(first?.getAttribute("aria-label")).toBe("JPEG: 30%, 600 B");
+    expect(target.querySelector(".legend-count")).toBeNull();
   });
 
   it("renders one caption and all original rows in table mode", () => {
