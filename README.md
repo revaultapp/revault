@@ -47,6 +47,10 @@ Download the latest release for your platform and bypass the warning as follows:
 
 Signed and notarized builds are planned for a future release.
 
+Release builds also publish Tauri's signed updater artifacts and `latest.json` for
+the in-app update flow. The updater validates those artifacts with ReVault's
+embedded public updater key; it does not replace platform code signing.
+
 ## Tech Stack
 
 - **Backend:** Rust
