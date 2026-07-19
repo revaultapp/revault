@@ -1,13 +1,15 @@
 <script lang="ts">
   import { tick } from "svelte";
   import type { ComponentType } from "svelte";
+  import { ArrowDownToLine, RefreshCw, RotateCcw } from "lucide-svelte";
   import { theme } from "$lib/stores/theme";
   import type { Theme } from "$lib/stores/theme";
   import { defaultOutputDir, defaultImagePreset, defaultVideoPreset, defaultVideoPrivacy } from "$lib/stores/settings";
   import type { QualityPreset } from "$lib/stores/compress";
   import type { VideoPreset, PrivacyMode } from "$lib/stores/video";
-  import { browseOutputDir } from "$lib/utils";
+  import { browseOutputDir, formatBytes } from "$lib/utils";
   import { getLocale, setLocale, t } from "$lib/stores/locale.svelte";
+  import { updates } from "$lib/stores/updates";
   import type { Locale } from "$lib/i18n";
   import {
     AppearanceDarkIcon,
@@ -24,10 +26,15 @@
   import Button from "./Button.svelte";
 
   const REMEMBER = "remember";
+  const updateStatus = updates.status;
+  const pendingUpdate = updates.pendingUpdate;
+  const updateProgress = updates.progress;
+  const updateErrorOperation = updates.errorOperation;
 
   // Screen-reader confirmation of applied changes. Composed exclusively from
   // existing locale strings ("<row label>: <value label>") — no new i18n keys.
   let announcement = $state("");
+  let manualUpdateResult = $state(false);
   function announce(rowLabel: string, valueLabel: string) {
     announcement = `${rowLabel}: ${valueLabel}`;
   }
@@ -116,6 +123,38 @@
   function selectVideoPrivacy(id: string) {
     defaultVideoPrivacy.set(id === REMEMBER ? null : (id as PrivacyMode));
     announce(t("settings.defaultVideoPrivacyLabel"), labelOf(videoPrivacySegments, id));
+  }
+
+  let settingsUpdateStatus = $derived.by(() => {
+    const version = $pendingUpdate?.version ?? __APP_VERSION__;
+    if ($updateStatus === "available") return t("settings.updateAvailable", { version });
+    if ($updateStatus === "checking") return t("settings.updateChecking");
+    if ($updateStatus === "downloading" && $updateProgress.total > 0) {
+      return t("settings.updateDownloadingProgress", {
+        version,
+        downloaded: formatBytes($updateProgress.downloaded),
+        total: formatBytes($updateProgress.total),
+      });
+    }
+    if ($updateStatus === "downloading") return t("settings.updateDownloading", { version });
+    if ($updateStatus === "installing") return t("settings.updateInstalling", { version });
+    if ($updateStatus === "readyToRestart") return t("settings.updateReady", { version });
+    if ($updateStatus === "error" && $updateErrorOperation === "download") {
+      return t("settings.updateDownloadFailed");
+    }
+    if ($updateStatus === "error" && $updateErrorOperation === "install") {
+      return t("settings.updateInstallFailed");
+    }
+    if (manualUpdateResult && $updateStatus === "upToDate") return t("settings.updateUpToDate");
+    if (manualUpdateResult && $updateStatus === "error") return t("settings.updateCheckFailed");
+    return `${t("settings.versionLabel")} ${__APP_VERSION__}`;
+  });
+
+  async function checkForUpdates() {
+    manualUpdateResult = false;
+    await updates.manualCheck();
+    manualUpdateResult = true;
+    announce(t("settings.versionLabel"), settingsUpdateStatus);
   }
 </script>
 
@@ -275,8 +314,38 @@
           </div>
         </div>
         <div class="version-row">
-          <span class="name">{t("settings.versionLabel")}</span>
-          <span class="version-val">{__APP_VERSION__}</span>
+          <div class="version-copy" aria-live="polite">
+            <span class="name">{t("settings.versionLabel")}</span>
+            <span class="version-val">{settingsUpdateStatus}</span>
+          </div>
+          <div class="update-actions">
+            {#if $updateStatus === "available"}
+              <Button variant="primary" size="sm" onclick={updates.download}>
+                <ArrowDownToLine size={16} strokeWidth={2} />
+                {t("updates.updateNow")}
+              </Button>
+            {:else if $updateStatus === "error" && $updateErrorOperation === "download"}
+              <Button variant="primary" size="sm" onclick={updates.download}>
+                <RefreshCw size={16} strokeWidth={2} />
+                {t("updates.tryAgain")}
+              </Button>
+            {:else if $updateStatus === "error" && $updateErrorOperation === "install"}
+              <Button variant="primary" size="sm" onclick={updates.restart}>
+                <RefreshCw size={16} strokeWidth={2} />
+                {t("updates.tryAgain")}
+              </Button>
+            {:else if $updateStatus === "readyToRestart"}
+              <Button variant="primary" size="sm" onclick={updates.restart}>
+                <RotateCcw size={16} strokeWidth={2} />
+                {t("updates.restart")}
+              </Button>
+            {:else if !["checking", "downloading", "installing"].includes($updateStatus)}
+              <Button variant="ghost" size="sm" onclick={checkForUpdates}>
+                <RefreshCw size={16} strokeWidth={2} />
+                {t("settings.checkForUpdates")}
+              </Button>
+            {/if}
+          </div>
         </div>
       </div>
     </section>
@@ -518,12 +587,30 @@
     border-top: 1px solid var(--border);
   }
 
-  .version-val {
+  .version-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .update-actions {
+    display: flex;
     flex: 0 0 auto;
+  }
+
+  .version-val {
     font-size: 13px;
     font-weight: 500;
     font-variant-numeric: tabular-nums;
     color: var(--chart-tick);
+  }
+
+  @container settings (max-width: 520px) {
+    .version-row {
+      align-items: flex-start;
+      flex-direction: column;
+    }
   }
 
   @container settings (min-width: 761px) {

@@ -115,7 +115,7 @@ Source of truth is `src/app.css`.
 
 ## Testing Baseline
 
-Current test suite (verified 2026-07-19, including Dashboard chart/component, localization, responsive, and accessibility coverage):
+Current test suite (verified 2026-07-19, including the cross-screen coherence package and Dashboard chart/component, localization, responsive, and accessibility coverage):
 
 - Rust: 247 unit tests via `cd src-tauri && cargo test` (+1 `#[ignore]` real-render test, run in CI on ubuntu and locally with `REVAULT_PDFIUM_PATH` set).
 - Frontend: 301 Vitest tests via `pnpm test`.
