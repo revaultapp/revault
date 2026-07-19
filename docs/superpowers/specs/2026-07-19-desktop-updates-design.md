@@ -53,4 +53,3 @@ The existing About/version row becomes an update status row:
 - No update check while a file-processing job is active.
 - No telemetry, accounts, cloud service, or dynamic update backend in this first version.
 - No downgrade channel. Recovery is a higher-version hotfix.
-

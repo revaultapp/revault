@@ -50,4 +50,3 @@
 - [ ] Run `pnpm test --run`, `pnpm check`, `pnpm build`, Rust tests, formatting and strict clippy.
 - [ ] Review updater configuration and release workflow against the approved design and official Tauri security requirements.
 - [ ] Commit the feature on `codex/update-experience`, push it, and create a PR to `main` with release-secret activation steps called out explicitly.
-
