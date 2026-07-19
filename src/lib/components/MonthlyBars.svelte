@@ -2,8 +2,7 @@
   import { t } from "$lib/stores/locale.svelte";
   import { untrack } from "svelte";
   import { TrendingUp } from "lucide-svelte";
-  import { niceMax } from "$lib/charts";
-  import ChartTooltip from "./ChartTooltip.svelte";
+  import { nextChartIndex, niceMax, normalizeChartIndex } from "$lib/charts";
 
   interface MonthPoint {
     key: string;
@@ -18,17 +17,12 @@
     formatValue: (n: number) => string;
     ariaSummary: string;
     tableCaption: string;
-    /** Row label shown in the hover tooltip (e.g. "Space recovered") — passed
-        in since this component takes zero store imports of its own. */
-    valueLabel: string;
+    delta?: { pct: number; up: boolean } | null;
+    deltaSuffix?: string;
     emptyTitle?: string;
     emptyHint?: string;
     emptyCta?: string;
     onCta?: () => void;
-    /** "chart" (default) renders the plot with its sr-only data table;
-        "table" renders only a visible version of that same table — the
-        visible table becomes the accessible content, so the sr-only
-        duplicate is omitted. */
     view?: "chart" | "table";
   }
 
@@ -39,7 +33,8 @@
     formatValue,
     ariaSummary,
     tableCaption,
-    valueLabel,
+    delta,
+    deltaSuffix,
     emptyTitle,
     emptyHint,
     emptyCta,
@@ -51,21 +46,28 @@
   const hatchId = `mbars-hatch-${uid}`;
   const heroGradId = `mbars-hero-${uid}`;
 
-  let plotEl: HTMLDivElement | undefined = $state();
-  let wrapperWidth = $state(0);
-  let plotWidth = $state(0);
-  let plotHeight = $state(0);
-  // heroIndex is always "current month" (last series entry) and never
-  // changes after mount — capture it once as the initial active bar.
-  let activeIndex = $state(untrack(() => heroIndex));
+  let selectedKey: string | null = $state(
+    untrack(() => series[normalizeChartIndex(heroIndex, series.length) ?? series.length - 1]?.key ?? null),
+  );
+  let hoverKey: string | null = $state(null);
 
   const count = $derived(series.length);
   const allZero = $derived(series.every((s) => s.total === 0));
   const maxTotal = $derived(Math.max(0, ...series.map((s) => s.total)));
   const scaleMax = $derived(niceMax(maxTotal || 1));
   const ticks = $derived([0.75, 0.5, 0.25].map((f) => ({ topPct: (1 - f) * 100, value: scaleMax * f })));
-  const showNarrowLabels = $derived(wrapperWidth > 0 && wrapperWidth < 480);
-  const active = $derived(series[activeIndex] ?? series[series.length - 1]);
+  const effectiveHeroIndex = $derived(normalizeChartIndex(heroIndex, count) ?? (count > 0 ? count - 1 : -1));
+  const selectedIndex = $derived.by(() => {
+    const index = selectedKey === null ? -1 : series.findIndex((point) => point.key === selectedKey);
+    return index >= 0 ? index : effectiveHeroIndex;
+  });
+  const hoverIndex = $derived.by(() => {
+    if (hoverKey === null) return null;
+    const index = series.findIndex((point) => point.key === hoverKey);
+    return index >= 0 ? index : null;
+  });
+  const visibleIndex = $derived(hoverIndex ?? selectedIndex);
+  const active = $derived(series[visibleIndex] ?? series[effectiveHeroIndex] ?? series[series.length - 1]);
 
   const VB_H = 100;
   const colW = $derived(count > 0 ? 100 / count : 0);
@@ -88,24 +90,28 @@
             Z`;
   }
 
-  function setActive(i: number) {
-    activeIndex = i;
+  function selectIndex(index: number) {
+    selectedKey = series[index]?.key ?? null;
+    hoverKey = null;
   }
 
-  function reset() {
-    activeIndex = heroIndex;
-  }
+  function handleKeydown(event: KeyboardEvent, index: number) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      selectIndex(index);
+      return;
+    }
 
-  const tooltipX = $derived(plotWidth > 0 ? (activeIndex + 0.5) * (plotWidth / count) : 0);
-  const tooltipY = $derived.by(() => {
-    if (plotHeight <= 0 || scaleMax <= 0) return 0;
-    const pct = (active?.total ?? 0) / scaleMax;
-    return plotHeight * (1 - pct);
-  });
-  const tooltipTitle = $derived(active ? `${monthLabel(active.date)} ${active.date.getFullYear()}` : "");
+    const nextIndex = nextChartIndex(index, event.key, count);
+    if (nextIndex === null) return;
+    event.preventDefault();
+    selectIndex(nextIndex);
+    const controls = (event.currentTarget as HTMLButtonElement).parentElement?.children;
+    (controls?.[nextIndex] as HTMLButtonElement | undefined)?.focus();
+  }
 </script>
 
-<div class="monthly-bars" bind:clientWidth={wrapperWidth}>
+<div class="monthly-bars">
   {#if allZero}
     <div class="chart-empty">
       <span class="empty-icon" aria-hidden="true"><TrendingUp size={20} /></span>
@@ -136,15 +142,21 @@
       </table>
     </div>
   {:else}
+    <div class="summary-row">
+      <div class="summary-primary">
+        <span class="active-month">{monthLabel(active.date)} {active.date.getFullYear()}</span>
+        <strong class="active-value">{formatValue(active.total)}</strong>
+      </div>
+      {#if visibleIndex === effectiveHeroIndex && delta}
+        <span class="month-comparison" class:up={delta.up} class:down={!delta.up}>
+          {delta.up ? "+" : "−"}{delta.pct.toFixed(1)}%
+          {#if deltaSuffix}<span>{deltaSuffix}</span>{/if}
+        </span>
+      {/if}
+    </div>
+
     <div class="plot-wrap">
-      <div
-        class="plot"
-        bind:this={plotEl}
-        bind:clientWidth={plotWidth}
-        bind:clientHeight={plotHeight}
-        role="img"
-        aria-label={ariaSummary}
-      >
+      <div class="plot" role="img" aria-label={ariaSummary}>
         <svg class="bars-svg" viewBox="0 0 100 {VB_H}" preserveAspectRatio="none" aria-hidden="true">
           <defs>
             <pattern id={hatchId} width="3" height="3" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
@@ -165,8 +177,9 @@
             <path
               d={barPath(i, s.total)}
               class="bar"
-              class:hero={i === heroIndex}
-              fill={i === heroIndex ? `url(#${heroGradId})` : `url(#${hatchId})`}
+              class:hero={i === effectiveHeroIndex}
+              class:active={i === visibleIndex}
+              fill={i === effectiveHeroIndex ? `url(#${heroGradId})` : `url(#${hatchId})`}
             />
           {/each}
         </svg>
@@ -176,38 +189,28 @@
         {/each}
       </div>
 
-      <!-- Sibling of the role="img" .plot, not a descendant — a role="img"
-           subtree is flattened for assistive tech, which would strip these
-           focusable hover targets out of the accessibility tree. Same visual
-           position via the shared .plot-wrap coordinate space. -->
-      <div class="hover-row">
+      <div class="month-controls" role="radiogroup" aria-label={ariaSummary}>
         {#each series as s, i (s.key)}
           <button
             type="button"
-            class="hover-col"
-            onmouseenter={() => setActive(i)}
-            onfocus={() => setActive(i)}
-            onmouseleave={reset}
-            onblur={reset}
+            class="month-control"
+            role="radio"
+            aria-checked={i === selectedIndex}
+            tabindex={i === selectedIndex ? 0 : -1}
+            onmouseenter={() => (hoverKey = s.key)}
+            onmouseleave={() => (hoverKey = null)}
+            onfocus={() => selectIndex(i)}
+            onclick={() => selectIndex(i)}
+            onkeydown={(event) => handleKeydown(event, i)}
             aria-label="{monthLabel(s.date)} {s.date.getFullYear()}: {formatValue(s.total)}"
           ></button>
         {/each}
       </div>
-
-      <ChartTooltip
-        visible={true}
-        x={tooltipX}
-        y={tooltipY}
-        title={tooltipTitle}
-        rows={[{ label: valueLabel, value: formatValue(active?.total ?? 0) }]}
-      />
     </div>
 
     <div class="month-row">
-      {#each series as s, i (s.key)}
-        <span class="month-label" class:hidden-label={showNarrowLabels && i % 2 !== 0}>
-          {monthLabel(s.date)}
-        </span>
+      {#each series as s (s.key)}
+        <span class="month-label">{monthLabel(s.date)}</span>
       {/each}
     </div>
 
@@ -230,17 +233,73 @@
 
 <style>
   .monthly-bars {
+    container: monthly-bars / inline-size;
     display: flex;
     flex-direction: column;
     gap: 6px;
     height: 100%;
     min-height: 0;
+    overflow: hidden;
+  }
+
+  .summary-row {
+    display: flex;
+    flex-shrink: 0;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .summary-primary {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .active-month {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--chart-tick);
+  }
+
+  .active-value {
+    overflow: hidden;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1;
+    letter-spacing: -0.02em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .month-comparison {
+    display: flex;
+    flex-shrink: 0;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--danger-text);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .month-comparison.up {
+    color: var(--accent-text);
+  }
+
+  .month-comparison span {
+    font-weight: 500;
+    color: var(--chart-tick);
   }
 
   .plot-wrap {
     position: relative;
     flex: 1;
-    min-height: 0;
+    min-height: 72px;
   }
 
   .table-scroll {
@@ -248,7 +307,6 @@
     min-height: 0;
     max-height: 100%;
     overflow-y: auto;
-    overflow-x: auto;
   }
 
   .data-table {
@@ -289,9 +347,9 @@
   .bars-svg {
     position: absolute;
     inset: 0;
+    display: block;
     width: 100%;
     height: 100%;
-    display: block;
   }
 
   .grid-line {
@@ -301,6 +359,12 @@
 
   .bar.hero {
     filter: drop-shadow(0 2px 8px var(--accent-glow));
+  }
+
+  .bar.active {
+    stroke: var(--accent);
+    stroke-width: 1.4;
+    vector-effect: non-scaling-stroke;
   }
 
   .y-tick {
@@ -313,21 +377,22 @@
     pointer-events: none;
   }
 
-  .hover-row {
+  .month-controls {
     position: absolute;
     inset: 0;
     display: flex;
   }
 
-  .hover-col {
+  .month-control {
     flex: 1;
     height: 100%;
+    min-width: 0;
+    border: 0;
     background: none;
-    border: none;
     cursor: pointer;
   }
 
-  .hover-col:focus-visible {
+  .month-control:focus-visible {
     outline: 2px solid var(--accent-text);
     outline-offset: -2px;
   }
@@ -339,16 +404,13 @@
 
   .month-label {
     flex: 1;
+    min-width: 0;
     overflow: hidden;
     font-size: 11px;
     color: var(--chart-tick);
     text-align: center;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .hidden-label {
-    visibility: hidden;
   }
 
   .chart-empty {
@@ -418,5 +480,19 @@
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
+  }
+
+  @container monthly-bars (max-width: 479px) {
+    .month-label:nth-child(even) {
+      visibility: hidden;
+    }
+  }
+
+  @container monthly-bars (max-width: 399px) {
+    .summary-row {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 4px;
+    }
   }
 </style>
