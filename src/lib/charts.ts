@@ -8,6 +8,29 @@ export interface Point {
   y: number;
 }
 
+export function normalizeChartIndex(current: number, length: number): number | null {
+  if (!Number.isInteger(length) || length <= 0 || !Number.isInteger(current)) return null;
+  return Math.min(Math.max(current, 0), length - 1);
+}
+
+export function nextChartIndex(current: number, key: string, length: number): number | null {
+  const normalized = normalizeChartIndex(current, length);
+  if (normalized === null) return null;
+
+  switch (key) {
+    case "ArrowRight":
+      return (normalized + 1) % length;
+    case "ArrowLeft":
+      return (normalized - 1 + length) % length;
+    case "Home":
+      return 0;
+    case "End":
+      return length - 1;
+    default:
+      return null;
+  }
+}
+
 /**
  * Build a smooth cubic-bezier path through the given points using a
  * Catmull-Rom -> Bezier conversion (monotone-ish smoothing). Returns an SVG

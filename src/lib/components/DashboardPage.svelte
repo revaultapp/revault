@@ -192,12 +192,12 @@
       />
     </div>
 
-    <section class="chart-card">
+    <section class="chart-card monthly-card">
       <div class="card-head">
         <span class="card-title">{t("dashboard.chartMonthlyTitle")}</span>
         {#if hasHistoryData}
           <button
-            class="card-corner"
+            class="card-corner monthly-card-toggle"
             type="button"
             aria-pressed={monthlyTable}
             aria-label={t("dashboard.cardTableToggle", { chart: t("dashboard.chartMonthlyTitle") })}
@@ -219,7 +219,8 @@
           formatValue={formatBytes}
           ariaSummary={t("dashboard.chartMonthlyAria", { total: formatBytes(monthlyGrandTotal) })}
           tableCaption={t("dashboard.tableCaptionMonthly")}
-          valueLabel={t("dashboard.kpiSpaceRecovered")}
+          delta={$momDeltas.saved}
+          deltaSuffix={t("dashboard.vsPrevMonth")}
           emptyTitle={t("dashboard.emptyHistoryTitle")}
           emptyHint={t("dashboard.emptyHistoryHint")}
           emptyCta={t("dashboard.emptyHistoryCta")}
@@ -450,6 +451,11 @@
     box-shadow: var(--shadow-xs);
   }
 
+  .monthly-card {
+    contain: size;
+    overflow: hidden;
+  }
+
   .card-head {
     display: flex;
     flex-shrink: 0;
@@ -488,9 +494,23 @@
     color: var(--accent-text);
   }
 
+  .monthly-card-toggle {
+    width: 36px;
+    height: 36px;
+  }
+
+  .monthly-card-toggle:focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 2px;
+  }
+
   .card-body {
     flex: 1;
     min-height: 0;
+  }
+
+  .monthly-card .card-body {
+    overflow: hidden;
   }
 
   .donut-status {
