@@ -32,9 +32,9 @@ describe("theme store", () => {
     mockMatchMedia(false);
   });
 
-  it('default is "dark" when localStorage empty', async () => {
+  it('defaults to "system" when localStorage is empty', async () => {
     const { theme } = await import("./theme");
-    expect(get(theme)).toBe("dark");
+    expect(get(theme)).toBe("system");
   });
 
   it("persists to localStorage on change", async () => {
@@ -95,10 +95,10 @@ describe("theme store", () => {
     expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
   });
 
-  it('falls back to "dark" when localStorage holds a value outside the Theme union', async () => {
+  it('falls back to "system" when localStorage holds a value outside the Theme union', async () => {
     localStorage.setItem("theme", "banana");
     const { theme } = await import("./theme");
-    expect(get(theme)).toBe("dark");
+    expect(get(theme)).toBe("system");
   });
 
   it("never leaks OS listeners across rapid system↔explicit transitions", async () => {
