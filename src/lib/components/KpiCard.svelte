@@ -13,9 +13,19 @@
         takes zero store imports (no i18n access of its own). Only rendered
         when `delta` is present (not undefined). */
     deltaSuffix?: string;
+    formatPercent?: (value: number) => string;
   }
 
-  let { label, icon, value, delta, sub, ariaNote, deltaSuffix }: Props = $props();
+  let {
+    label,
+    icon,
+    value,
+    delta,
+    sub,
+    ariaNote,
+    deltaSuffix,
+    formatPercent = (percent) => `${percent.toFixed(1)}%`,
+  }: Props = $props();
 </script>
 
 <div class="kpi-card" aria-label={ariaNote}>
@@ -47,7 +57,7 @@
           <!-- Signed so the direction survives without the (aria-hidden)
                arrow icon or color — screen readers otherwise hear a bare
                percentage with no up/down information (WCAG 1.4.1). -->
-          {delta.up ? "+" : "−"}{delta.pct.toFixed(1)}%
+          {delta.up ? "+" : "−"}{formatPercent(delta.pct)}
         </span>
       {/if}
       {#if deltaSuffix}<span class="delta-suffix">{deltaSuffix}</span>{/if}

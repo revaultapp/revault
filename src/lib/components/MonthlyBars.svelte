@@ -19,6 +19,7 @@
     tableCaption: string;
     delta?: { pct: number; up: boolean } | null;
     deltaSuffix?: string;
+    formatPercent?: (value: number) => string;
     emptyTitle?: string;
     emptyHint?: string;
     emptyCta?: string;
@@ -35,6 +36,7 @@
     tableCaption,
     delta,
     deltaSuffix,
+    formatPercent = (percent) => `${percent.toFixed(1)}%`,
     emptyTitle,
     emptyHint,
     emptyCta,
@@ -149,7 +151,7 @@
       </div>
       {#if visibleIndex === effectiveHeroIndex && delta}
         <span class="month-comparison" class:up={delta.up} class:down={!delta.up}>
-          {delta.up ? "+" : "−"}{delta.pct.toFixed(1)}%
+          {delta.up ? "+" : "−"}{formatPercent(delta.pct)}
           {#if deltaSuffix}<span>{deltaSuffix}</span>{/if}
         </span>
       {/if}

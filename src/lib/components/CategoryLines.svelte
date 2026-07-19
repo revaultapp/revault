@@ -28,6 +28,7 @@
     formatValue: (n: number) => string;
     ariaSummary: string;
     tableCaption: string;
+    formatPercent?: (value: number) => string;
     emptyTitle?: string;
     emptyHint?: string;
     emptyCta?: string;
@@ -42,6 +43,7 @@
     formatValue,
     ariaSummary,
     tableCaption,
+    formatPercent = (percent) => `${percent.toFixed(0)}%`,
     emptyTitle,
     emptyHint,
     emptyCta,
@@ -148,7 +150,7 @@
       <span class="active-month">{monthLabel(active.date)} {active.date.getFullYear()}</span>
       <div class="active-values">
         {#each KINDS as kind (kind)}
-          <span class="active-value"><span>{labelFor(kind)} {sharePctFor(kind).toFixed(0)}%</span> {formatValue(active[kind])}</span>
+          <span class="active-value"><span>{labelFor(kind)} {formatPercent(sharePctFor(kind))}</span> {formatValue(active[kind])}</span>
         {/each}
       </div>
     </div>
@@ -158,7 +160,7 @@
         {#each shares as share (share.kind)}
           <div class="legend-item">
             <span class="legend-rule {share.kind}" style="--rule-color: {KIND_VAR[share.kind]}"></span>
-            <span class="legend-share">{share.sharePct.toFixed(0)}%</span>
+            <span class="legend-share">{formatPercent(share.sharePct)}</span>
             <span class="legend-label">{share.label}</span>
           </div>
         {/each}

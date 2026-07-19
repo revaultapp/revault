@@ -21,6 +21,8 @@
     centerSub: string;
     facts: Fact[];
     formatValue: (n: number) => string;
+    formatPercent?: (value: number) => string;
+    formatCount?: (value: number) => string;
     ariaSummary: string;
     tableCaption: string;
     view?: "chart" | "table";
@@ -33,6 +35,8 @@
     centerSub,
     facts,
     formatValue,
+    formatPercent = (percent) => `${percent.toFixed(0)}%`,
+    formatCount = (count) => String(count),
     ariaSummary,
     tableCaption,
     view = "chart",
@@ -75,7 +79,7 @@
   const visibleIndex = $derived(hoverIndex ?? selectedIndex);
 
   function percentage(bytes: number): string {
-    return `${total > 0 ? ((bytes / total) * 100).toFixed(0) : 0}%`;
+    return formatPercent(total > 0 ? (bytes / total) * 100 : 0);
   }
 
   function selectIndex(index: number) {
@@ -118,7 +122,7 @@
             <tr>
               <td>{seg.label}</td>
               <td class="col-num">{formatValue(seg.bytes)}</td>
-              <td class="col-num">{seg.count}</td>
+              <td class="col-num">{formatCount(seg.count)}</td>
             </tr>
           {/each}
         </tbody>
@@ -194,7 +198,7 @@
       </thead>
       <tbody>
         {#each segments as seg, index (`${seg.label}-${index}`)}
-          <tr><td>{seg.label}</td><td>{formatValue(seg.bytes)}</td><td>{seg.count}</td></tr>
+          <tr><td>{seg.label}</td><td>{formatValue(seg.bytes)}</td><td>{formatCount(seg.count)}</td></tr>
         {/each}
       </tbody>
     </table>

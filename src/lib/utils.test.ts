@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import {
   addUniqueByPath,
   formatBytes,
+  formatBytesLocalized,
   moveByPath,
   persisted,
   persistedWithGlobalDefault,
@@ -44,17 +45,26 @@ describe("formatBytes", () => {
     expect(formatBytes(-2048)).toBe("-2.0 KB");
   });
 
-  it("uses locale decimal separators without changing byte thresholds or units", () => {
-    expect(formatBytes(1536, "en")).toBe("1.5 KB");
-    expect(formatBytes(1536, "es")).toBe("1,5 KB");
-    expect(formatBytes(1536, "de")).toBe("1,5 KB");
+});
+
+describe("formatBytesLocalized", () => {
+  it("uses the requested locale and compact decimal storage units", () => {
+    expect(formatBytesLocalized(2_840_000_000, "en")).toBe("2.84 GB");
+    expect(formatBytesLocalized(2_840_000_000, "es")).toBe("2,84 GB");
+    expect(formatBytesLocalized(1_024, "de")).toBe("1 KB");
   });
 
-  it("uses locale grouping for byte counts and preserves negative signs", () => {
-    expect(formatBytes(1000, "en")).toBe("1,000 B");
-    expect(formatBytes(1000, "es")).toBe("1000 B");
-    expect(formatBytes(1000, "de")).toBe("1.000 B");
-    expect(formatBytes(-1536, "de")).toBe("-1,5 KB");
+  it("supports bytes through terabytes without forced trailing decimals", () => {
+    expect(formatBytesLocalized(500, "en")).toBe("500 B");
+    expect(formatBytesLocalized(500.5, "en")).toBe("501 B");
+    expect(formatBytesLocalized(1_500_000, "en")).toBe("1.5 MB");
+    expect(formatBytesLocalized(1024 ** 4, "en")).toBe("1 TB");
+  });
+
+  it("returns zero bytes for zero, negative, and non-finite inputs", () => {
+    for (const value of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(formatBytesLocalized(value, "de")).toBe("0 B");
+    }
   });
 });
 

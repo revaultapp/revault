@@ -19,7 +19,7 @@
   import Button from "./Button.svelte";
   import { savings } from "$lib/stores/savings";
   import { activePage } from "$lib/stores/nav";
-  import { formatBytes } from "$lib/utils";
+  import { formatBytesLocalized } from "$lib/utils";
   import { animatedNumber } from "$lib/motion";
   import { storage, breakdown } from "$lib/stores/storage";
   import { history, monthlySeries, momDeltas, categoryShares, protectedTotal } from "$lib/stores/history";
@@ -51,11 +51,25 @@
   }
 
   function formatDashboardBytes(bytes: number): string {
-    return formatBytes(bytes, getLocale());
+    return formatBytesLocalized(bytes, getLocale());
   }
 
   function formatDashboardCount(count: number): string {
-    return new Intl.NumberFormat(getLocale()).format(count);
+    return new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 }).format(count);
+  }
+
+  function formatDashboardDeltaPercent(percent: number): string {
+    return new Intl.NumberFormat(getLocale(), {
+      style: "percent",
+      maximumFractionDigits: 1,
+    }).format(percent / 100);
+  }
+
+  function formatDashboardWholePercent(percent: number): string {
+    return new Intl.NumberFormat(getLocale(), {
+      style: "percent",
+      maximumFractionDigits: 0,
+    }).format(percent / 100);
   }
 
   const monthlyGrandTotal = $derived($monthlySeries.reduce((acc, m) => acc + m.total, 0));
@@ -84,8 +98,8 @@
     }))
   );
 
-  function sharePctFor(kind: "img" | "vid" | "pdf"): number {
-    return Math.round($categoryShares.find((s) => s.kind === kind)?.share ?? 0);
+  function sharePctFor(kind: "img" | "vid" | "pdf"): string {
+    return formatDashboardWholePercent($categoryShares.find((s) => s.kind === kind)?.share ?? 0);
   }
 
   const categoryAriaSummary = $derived(
@@ -122,7 +136,7 @@
     return [
       { value: formatDashboardCount(files), label: t("dashboard.donutFactScanFiles") },
       { value: formatDashboardCount(donutData.length), label: t("dashboard.donutFactScanTypes") },
-      { value: top.label, label: t("dashboard.donutFactScanTop", { pct: topPct }) },
+      { value: top.label, label: t("dashboard.donutFactScanTop", { pct: formatDashboardWholePercent(topPct) }) },
     ];
   });
 
@@ -174,6 +188,7 @@
         value={formatDashboardBytes(spaceSavedTween.current)}
         delta={$momDeltas.saved}
         deltaSuffix={t("dashboard.vsPrevMonth")}
+        formatPercent={formatDashboardDeltaPercent}
       />
       <KpiCard
         label={t("dashboard.kpiAnalyzedSize")}
@@ -183,9 +198,10 @@
       <KpiCard
         label={t("dashboard.avgCompression")}
         icon={Minimize2}
-        value="{Math.round(avgCompressionTween.current)}%"
+        value={formatDashboardWholePercent(avgCompressionTween.current)}
         delta={$momDeltas.compression}
         deltaSuffix={t("dashboard.vsPrevMonth")}
+        formatPercent={formatDashboardDeltaPercent}
       />
       <KpiCard
         label={t("dashboard.kpiProtectedFiles")}
@@ -224,6 +240,7 @@
           tableCaption={t("dashboard.tableCaptionMonthly")}
           delta={$momDeltas.saved}
           deltaSuffix={t("dashboard.vsPrevMonth")}
+          formatPercent={formatDashboardDeltaPercent}
           emptyTitle={t("dashboard.emptyHistoryTitle")}
           emptyHint={t("dashboard.emptyHistoryHint")}
           emptyCta={t("dashboard.emptyHistoryCta")}
@@ -260,6 +277,7 @@
           shares={categoryLinesShares}
           {monthLabel}
           formatValue={formatDashboardBytes}
+          formatPercent={formatDashboardWholePercent}
           ariaSummary={categoryAriaSummary}
           tableCaption={t("dashboard.tableCaptionCategory")}
           emptyTitle={t("dashboard.emptyHistoryTitle")}
@@ -318,6 +336,8 @@
             centerSub={t("dashboard.donutCenterScanned")}
             facts={donutFacts}
             formatValue={formatDashboardBytes}
+            formatPercent={formatDashboardWholePercent}
+            formatCount={formatDashboardCount}
             ariaSummary={t("dashboard.chartDonutAria", { total: formatDashboardBytes(donutTotalBytes) })}
             tableCaption={t("dashboard.tableCaptionDonut")}
             view={donutTable ? "table" : "chart"}

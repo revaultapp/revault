@@ -42,9 +42,13 @@ describe("DashboardPage integration contracts", () => {
   });
 
   it("uses locale-aware formatters for dashboard values and visible counts", () => {
-    expect(source).toContain("formatBytes(bytes, getLocale())");
-    expect(source).toContain("new Intl.NumberFormat(getLocale()).format");
+    expect(source).toContain("formatBytesLocalized(bytes, getLocale())");
+    expect(source).toContain('style: "percent"');
+    expect(source).toContain("maximumFractionDigits: 0");
     expect(source).toContain("formatValue={formatDashboardBytes}");
+    expect(source).toContain("formatPercent={formatDashboardDeltaPercent}");
+    expect(source).toContain("formatPercent={formatDashboardWholePercent}");
+    expect(source).toContain("formatCount={formatDashboardCount}");
   });
 
   it("uses a retry class and disables spinner motion when reduced motion is preferred", () => {

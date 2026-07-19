@@ -17,7 +17,7 @@ const series = months.map((month, index) => ({
 const instances: ReturnType<typeof mount>[] = [];
 const legacyInstances: { $destroy(): void }[] = [];
 
-function renderMonthlyBars() {
+function renderMonthlyBars(overrides: Record<string, unknown> = {}) {
   const target = document.createElement("div");
   document.body.append(target);
   instances.push(
@@ -32,6 +32,7 @@ function renderMonthlyBars() {
         tableCaption: "Monthly savings data",
         delta: { pct: 25, up: true },
         deltaSuffix: "vs previous month",
+        ...overrides,
       },
     }),
   );
@@ -69,6 +70,20 @@ describe("MonthlyBars", () => {
       "+25.0% vs previous month",
     );
     expect(target.querySelector(".chart-tooltip")).toBeNull();
+  });
+
+  it("uses the supplied locale-aware formatter for its comparison", () => {
+    const formatPercent = (value: number) => new Intl.NumberFormat("de", {
+      style: "percent",
+      maximumFractionDigits: 1,
+    }).format(value / 100);
+    const target = renderMonthlyBars({
+      formatPercent,
+    });
+
+    expect(target.querySelector(".month-comparison")?.textContent?.replace(/\s+vs/, " vs").trim()).toBe(
+      `+${formatPercent(25)} vs previous month`,
+    );
   });
 
   it("moves selection and focus with ArrowLeft, Home, End, and wrapping ArrowRight", async () => {

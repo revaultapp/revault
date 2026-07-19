@@ -142,6 +142,30 @@ describe("StorageDonut", () => {
     expect(target.querySelectorAll(".legend-row")).toHaveLength(0);
   });
 
+  it("uses supplied locale-aware percent and count formatters", () => {
+    const formatPercent = (value: number) => new Intl.NumberFormat("de", {
+      style: "percent",
+      maximumFractionDigits: 0,
+    }).format(value / 100);
+    const formatCount = (value: number) => new Intl.NumberFormat("de", { maximumFractionDigits: 0 }).format(value);
+    const chart = renderStorageDonut({
+      segments: [{ label: "JPEG", bytes: 3, count: 1234 }, { label: "PNG", bytes: 1, count: 5 }],
+      formatPercent,
+      formatCount,
+    });
+
+    expect(chart.querySelector(".legend-percent")?.textContent).toBe(formatPercent(75));
+    expect(chart.querySelector(".legend-row")?.getAttribute("aria-label")).toContain(formatPercent(75));
+
+    const table = renderStorageDonut({
+      view: "table",
+      segments: [{ label: "JPEG", bytes: 3, count: 1234 }],
+      formatPercent,
+      formatCount,
+    });
+    expect(table.querySelector("tbody tr td:last-child")?.textContent).toBe(formatCount(1234));
+  });
+
   it("uses responsive container styles, reduced motion, a neutral track, and a passive SVG", () => {
     const target = renderStorageDonut();
     const source = readFileSync(resolve("src/lib/components/StorageDonut.svelte"), "utf8");

@@ -24,7 +24,7 @@ const shares = [
 const instances: ReturnType<typeof mount>[] = [];
 const legacyInstances: { $destroy(): void }[] = [];
 
-function renderCategoryLines() {
+function renderCategoryLines(overrides: Record<string, unknown> = {}) {
   const target = document.createElement("div");
   document.body.append(target);
   instances.push(
@@ -37,6 +37,7 @@ function renderCategoryLines() {
         formatValue: (value: number) => `${value} B`,
         ariaSummary: "Savings by file type",
         tableCaption: "Category savings data",
+        ...overrides,
       },
     }),
   );
@@ -69,6 +70,23 @@ describe("CategoryLines", () => {
       [...target.querySelectorAll(".active-value")].map((value) => value.textContent?.replace(/\s+/g, " ").trim()),
     ).toEqual(["Images 80% 1200 B", "Video 15% 240 B", "PDF 5% 12 B"]);
     expect(target.querySelector(".chart-tooltip")).toBeNull();
+  });
+
+  it("uses the supplied locale-aware formatter for visible shares", () => {
+    const formatPercent = (value: number) => new Intl.NumberFormat("de", {
+      style: "percent",
+      maximumFractionDigits: 0,
+    }).format(value / 100);
+    const target = renderCategoryLines({
+      formatPercent,
+    });
+
+    expect([...target.querySelectorAll(".legend-share")].map((node) => node.textContent?.trim())).toEqual([
+      formatPercent(80),
+      formatPercent(15),
+      formatPercent(5),
+    ]);
+    expect(target.querySelector(".active-value span")?.textContent?.trim()).toBe(`Images ${formatPercent(80)}`);
   });
 
   it("moves selection and focus with arrows, Home, End, and wrapping", async () => {
