@@ -97,7 +97,7 @@ Current sidebar pages:
 - Video: FFmpeg sidecar, presets, cancellation, size prediction, privacy modes `off | smart | gps_only | full` (applied to both compress and trim — trim stays a lossless stream-copy; privacy args are container-level via `trim_privacy_args`), trim to start/end range.
 - GIF export: implemented via gifski sidecar from the Video flow.
 - PDF Tools: metadata stripping, stream compression with embedded image re-encoding, and merge/split (combine PDFs, extract page ranges).
-- Dashboard: implemented with savings, storage analysis, quick actions, and recent activity.
+- Dashboard: implemented with savings, storage analysis, quick actions, and recent activity; charts, component interactions, localization, responsive layout, and accessibility are covered by frontend tests.
 - Settings: theme (light/dark/system), language selector, default output folder, global processing defaults (image preset, video preset, video privacy — `null` = remember last use; non-null values seed the tool stores at init AND propagate to them live, wired via `persistedWithGlobalDefault` in `utils.ts`; persisted values are guarded by try/catch + allowlist validators), a static zero-telemetry statement, and the app version injected from `package.json` via `__APP_VERSION__` (Vite `define`).
 - Localization: UI shipped in English, Spanish, French, German, and Brazilian Portuguese (`src/lib/i18n/locales/`). Add a locale by creating `<xx>.ts` (annotate `: Dictionary` for compile-time key parity) and wiring it in `i18n/index.ts` + `stores/locale.svelte.ts`; `locale.test.ts` enforces key parity across every registered locale. zh-Hans (and then ja) deferred pending a CJK font fallback — Plus Jakarta Sans has no CJK coverage.
 - Removed/deferred scope: organize/rename, collage, watermark, cloud, OCR.
@@ -115,11 +115,11 @@ Source of truth is `src/app.css`.
 
 ## Testing Baseline
 
-Current test suite (verified 2026-07-19, cross-screen coherence package: trim privacy, resize quality preset, document lang, output-dir contract tests):
+Current test suite (verified 2026-07-19, including Dashboard chart/component, localization, responsive, and accessibility coverage):
 
 - Rust: 247 unit tests via `cd src-tauri && cargo test` (+1 `#[ignore]` real-render test, run in CI on ubuntu and locally with `REVAULT_PDFIUM_PATH` set).
-- Frontend: 249 Vitest tests via `pnpm test`.
-- Total: 496 passing tests.
+- Frontend: 301 Vitest tests via `pnpm test`.
+- Total: 548 passing tests.
 
 Always verify counts after changing tests by running the commands above; this section should be updated when tests are added or removed.
 
